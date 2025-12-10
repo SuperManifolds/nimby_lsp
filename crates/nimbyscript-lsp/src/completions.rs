@@ -300,6 +300,23 @@ fn add_module_members(
         }
     }
 
+    // Check if it's a type with methods (e.g., DB, Sim, Extrapolator, Signal, etc.)
+    if let Some(type_def) = api.get_type(module) {
+        for method in &type_def.methods {
+            if method.name.starts_with(prefix) {
+                items.push(CompletionItem {
+                    label: method.name.clone(),
+                    kind: Some(CompletionItemKind::METHOD),
+                    detail: Some(format_signature(method)),
+                    documentation: format_documentation(method),
+                    insert_text: Some(format_snippet(&method.name, method)),
+                    insert_text_format: Some(InsertTextFormat::SNIPPET),
+                    ..Default::default()
+                });
+            }
+        }
+    }
+
     // Check if it's an enum
     if let Some(enum_def) = api.get_enum(module) {
         for variant in &enum_def.variants {
@@ -575,12 +592,13 @@ mod tests {
     }
 
     #[test]
-    fn test_module_member_completions() {
+    fn test_type_method_completions() {
         let api = load_api();
         let mut items = Vec::new();
         add_module_members(&mut items, &api, "DB", "");
-        // DB module should have functions
-        assert!(!items.is_empty());
+        // DB type should have methods (like view)
+        assert!(!items.is_empty(), "DB should have methods");
+        assert!(items.iter().any(|i| i.label == "view"), "DB should have view method");
     }
 
     #[test]

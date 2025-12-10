@@ -20,7 +20,7 @@ type = "f64"
 [[functions]]
 name = "ceil"
 doc = "Returns the smallest integer greater than or equal to a number"
-return_type = "i64"
+return_type = "f64"
 [[functions.params]]
 name = "value"
 type = "f64"
@@ -28,7 +28,7 @@ type = "f64"
 [[functions]]
 name = "floor"
 doc = "Returns the largest integer less than or equal to a number"
-return_type = "i64"
+return_type = "f64"
 [[functions.params]]
 name = "value"
 type = "f64"
@@ -36,7 +36,7 @@ type = "f64"
 [[functions]]
 name = "round"
 doc = "Returns the nearest integer to a number"
-return_type = "i64"
+return_type = "f64"
 [[functions.params]]
 name = "value"
 type = "f64"
@@ -109,24 +109,24 @@ type = "f64"
 [[functions]]
 name = "zdiv"
 doc = "Safe division that returns 0 when dividing by zero"
-return_type = "f64"
+return_type = "i64"
 [[functions.params]]
 name = "numerator"
-type = "f64"
+type = "i64"
 [[functions.params]]
 name = "denominator"
-type = "f64"
+type = "i64"
 
 [[functions]]
 name = "zmod"
 doc = "Safe modulo that returns 0 when dividing by zero"
-return_type = "f64"
+return_type = "i64"
 [[functions.params]]
 name = "value"
-type = "f64"
+type = "i64"
 [[functions.params]]
 name = "divisor"
-type = "f64"
+type = "i64"
 
 [[functions]]
 name = "is_nan"
@@ -194,49 +194,54 @@ return_type = "f64"
 name = "value"
 type = "i64"
 
+[[functions]]
+name = "log"
+doc = "Log a formatted message for debugging"
+[[functions.params]]
+name = "format"
+type = "string"
+
 # ============================================
-# Modules
+# Context Types (DB, Sim, Extrapolator, ControlCtx)
 # ============================================
 
-[modules.DB]
-doc = "Database access for querying attached script data"
+[types.ControlCtx]
+kind = "struct"
+doc = "Accessible game state for sim controller scripts"
+[types.ControlCtx.fields]
+db = { type = "&DB", doc = "Database reference" }
+sim = { type = "&Sim", doc = "Simulation reference" }
+extrapolator = { type = "&Extrapolator", doc = "Extrapolator reference" }
 
-[[modules.DB.functions]]
+[types.DB]
+kind = "struct"
+doc = "The database of all player-created objects, and associated script struct objects"
+
+[[types.DB.methods]]
 name = "view"
 doc = "Returns a reference to script data attached to a game object"
-return_type = "&T"
+return_type = "*T"
 type_params = ["T"]
-[[modules.DB.functions.params]]
-name = "id"
-type = "ID<GameObject>"
-
-[modules.Sim]
-doc = "Simulation access for runtime game state"
-
-[[modules.Sim.functions]]
-name = "view"
-doc = "Returns a reference to simulation data for an entity"
-return_type = "&T"
-type_params = ["T"]
-[[modules.Sim.functions.params]]
+[[types.DB.methods.params]]
 name = "id"
 type = "ID<T>"
 
-[[modules.Sim.functions]]
-name = "clock_us"
-doc = "Returns the current simulation clock in microseconds"
-return_type = "i64"
+[types.Sim]
+kind = "struct"
+doc = "The database of the simulation state"
 
-[modules.Extrapolator]
-doc = "Query train reservations and timing"
+[[types.Sim.methods]]
+name = "view"
+doc = "Returns a reference to simulation data for an entity"
+return_type = "*T"
+type_params = ["T"]
+[[types.Sim.methods.params]]
+name = "id"
+type = "ID<T>"
 
-[[modules.Extrapolator.functions]]
-name = "probe_reservation"
-doc = "Check if a track section is reserved"
-return_type = "bool"
-[[modules.Extrapolator.functions.params]]
-name = "section"
-type = "ID<TrackSection>"
+[types.Extrapolator]
+kind = "struct"
+doc = "The simulation system tasked with train motion and scheduling"
 
 # ============================================
 # Game Types
@@ -245,6 +250,8 @@ type = "ID<TrackSection>"
 [types.Script]
 kind = "struct"
 doc = "Base type for script instances attached to game objects"
+[types.Script.fields]
+id = { type = "ID<Script>", doc = "Unique identifier", readonly = true }
 
 [types.Signal]
 kind = "struct"
@@ -281,23 +288,20 @@ kind = "struct"
 doc = "A tag that can be attached to game objects for grouping"
 [types.Tag.fields]
 id = { type = "ID<Tag>", doc = "Unique identifier", readonly = true }
+parent_id = { type = "ID<Tag>", doc = "Parent tag ID", readonly = true }
 
 [types.Motion]
 kind = "struct"
 doc = "Motion state of a train"
 [types.Motion.fields]
-speed = { type = "f64", doc = "Current speed in m/s", readonly = true }
-acceleration = { type = "f64", doc = "Current acceleration in m/s²", readonly = true }
 train_id = { type = "ID<Train>", doc = "Train ID", readonly = true }
 presence = { type = "std::optional<Motion::Presence>", doc = "Presence state", readonly = true }
 drive = { type = "std::optional<Motion::Drive>", doc = "Drive state", readonly = true }
 timed_stop = { type = "std::optional<Motion::TimedStop>", doc = "Timed stop state", readonly = true }
 schedule_stop = { type = "std::optional<Motion::ScheduleStop>", doc = "Schedule stop state", readonly = true }
+schedule_station_event = { type = "std::optional<Motion::ScheduleStationEvent>", doc = "Schedule station event state", readonly = true }
+schedule_dispatch = { type = "std::optional<Motion::ScheduleDispatch>", doc = "Schedule dispatch state", readonly = true }
 hitch = { type = "std::optional<Motion::Hitch>", doc = "Hitch state", readonly = true }
-
-[types.Context]
-kind = "struct"
-doc = "Context object passed to event handlers"
 
 [types.SimController]
 kind = "struct"
@@ -308,27 +312,27 @@ name = "queue_train_intervention"
 doc = "Queue a train intervention (despawn)"
 [[types.SimController.methods.params]]
 name = "train"
-type = "ID<Train>"
+type = "&Train"
 
 [[types.SimController.methods]]
 name = "queue_train_warp"
 doc = "Queue a train warp (reposition)"
 [[types.SimController.methods.params]]
 name = "train"
-type = "ID<Train>"
+type = "&Train"
 [[types.SimController.methods.params]]
-name = "target"
-type = "ID<Signal>"
+name = "pos"
+type = "&Pos"
 
 [[types.SimController.methods]]
 name = "queue_train_drive_to"
 doc = "Queue a route modification"
 [[types.SimController.methods.params]]
 name = "train"
-type = "ID<Train>"
+type = "&Train"
 [[types.SimController.methods.params]]
-name = "destination"
-type = "ID<Signal>"
+name = "pos"
+type = "&Pos"
 
 [[types.SimController.methods]]
 name = "queue_attach"
@@ -454,11 +458,19 @@ doc = "Collection of tags"
 
 [[types.Tags.methods]]
 name = "contains"
-doc = "Check if tags contain a specific tag"
+doc = "Check if tags contain a specific tag by ID"
 return_type = "bool"
 [[types.Tags.methods.params]]
 name = "id"
 type = "ID<Tag>"
+
+[[types.Tags.methods]]
+name = "contains"
+doc = "Check if tags contain a specific tag"
+return_type = "bool"
+[[types.Tags.methods.params]]
+name = "tag"
+type = "&Tag"
 
 # Position types
 [types.Pos]
@@ -504,24 +516,20 @@ name = "pos"
 type = "&Pos"
 
 [[types.TapeTrace.methods]]
+name = "contains"
+doc = "Check if trace contains another trace"
+return_type = "bool"
+[[types.TapeTrace.methods.params]]
+name = "other"
+type = "&TapeTrace"
+
+[[types.TapeTrace.methods]]
 name = "hits"
 doc = "Check if traces intersect"
 return_type = "bool"
 [[types.TapeTrace.methods.params]]
 name = "trace"
 type = "&TapeTrace"
-
-# Context types
-[types.DB]
-kind = "struct"
-doc = "The database of all player-created objects and associated script struct objects"
-[[types.DB.methods]]
-name = "view"
-doc = "Get a read-only view of an entity by ID. Returns a pointer that must be validated."
-return_type = "*Signal"
-[[types.DB.methods.params]]
-name = "id"
-type = "ID<Signal>"
 
 # ID generic type - wrapper for referencing game objects
 [types."ID<Signal>"]
@@ -599,19 +607,71 @@ return_type = "bool"
 name = "other"
 type = "ID<Schedule>"
 
+[types."ID<Building>"]
+kind = "struct"
+doc = "ID reference to a Building entity"
+[[types."ID<Building>".methods]]
+name = "empty"
+doc = "Returns a sentinel empty ID value"
+return_type = "ID<Building>"
+[[types."ID<Building>".methods]]
+name = "equals"
+doc = "Compare two ID instances"
+return_type = "bool"
+[[types."ID<Building>".methods.params]]
+name = "other"
+type = "ID<Building>"
+
+[types."ID<Station>"]
+kind = "struct"
+doc = "ID reference to a Station entity"
+[[types."ID<Station>".methods]]
+name = "empty"
+doc = "Returns a sentinel empty ID value"
+return_type = "ID<Station>"
+[[types."ID<Station>".methods]]
+name = "equals"
+doc = "Compare two ID instances"
+return_type = "bool"
+[[types."ID<Station>".methods.params]]
+name = "other"
+type = "ID<Station>"
+
+[types."ID<Track>"]
+kind = "struct"
+doc = "ID reference to a Track entity"
+[[types."ID<Track>".methods]]
+name = "empty"
+doc = "Returns a sentinel empty ID value"
+return_type = "ID<Track>"
+[[types."ID<Track>".methods]]
+name = "equals"
+doc = "Compare two ID instances"
+return_type = "bool"
+[[types."ID<Track>".methods.params]]
+name = "other"
+type = "ID<Track>"
+
+[types."ID<Script>"]
+kind = "struct"
+doc = "ID reference to a Script entity"
+[[types."ID<Script>".methods]]
+name = "empty"
+doc = "Returns a sentinel empty ID value"
+return_type = "ID<Script>"
+[[types."ID<Script>".methods]]
+name = "equals"
+doc = "Compare two ID instances"
+return_type = "bool"
+[[types."ID<Script>".methods.params]]
+name = "other"
+type = "ID<Script>"
+
 [types.EventCtx]
 kind = "struct"
 doc = "Context for event handlers"
 [types.EventCtx.fields]
 db = { type = "&DB", doc = "Database access", readonly = true }
-extrapolator = { type = "&Extrapolator", doc = "Extrapolator access", readonly = true }
-
-[types.ControlCtx]
-kind = "struct"
-doc = "Context for control handlers"
-[types.ControlCtx.fields]
-db = { type = "&DB", doc = "Database access", readonly = true }
-sim = { type = "&Sim", doc = "Simulation access", readonly = true }
 extrapolator = { type = "&Extrapolator", doc = "Extrapolator access", readonly = true }
 
 # Motion substates
@@ -651,6 +711,18 @@ doc = "Hitch state"
 [types."Motion::Hitch".fields]
 driver_train_id = { type = "ID<Train>", doc = "Driver train ID", readonly = true }
 
+[types."Motion::ScheduleStationEvent"]
+kind = "struct"
+doc = "Schedule station event state"
+
+[types."Motion::ScheduleDispatch"]
+kind = "struct"
+doc = "Schedule dispatch state"
+[types."Motion::ScheduleDispatch".fields]
+sched_id = { type = "ID<Schedule>", doc = "Schedule ID", readonly = true }
+run = { type = "Run", doc = "Current run", readonly = true }
+run_epoch_start = { type = "i64", doc = "Run epoch start time", readonly = true }
+
 # std::optional
 [types."std::optional"]
 kind = "struct"
@@ -668,6 +740,13 @@ kind = "struct"
 doc = "A schedule run"
 [types.Run.fields]
 line_id = { type = "ID<Line>", doc = "Line ID", readonly = true }
+
+# Shift type
+[types.Shift]
+kind = "struct"
+doc = "A schedule shift"
+[types.Shift.fields]
+tags = { type = "Tags", doc = "Tags attached to this shift", readonly = true }
 
 # Additional SimController methods
 [[types.SimController.methods]]
@@ -697,76 +776,76 @@ type = "&Train"
 name = "config"
 type = "i64"
 
-# Enhanced Extrapolator module
-[[modules.Extrapolator.functions]]
+# Extrapolator methods
+[[types.Extrapolator.methods]]
 name = "clock_us"
 doc = "Returns microseconds since game creation"
 return_type = "i64"
 
-[[modules.Extrapolator.functions]]
+[[types.Extrapolator.methods]]
 name = "epoch_s"
 doc = "Returns seconds since 1970-01-01"
 return_type = "i64"
 
-[[modules.Extrapolator.functions]]
+[[types.Extrapolator.methods]]
 name = "week_s"
 doc = "Returns current week second"
 return_type = "i64"
 
-[[modules.Extrapolator.functions]]
+[[types.Extrapolator.methods]]
 name = "week_monday0000_epoch_s"
 doc = "Returns epoch seconds of current week's Monday 00:00"
 return_type = "i64"
 
-[[modules.Extrapolator.functions]]
+[[types.Extrapolator.methods]]
 name = "get_one_occupation"
 doc = "Get one train occupying a position"
 return_type = "*Train"
-[[modules.Extrapolator.functions.params]]
+[[types.Extrapolator.methods.params]]
 name = "pos"
 type = "&Pos"
-[[modules.Extrapolator.functions.params]]
+[[types.Extrapolator.methods.params]]
 name = "ignore_train"
 type = "ID<Train>"
 
-[[modules.Extrapolator.functions]]
+[[types.Extrapolator.methods]]
 name = "get_one_reservation"
 doc = "Get one train reserving a position"
 return_type = "*Train"
-[[modules.Extrapolator.functions.params]]
+[[types.Extrapolator.methods.params]]
 name = "pos"
 type = "&Pos"
-[[modules.Extrapolator.functions.params]]
+[[types.Extrapolator.methods.params]]
 name = "ignore_train"
 type = "ID<Train>"
 
-[[modules.Extrapolator.functions]]
+[[types.Extrapolator.methods]]
 name = "is_occupying"
 doc = "Check if train is occupying a position"
 return_type = "bool"
-[[modules.Extrapolator.functions.params]]
+[[types.Extrapolator.methods.params]]
 name = "pos"
 type = "&Pos"
-[[modules.Extrapolator.functions.params]]
+[[types.Extrapolator.methods.params]]
 name = "train"
 type = "ID<Train>"
 
-[[modules.Extrapolator.functions]]
+[[types.Extrapolator.methods]]
 name = "is_reserving"
 doc = "Check if train is reserving a position"
 return_type = "bool"
-[[modules.Extrapolator.functions.params]]
+[[types.Extrapolator.methods.params]]
 name = "pos"
 type = "&Pos"
-[[modules.Extrapolator.functions.params]]
+[[types.Extrapolator.methods.params]]
 name = "train"
 type = "ID<Train>"
 
-[[modules.Extrapolator.functions]]
+[[types.Extrapolator.methods]]
 name = "reservation_probe"
 doc = "Probe reservations at a position"
 return_type = "ScResvProbeIt"
-[[modules.Extrapolator.functions.params]]
+[[types.Extrapolator.methods.params]]
 name = "pos"
 type = "&Pos"
 

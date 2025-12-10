@@ -204,6 +204,18 @@ impl<'a> SemanticContext<'a> {
         }
     }
 
+    /// Get a specific method on a type by name
+    pub fn get_type_method(&self, type_name: &str, method_name: &str) -> Option<&crate::api::FunctionDef> {
+        self.api
+            .get_type(type_name)
+            .and_then(|t| t.methods.iter().find(|m| m.name == method_name))
+    }
+
+    /// Check if a method exists on a type
+    pub fn has_method(&self, type_name: &str, method_name: &str) -> bool {
+        self.get_type_method(type_name, method_name).is_some()
+    }
+
     /// Get the variants of an enum (user-defined or game enum)
     pub fn get_enum_variants(&self, name: &str) -> Option<Vec<String>> {
         // Check user-defined enums first
@@ -625,13 +637,31 @@ pub enum Color { Red, Green, Blue, }
     }
 
     #[test]
-    fn test_is_module() {
+    fn test_has_type_db_sim() {
         let source = "script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }";
         let (tree, api) = make_context(source);
         let ctx = SemanticContext::new(source, &tree, &api);
 
-        assert!(ctx.is_module("DB"));
-        assert!(ctx.is_module("Sim"));
-        assert!(!ctx.is_module("NotAModule"));
+        // DB, Sim, Extrapolator are types (not modules)
+        assert!(!ctx.resolve_type("DB").is_unknown());
+        assert!(!ctx.resolve_type("Sim").is_unknown());
+        assert!(!ctx.resolve_type("Extrapolator").is_unknown());
+        assert!(!ctx.resolve_type("ControlCtx").is_unknown());
+    }
+
+    #[test]
+    fn test_type_has_method() {
+        let source = "script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }";
+        let (tree, api) = make_context(source);
+        let ctx = SemanticContext::new(source, &tree, &api);
+
+        // DB should have view method
+        assert!(ctx.has_method("DB", "view"));
+        // Sim should have view method
+        assert!(ctx.has_method("Sim", "view"));
+        // Extrapolator should have clock_us method
+        assert!(ctx.has_method("Extrapolator", "clock_us"));
+        // Invalid method should return false
+        assert!(!ctx.has_method("DB", "not_a_method"));
     }
 }

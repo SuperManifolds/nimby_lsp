@@ -310,20 +310,24 @@ mod tests {
         assert!(names.contains(&"sqrt"));
     }
 
-    // Module lookup tests
+    // DB/Sim/Extrapolator type tests (formerly modules)
 
     #[test]
-    fn test_get_module_db() {
+    fn test_get_type_db() {
         let api = load_api();
-        let db = api.get_module("DB");
-        assert!(db.is_some(), "DB module should exist");
+        let db = api.get_type("DB");
+        assert!(db.is_some(), "DB type should exist");
+        let db = db.unwrap();
+        assert!(!db.methods.is_empty(), "DB should have methods");
     }
 
     #[test]
-    fn test_get_module_sim() {
+    fn test_get_type_sim() {
         let api = load_api();
-        let sim = api.get_module("Sim");
-        assert!(sim.is_some(), "Sim module should exist");
+        let sim = api.get_type("Sim");
+        assert!(sim.is_some(), "Sim type should exist");
+        let sim = sim.unwrap();
+        assert!(!sim.methods.is_empty(), "Sim should have methods");
     }
 
     #[test]
@@ -333,19 +337,24 @@ mod tests {
     }
 
     #[test]
-    fn test_module_names_iterator() {
+    fn test_context_type_db() {
         let api = load_api();
-        let names: Vec<_> = api.module_names().collect();
-        assert!(!names.is_empty());
-        assert!(names.contains(&"DB"));
-        assert!(names.contains(&"Sim"));
+        let ctx_type = api.get_type("ControlCtx");
+        assert!(ctx_type.is_some(), "ControlCtx type should exist");
+        // ControlCtx should have db, sim, extrapolator fields
+        let ctx_type = ctx_type.unwrap();
+        assert!(ctx_type.fields.contains_key("db"));
+        assert!(ctx_type.fields.contains_key("sim"));
+        assert!(ctx_type.fields.contains_key("extrapolator"));
     }
 
     #[test]
-    fn test_module_functions() {
+    fn test_type_db_methods() {
         let api = load_api();
-        let db = api.get_module("DB").expect("DB should exist");
-        assert!(!db.functions.is_empty(), "DB should have functions");
+        let db = api.get_type("DB").expect("DB should exist");
+        assert!(!db.methods.is_empty(), "DB should have methods");
+        let method_names: Vec<_> = db.methods.iter().map(|m| m.name.as_str()).collect();
+        assert!(method_names.contains(&"view"), "DB should have view method");
     }
 
     // Callback lookup tests

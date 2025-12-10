@@ -286,6 +286,9 @@ impl TypeInfo {
                 },
             ) => self_size == target_size && self_elem.is_assignable_to(target_elem),
 
+            // Numeric coercion: i64 -> f64 is allowed (widening conversion)
+            (TypeInfo::I64, TypeInfo::F64) => true,
+
             _ => false,
         }
     }
@@ -557,8 +560,16 @@ mod tests {
 
     #[test]
     fn test_not_assignable_different_type() {
-        assert!(!TypeInfo::I64.is_assignable_to(&TypeInfo::F64));
+        // f64 -> i64 is NOT allowed (narrowing would lose precision)
+        assert!(!TypeInfo::F64.is_assignable_to(&TypeInfo::I64));
         assert!(!TypeInfo::Bool.is_assignable_to(&TypeInfo::I64));
+        assert!(!TypeInfo::String.is_assignable_to(&TypeInfo::I64));
+    }
+
+    #[test]
+    fn test_numeric_coercion() {
+        // i64 -> f64 IS allowed (widening conversion)
+        assert!(TypeInfo::I64.is_assignable_to(&TypeInfo::F64));
     }
 
     #[test]

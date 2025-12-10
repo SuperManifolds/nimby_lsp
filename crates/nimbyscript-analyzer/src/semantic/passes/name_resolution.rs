@@ -38,6 +38,7 @@ fn resolve_names(node: Node, ctx: &mut SemanticContext, diagnostics: &mut Vec<Di
         kind::PATH_EXPRESSION => resolve_path(node, ctx, diagnostics),
         kind::CALL_EXPRESSION => resolve_call(node, ctx, diagnostics),
         kind::FIELD_ACCESS => resolve_field_access(node, ctx, diagnostics),
+        kind::IDENTIFIER => resolve_identifier(node, ctx, diagnostics),
         _ => {
             let mut cursor = node.walk();
             for child in node.children(&mut cursor) {
@@ -160,21 +161,24 @@ fn resolve_statement(node: Node, ctx: &mut SemanticContext, diagnostics: &mut Ve
 }
 
 fn resolve_let(node: Node, ctx: &mut SemanticContext, diagnostics: &mut Vec<Diagnostic>) {
+    // Get the binding child which contains name and value fields
+    let binding = node.child_by_kind("binding");
+
     // First resolve the value expression
-    if let Some(value) = node.child_by_field("value") {
+    if let Some(value) = binding.and_then(|b| b.child_by_field("value")) {
         resolve_names(value, ctx, diagnostics);
     }
 
     // Then add the variable to scope
-    if let Some(name_node) = node.child_by_field("name") {
+    if let Some(name_node) = binding.and_then(|b| b.child_by_field("name")) {
         let var_name = name_node.text(ctx.source);
 
-        let var_type = node
-            .child_by_field("type")
+        let var_type = binding
+            .and_then(|b| b.child_by_field("type"))
             .map(|t| ctx.resolve_type(t.text(ctx.source)))
             .unwrap_or(TypeInfo::Unknown);
 
-        // Check for 'mut' keyword
+        // Check for 'mut' keyword in binding operator
         let is_mutable = node.text(ctx.source).contains("mut=");
 
         let _ = ctx.scopes.define(
@@ -232,16 +236,20 @@ fn resolve_for(node: Node, ctx: &mut SemanticContext, diagnostics: &mut Vec<Diag
 }
 
 fn resolve_if(node: Node, ctx: &mut SemanticContext, diagnostics: &mut Vec<Diagnostic>) {
-    // Resolve condition
+    // Resolve condition (for regular if statements)
     if let Some(cond) = node.child_by_field("condition") {
         resolve_names(cond, ctx, diagnostics);
     }
 
-    // For if-let, handle the variable binding
-    if node.kind() == kind::IF_LET_STATEMENT {
-        if let Some(value) = node.child_by_field("value") {
-            resolve_names(value, ctx, diagnostics);
-        }
+    // For if-let, handle the variable binding (name/value are in the binding child)
+    let binding = if node.kind() == kind::IF_LET_STATEMENT {
+        node.child_by_kind("binding")
+    } else {
+        None
+    };
+
+    if let Some(value) = binding.and_then(|b| b.child_by_field("value")) {
+        resolve_names(value, ctx, diagnostics);
     }
 
     // Resolve then block
@@ -252,23 +260,21 @@ fn resolve_if(node: Node, ctx: &mut SemanticContext, diagnostics: &mut Vec<Diagn
         );
 
         // For if-let, add the bound variable
-        if node.kind() == kind::IF_LET_STATEMENT {
-            if let Some(name_node) = node.child_by_field("name") {
-                let var_name = name_node.text(ctx.source);
-                let var_type = node
-                    .child_by_field("type")
-                    .map(|t| ctx.resolve_type(t.text(ctx.source)))
-                    .unwrap_or(TypeInfo::Unknown);
+        if let Some(name_node) = binding.and_then(|b| b.child_by_field("name")) {
+            let var_name = name_node.text(ctx.source);
+            let var_type = binding
+                .and_then(|b| b.child_by_field("type"))
+                .map(|t| ctx.resolve_type(t.text(ctx.source)))
+                .unwrap_or(TypeInfo::Unknown);
 
-                let _ = ctx.scopes.define(
-                    var_name,
-                    SymbolKind::Variable,
-                    var_type,
-                    Span::new(name_node.start_byte(), name_node.end_byte()),
-                    Span::new(name_node.start_byte(), name_node.end_byte()),
-                    false,
-                );
-            }
+            let _ = ctx.scopes.define(
+                var_name,
+                SymbolKind::Variable,
+                var_type,
+                Span::new(name_node.start_byte(), name_node.end_byte()),
+                Span::new(name_node.start_byte(), name_node.end_byte()),
+                false,
+            );
         }
 
         resolve_block(then_block, ctx, diagnostics);
@@ -420,8 +426,8 @@ fn resolve_path(node: Node, ctx: &SemanticContext, diagnostics: &mut Vec<Diagnos
                     .with_code("E0304"),
                 );
             }
-        } else if ctx.is_game_type(first) {
-            // Type::method call (e.g., ID<Train>::empty())
+        } else if ctx.is_game_type(first) || ctx.is_user_struct(first) {
+            // Type::method call (e.g., ID<Train>::empty(), Task::new())
             // For now, just accept it - method validation can be done separately
         } else if first.starts_with("ID<") && first.ends_with('>') {
             // Handle generic ID types like ID<Train>::empty()
@@ -445,15 +451,67 @@ fn resolve_path(node: Node, ctx: &SemanticContext, diagnostics: &mut Vec<Diagnos
                 .with_code("E0306"),
             );
         }
+    } else {
+        // Simple path expression (no ::) - treat as variable reference
+        // Check if it's defined in any known scope
+        let name = path_text;
+
+        // Check local scope
+        if ctx.scopes.lookup(name).is_some() {
+            return;
+        }
+
+        // Check if it's a user-defined function
+        if ctx.user_functions.contains_key(name) {
+            return;
+        }
+
+        // Check if it's a global API function
+        if ctx.get_global_function(name).is_some() {
+            return;
+        }
+
+        // Check if it's a built-in function
+        if is_builtin_function(name) {
+            return;
+        }
+
+        // Check if it's a game type
+        if ctx.api.get_type(name).is_some() {
+            return;
+        }
+
+        // Check if it's a user-defined type
+        if ctx.is_user_struct(name) || ctx.is_user_enum(name) {
+            return;
+        }
+
+        // Check if it's a game enum
+        if ctx.is_game_enum(name) {
+            return;
+        }
+
+        // Unknown identifier
+        diagnostics.push(
+            Diagnostic::error(
+                format!("Undefined variable '{}'", name),
+                Span::new(node.start_byte(), node.end_byte()),
+            )
+            .with_code("E0302"),
+        );
     }
 }
 
 fn resolve_call(node: Node, ctx: &mut SemanticContext, diagnostics: &mut Vec<Diagnostic>) {
     // Resolve the callee
     if let Some(callee) = node.child_by_field("function") {
-        // Check if it's a simple identifier (function call)
-        if callee.kind() == kind::IDENTIFIER {
-            let func_name = callee.text(ctx.source);
+        let callee_text = callee.text(ctx.source);
+
+        // Check if it's a simple function call (path_expression without ::)
+        if (callee.kind() == kind::IDENTIFIER || callee.kind() == kind::PATH_EXPRESSION)
+            && !callee_text.contains("::")
+        {
+            let func_name = callee_text;
 
             // Check if it's a user-defined function, global API function, or built-in
             if !ctx.user_functions.contains_key(func_name)
@@ -472,7 +530,7 @@ fn resolve_call(node: Node, ctx: &mut SemanticContext, diagnostics: &mut Vec<Dia
                 }
             }
         } else {
-            // For other callee types (path, field access), recurse
+            // For other callee types (path with ::, field access), recurse
             resolve_names(callee, ctx, diagnostics);
         }
     }
@@ -480,7 +538,7 @@ fn resolve_call(node: Node, ctx: &mut SemanticContext, diagnostics: &mut Vec<Dia
     // Resolve arguments
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        if child.kind() != kind::IDENTIFIER {
+        if child.kind() != kind::IDENTIFIER && child.kind() != kind::PATH_EXPRESSION {
             // Skip the function name
             resolve_names(child, ctx, diagnostics);
         }
@@ -493,6 +551,81 @@ fn resolve_field_access(node: Node, ctx: &mut SemanticContext, diagnostics: &mut
         resolve_names(object, ctx, diagnostics);
     }
     // Field validation is handled by type_checking pass (E0303)
+}
+
+fn resolve_identifier(node: Node, ctx: &SemanticContext, diagnostics: &mut Vec<Diagnostic>) {
+    // Only check identifiers that are being used, not defined
+    // Skip if parent is a definition context
+    if let Some(parent) = node.parent() {
+        match parent.kind() {
+            // Skip field definitions, parameter names, variable bindings, etc.
+            kind::STRUCT_FIELD
+            | kind::ENUM_VARIANT
+            | kind::PARAMETER
+            | kind::FUNCTION_NAME
+            | kind::FOR_STATEMENT => return,
+            // Skip binding names (let x = ..., if let x = ...)
+            // The binding contains name/value fields; skip the name identifier
+            "binding" => {
+                if parent.child_by_field("name").map(|n| n.id()) == Some(node.id()) {
+                    return;
+                }
+            }
+            // Skip if this is the "field" part of a field access (not the object)
+            kind::FIELD_ACCESS => {
+                if parent.child_by_field("field").map(|f| f.id()) == Some(node.id()) {
+                    return;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let name = node.text(ctx.source);
+
+    // Check if it's in local scope
+    if ctx.scopes.lookup(name).is_some() {
+        return;
+    }
+
+    // Check if it's a user-defined function
+    if ctx.user_functions.contains_key(name) {
+        return;
+    }
+
+    // Check if it's a global API function
+    if ctx.get_global_function(name).is_some() {
+        return;
+    }
+
+    // Check if it's a built-in function
+    if is_builtin_function(name) {
+        return;
+    }
+
+    // Check if it's a game type
+    if ctx.api.get_type(name).is_some() {
+        return;
+    }
+
+    // Check if it's a user-defined type
+    if ctx.is_user_struct(name) || ctx.is_user_enum(name) {
+        return;
+    }
+
+    // Check if it's a game enum
+    if ctx.is_game_enum(name) {
+        return;
+    }
+
+    // Unknown identifier
+    diagnostics.push(
+        Diagnostic::error(
+            format!("Undefined variable '{}'", name),
+            Span::new(node.start_byte(), node.end_byte()),
+        )
+        .with_code("E0302"),
+    );
 }
 
 fn is_builtin_function(name: &str) -> bool {
@@ -624,6 +757,64 @@ fn test() {
         assert!(
             errs.iter().all(|d| d.code.as_deref() != Some("E0306")),
             "Valid module should not error: {:?}",
+            errs
+        );
+    }
+
+    // E0301 - Undefined function
+
+    #[test]
+    fn test_undefined_function() {
+        let source = r#"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+fn test() {
+    is_vali();
+}
+"#;
+        let diags = check(source);
+        let errs = errors(&diags);
+        assert!(
+            errs.iter().any(|d| d.code.as_deref() == Some("E0301")),
+            "Undefined function should error: {:?}",
+            errs
+        );
+    }
+
+    #[test]
+    fn test_valid_api_function() {
+        let source = r#"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+fn test() {
+    let x = abs(-5);
+}
+"#;
+        let diags = check(source);
+        let errs = errors(&diags);
+        assert!(
+            errs.iter().all(|d| d.code.as_deref() != Some("E0301")),
+            "Valid API function should not error: {:?}",
+            errs
+        );
+    }
+
+    #[test]
+    fn test_undefined_function_in_method() {
+        let source = r#"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+pub struct MyHandler extend Signal {
+    owner: ID<Train>,
+}
+fn MyHandler::test(self: &MyHandler) {
+    if is_vali(1) {
+        return;
+    }
+}
+"#;
+        let diags = check(source);
+        let errs = errors(&diags);
+        assert!(
+            errs.iter().any(|d| d.code.as_deref() == Some("E0301")),
+            "Undefined function in method should error: {:?}",
             errs
         );
     }

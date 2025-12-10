@@ -230,7 +230,48 @@ fn check_call_expression(
             );
         }
 
-        // TODO: Check argument types (E0403)
+        // Check argument types
+        if let Some(args) = args_node {
+            let mut cursor = args.walk();
+            let arg_exprs: Vec<_> = args
+                .named_children(&mut cursor)
+                .filter(|c| c.is_named() && c.kind() != ",")
+                .collect();
+
+            for (i, arg_expr) in arg_exprs.iter().enumerate() {
+                if i >= func_info.param_types.len() {
+                    break; // Extra args already handled by count check
+                }
+
+                let expected_type_str = &func_info.param_types[i];
+                let expected_type = ctx.resolve_type(expected_type_str);
+
+                // Skip if expected type is unknown or generic
+                if expected_type.is_unknown() || expected_type_str.contains('T') {
+                    continue;
+                }
+
+                let actual_type = infer_expr_type(Some(*arg_expr), ctx, local_types);
+
+                // Skip if actual type is unknown (avoid cascading errors)
+                if actual_type.is_unknown() {
+                    continue;
+                }
+
+                if !actual_type.is_assignable_to(&expected_type) {
+                    diagnostics.push(
+                        Diagnostic::error(
+                            format!(
+                                "Type mismatch: expected '{}', found '{}'",
+                                expected_type, actual_type
+                            ),
+                            Span::new(arg_expr.start_byte(), arg_expr.end_byte()),
+                        )
+                        .with_code("E0404"),
+                    );
+                }
+            }
+        }
     }
 
     // Recurse into arguments to check their expressions
@@ -245,13 +286,125 @@ fn check_call_expression(
     for child in node.children(&mut cursor) {
         // Skip function child if it's a method call (field_access)
         if skip_func && Some(child) == func_child {
-            // But still check the object part of the field access
-            if let Some(object) = child.child_by_field("object") {
-                check_expression(object, ctx, diagnostics, local_types);
-            }
+            // Validate the method call
+            check_method_call(child, node, ctx, diagnostics, local_types);
             continue;
         }
         check_expression(child, ctx, diagnostics, local_types);
+    }
+}
+
+fn check_method_call(
+    field_access: Node,
+    call_node: Node,
+    ctx: &SemanticContext,
+    diagnostics: &mut Vec<Diagnostic>,
+    local_types: &HashMap<String, TypeInfo>,
+) {
+    // 1. Get the object and method name
+    let Some(object) = field_access.child_by_field("object") else {
+        return;
+    };
+    let Some(method_node) = field_access.child_by_field("field") else {
+        return;
+    };
+    let method_name = method_node.text(ctx.source);
+
+    // 2. Check the object expression recursively
+    check_expression(object, ctx, diagnostics, local_types);
+
+    // 3. Infer the object's type
+    let object_type = infer_expr_type(Some(object), ctx, local_types);
+    let base_type = object_type.unwrap_ref();
+
+    // 4. Skip if type is unknown (avoid cascading errors)
+    if base_type.is_unknown() {
+        return;
+    }
+
+    // 5. Get the type name
+    let type_name = match &base_type {
+        TypeInfo::Struct { name, .. } => name.as_str(),
+        _ => return, // Can't call methods on non-struct types
+    };
+
+    // 6. Check if method exists on the type
+    if let Some(method_def) = ctx.get_type_method(type_name, method_name) {
+        // Method exists - validate argument count
+        let expected_params = method_def.params.len();
+        let actual_args = count_arguments(call_node);
+
+        if actual_args != expected_params {
+            let args_node = call_node.child_by_kind("arguments");
+            let span = args_node
+                .map(|a| Span::new(a.start_byte(), a.end_byte()))
+                .unwrap_or_else(|| Span::new(call_node.start_byte(), call_node.end_byte()));
+
+            diagnostics.push(
+                Diagnostic::error(
+                    format!(
+                        "Method '{}' on type '{}' expects {} argument(s), but {} provided",
+                        method_name, type_name, expected_params, actual_args
+                    ),
+                    span,
+                )
+                .with_code("E0403"),
+            );
+        }
+    } else {
+        // Method doesn't exist - check if it might be a field
+        if ctx
+            .get_struct_fields(type_name)
+            .map(|f| f.contains_key(method_name))
+            .unwrap_or(false)
+        {
+            // It's a field, not a method - different error
+            diagnostics.push(
+                Diagnostic::error(
+                    format!(
+                        "'{}' is a field, not a method, on type '{}'",
+                        method_name, type_name
+                    ),
+                    Span::new(method_node.start_byte(), method_node.end_byte()),
+                )
+                .with_code("E0305"),
+            );
+        } else {
+            // Get available methods for hint
+            let available: Vec<_> = ctx
+                .get_type_methods(type_name)
+                .iter()
+                .map(|(name, _)| *name)
+                .take(5)
+                .collect();
+            let hint = if available.is_empty() {
+                String::new()
+            } else {
+                format!(". Available methods: {}", available.join(", "))
+            };
+
+            diagnostics.push(
+                Diagnostic::error(
+                    format!(
+                        "Undefined method '{}' on type '{}'{}",
+                        method_name, type_name, hint
+                    ),
+                    Span::new(method_node.start_byte(), method_node.end_byte()),
+                )
+                .with_code("E0305"),
+            );
+        }
+    }
+}
+
+fn count_arguments(call_node: Node) -> usize {
+    if let Some(args) = call_node.child_by_kind("arguments") {
+        let mut cursor = args.walk();
+        args.named_children(&mut cursor)
+            .filter(|c| c.is_named() && c.kind() != ",")
+            .count()
+    } else {
+        0
     }
 }
 
@@ -488,6 +641,9 @@ fn check_condition(
     // Check that condition is bool (for if statements)
     if node.kind() == kind::IF_STATEMENT {
         if let Some(cond) = node.child_by_field("condition") {
+            // Check the condition expression for method/field errors
+            check_expression(cond, ctx, diagnostics, local_types);
+
             let cond_type = infer_expr_type(Some(cond), ctx, local_types);
             if !cond_type.is_bool() && !cond_type.is_unknown() {
                 diagnostics.push(
@@ -907,6 +1063,26 @@ fn test(train: &Train) {
         );
     }
 
+    #[test]
+    fn test_undefined_field_in_argument() {
+        let source = r#"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+pub struct MyHandler extend Signal {
+    owner: ID<Train>,
+}
+fn MyHandler::test(self: &MyHandler) {
+    let x = max(1, self.owne);
+}
+"#;
+        let diags = check(source);
+        let errs = errors(&diags);
+        assert!(
+            errs.iter().any(|d| d.code.as_deref() == Some("E0303")),
+            "Should error on undefined field in argument: {:?}",
+            errs
+        );
+    }
+
     // E0403 - Wrong number of arguments
 
     #[test]
@@ -1035,6 +1211,243 @@ fn test() {
             warns.iter().all(|d| d.code.as_deref() != Some("W0400")),
             "Function call should not warn about no effect: {:?}",
             warns
+        );
+    }
+
+    // E0305 - Undefined method
+
+    #[test]
+    fn test_undefined_method() {
+        // db is a field on ControlCtx, so we need ctx.db.method()
+        let source = r#"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+fn test(ctx: &ControlCtx) {
+    ctx.db.vie();
+}
+"#;
+        let diags = check(source);
+        let errs = errors(&diags);
+        assert!(
+            errs.iter().any(|d| d.code.as_deref() == Some("E0305")),
+            "Should error on undefined method: {:?}",
+            errs
+        );
+    }
+
+    #[test]
+    fn test_valid_method_call() {
+        // db is a field on ControlCtx, so we need ctx.db.method()
+        let source = r#"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+fn test(ctx: &ControlCtx) {
+    let v = ctx.db.view();
+}
+"#;
+        let diags = check(source);
+        let errs = errors(&diags);
+        assert!(
+            errs.iter().all(|d| d.code.as_deref() != Some("E0305")),
+            "Valid method should not error: {:?}",
+            errs
+        );
+    }
+
+    #[test]
+    fn test_method_wrong_arg_count_on_db() {
+        // db is a field on ControlCtx, so we need ctx.db.method()
+        let source = r#"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+fn test(ctx: &ControlCtx) {
+    let v = ctx.db.view(1, 2);
+}
+"#;
+        let diags = check(source);
+        let errs = errors(&diags);
+        assert!(
+            errs.iter().any(|d| d.code.as_deref() == Some("E0403")),
+            "Wrong arg count on method should error: {:?}",
+            errs
+        );
+    }
+
+    #[test]
+    fn test_method_wrong_arg_count() {
+        let source = r#"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+fn test(sig: &Signal) {
+    let p = sig.forward(1, 2);
+}
+"#;
+        let diags = check(source);
+        let errs = errors(&diags);
+        assert!(
+            errs.iter().any(|d| d.code.as_deref() == Some("E0403")),
+            "Wrong arg count on method should error: {:?}",
+            errs
+        );
+    }
+
+    #[test]
+    fn test_undefined_method_on_signal() {
+        let source = r#"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+fn test(sig: &Signal) {
+    let x = sig.undefined_method();
+}
+"#;
+        let diags = check(source);
+        let errs = errors(&diags);
+        assert!(
+            errs.iter().any(|d| d.code.as_deref() == Some("E0305")),
+            "Should error on undefined method: {:?}",
+            errs
+        );
+    }
+
+    #[test]
+    fn test_method_on_signal() {
+        let source = r#"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+fn test(sig: &Signal) {
+    let p = sig.forward();
+}
+"#;
+        let diags = check(source);
+        let errs = errors(&diags);
+        assert!(
+            errs.iter().all(|d| d.code.as_deref() != Some("E0305")),
+            "Valid Signal method should not error: {:?}",
+            errs
+        );
+    }
+
+    #[test]
+    fn test_field_called_as_method() {
+        // Signal has `id` field which should not be callable as a method
+        let source = r#"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+fn test(sig: &Signal) {
+    let x = sig.id();
+}
+"#;
+        let diags = check(source);
+        let errs = errors(&diags);
+        assert!(
+            errs.iter().any(|d| d.code.as_deref() == Some("E0305")),
+            "Calling field as method should error: {:?}",
+            errs
+        );
+    }
+
+    // E0404 - Argument type mismatch
+
+    #[test]
+    fn test_wrong_argument_type() {
+        // abs() expects f64, but we pass a string
+        let source = r#"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+fn test() {
+    let x = abs("hello");
+}
+"#;
+        let diags = check(source);
+        let errs = errors(&diags);
+        assert!(
+            errs.iter().any(|d| d.code.as_deref() == Some("E0404")),
+            "Wrong argument type should error: {:?}",
+            errs
+        );
+    }
+
+    #[test]
+    fn test_correct_argument_type() {
+        // abs() expects f64, we pass an integer literal (compatible)
+        let source = r#"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+fn test() {
+    let x = abs(42);
+}
+"#;
+        let diags = check(source);
+        let errs = errors(&diags);
+        assert!(
+            errs.iter().all(|d| d.code.as_deref() != Some("E0404")),
+            "Correct argument type should not error: {:?}",
+            errs
+        );
+    }
+
+    #[test]
+    fn test_wrong_argument_type_bool_to_f64() {
+        // max() expects f64, but we pass bools
+        let source = r#"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+fn test() {
+    let x = max(true, false);
+}
+"#;
+        let diags = check(source);
+        let errs = errors(&diags);
+        assert!(
+            errs.iter().any(|d| d.code.as_deref() == Some("E0404")),
+            "Bool to f64 type mismatch should error: {:?}",
+            errs
+        );
+    }
+
+    #[test]
+    fn test_is_valid_accepts_generic() {
+        // is_valid() accepts generic type, should not error
+        let source = r#"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+fn test(sig: &Signal) {
+    let v = is_valid(sig.id);
+}
+"#;
+        let diags = check(source);
+        let errs = errors(&diags);
+        assert!(
+            errs.iter().all(|d| d.code.as_deref() != Some("E0404")),
+            "Generic function should accept any type: {:?}",
+            errs
+        );
+    }
+
+    #[test]
+    fn test_undefined_method_with_db_param() {
+        // When db is a function parameter with type &DB, calling db.vie() should error
+        let source = r#"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+pub struct MyHandler extend Signal { }
+fn MyHandler::test(self: &MyHandler, db: &DB) {
+    db.vie();
+}
+"#;
+        let diags = check(source);
+        let errs = errors(&diags);
+        assert!(
+            errs.iter().any(|d| d.code.as_deref() == Some("E0305")),
+            "Should error on undefined method 'vie' on DB param: {:?}",
+            errs
+        );
+    }
+
+    #[test]
+    fn test_valid_method_with_db_param() {
+        // When db is a function parameter with type &DB, calling db.view() should work
+        let source = r#"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+pub struct MyHandler extend Signal { }
+fn MyHandler::test(self: &MyHandler, db: &DB) {
+    db.view();
+}
+"#;
+        let diags = check(source);
+        let errs = errors(&diags);
+        assert!(
+            errs.iter().all(|d| d.code.as_deref() != Some("E0305")),
+            "Valid DB method should not error: {:?}",
+            errs
         );
     }
 }

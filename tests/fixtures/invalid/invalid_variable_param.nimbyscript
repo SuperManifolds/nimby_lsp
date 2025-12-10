@@ -1,0 +1,215 @@
+script meta {
+    lang: nimbyscript.v1,
+    api: nimbyrails.v1,
+    description: [
+        "This will appear to the right of the Globals editor, you can use it as some sort of manual for players.",
+        "Long description test. Long description test. Long description test. Long description test. Long description test. Long description test.",
+        "2nd. Long description test. Long description test. Long description test. Long description test. Long description test. Long description test.",
+        "3rd. Long description test. Long description test. Long description test. Long description test. Long description test. Long description test.",
+    ],
+}
+
+pub struct Globals extend Script {
+    testb: i64,
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////
+
+pub struct ProbeCheck extend Signal {
+    meta {
+        label: "Probe a track position",
+    },
+    probe: ID<Signal> meta {
+        label: "Probe",
+    },
+    speed_limit: f64 meta {
+        label: "Speed limit",
+        min: 0,
+        max: 600,
+    },
+}
+
+pub fn ProbeCheck::event_signal_lookahead(
+    self: &ProbeCheck,
+    ctx: &EventCtx,
+    train: &Train,
+    motion: &Motion,
+    signal: &Signal,
+    train_distance: f64,
+    check: SignalCheck,
+    result: &mut SignalLookaheadResult
+) {
+    if check == SignalCheck::Stop && train_distance < 1000.0 {
+        result.max_speed = self.speed_limit;
+    }
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////
+
+enum TestEnum {
+    NoWorky1,
+    NoWorky2 meta { label: "blah", },
+    Worky meta { label: "THIS", },
+    NoWorky3,
+    NoWorky4 meta { label: "hello", },
+}
+
+pub struct UpcomingChange extend Signal {
+    meta {
+        label: "Switch if train behind",
+    },
+    detect_at: ID<Signal> meta {
+        label: "Detect at",
+    },
+    drive_to: ID<Signal> meta {
+        label: "Drive to",
+    },
+    test_enum: TestEnum meta {
+        default: NoWorky2,
+        label: "test enum",
+    },
+    test_tag: ID<Tag>,
+}
+
+pub fn UpcomingChange::event_signal_change_path(
+    self: &UpcomingChange,
+    ctx: &EventCtx,
+    train: &Train,
+    motion: &Motion,
+    signal: &Signal,
+    check: SignalCheck,
+    result: &mut SignalChangePathResult
+): SignalChangePath {
+    let probe &= ctx.db.view(self.detect_at) else { return SignalChangePath::Keep; }
+    if self.test_enum != TestEnum::Worky {
+        return SignalChangePath::Keep;
+    }
+    //log("test @ @ aa @", signal, motion.train_id, 2u64, 3i16, true, 4f32, 5f64);
+    let change mut= false;
+    if train.tags.contains(self.test_tag) {
+        change = true;
+    }
+    if change {
+        let marker &= ctx.db.view(self.drive_to) else { return SignalChangePath::Keep; }
+        result.pos = marker.forward();
+        return SignalChangePath::Change;
+    }
+    return SignalChangePath::Keep;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////
+
+enum HowMuch {
+    Hard,
+    Harder,
+}
+
+pub struct YeetAtSignal extend Train {
+    at_red_signal: ID<Signal>,
+    move_here: ID<Signal>,
+    how_much: HowMuch,
+}
+
+pub fn YeetAtSignal::control_train(
+    self: &YeetAtSignal,
+    ctx: &ControlCtx,
+    train: &Train,
+    motion: &Motion,
+    sc: &mut SimController
+) {
+    let drive &= motion.drive.get() else { return; }
+    // lookup to make sure signal has been selected by user and is valid, don't just equals self.at_red_signal
+    let signal &= ctx.db.view(drive.waiting_signal_id) else { return; }
+    if signal.id.equals(self.at_red_signal) {
+        if let marker &= ctx.db.view(self.move_here) {
+            let pos = marker.forward();
+            if self.how_much == HowMuch::Harder {
+                sc.queue_train_warp(train, pos);
+            }
+            else {
+                sc.queue_train_drive_to(train, pos);
+            }
+        }
+    }
+
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////
+
+pub struct HateDepots extend Train {
+    meta {
+        label: "Despawn the train when unassigned",
+    },
+}
+
+pub fn HateDepots::control_train(
+    self: &HateDepots,
+    ctx: &ControlCtx,
+    train: &Train,
+    motion: &Motion,
+    sc: &mut SimController
+) {
+    // train is already removed from the tracks, don't interfere with potential attempts at shift assignation
+    if is_null(motion.presence.get()) {
+        return;
+    }
+    // train is running a schedule, don't interfere
+    if is_valid(motion.schedule_dispatch.get()) {
+        return;
+    }
+    // train is present, but it is not running a schedule, so despawn it
+    sc.queue_train_intervention(train);
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////
+
+pub struct PasserBy extend Signal {
+}
+
+struct Task {
+    last_clock_us: i64,
+    tid: ID<Train>,
+}
+
+pub fn Task::task_run(
+    self: &Task,
+    ctx: &ControlCtx,
+    sc: &mut SimController
+) {
+    let train &= ctx.db.view(self.tid) else { return; }
+    log("train @, @us ago", train, ctx.extrapolator.clock_us() - self.last_clock_us);
+}
+
+pub fn PasserBy::event_signal_pass_by(
+    self: &PasserBy,
+    ctx: &EventCtx,
+    train: &Train,
+    motion: &Motion,
+    signal: &Signal,
+    sc: &mut SimController
+) {
+    log("@ passes by", train);
+    let task = Task::new();
+    task.tid = train.id;
+    task.last_clock_us = ctx.extrapolator.clock_us();
+    sc.queue_task_at(task, ctx.extrapolator.clock_us() + 10000000);
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////
+
+pub struct MarkerReserved extend Signal {
+    owner: ID<Train>,
+}
+
+pub fn MarkerReserved::event_signal_marker_reserved(
+    self: &MarkerReserved,
+    db: &DB,
+    signal: &Signal
+): ID<Train> {
+    log("asking marker @ owned by @", signal, self.owner);
+    // make sure owner still exists
+    if is_valid(db.view(se.owner)) {
+        return se.owner;
+    }
+    return ID<Train>::empty();
+}
