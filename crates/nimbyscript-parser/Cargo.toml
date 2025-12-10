@@ -1,0 +1,11 @@
+[package]
+name = "nimbyscript-parser"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+tree-sitter = { workspace = true }
+tree-sitter-nimbyscript = { path = "../tree-sitter-nimbyscript" }
+thiserror = { workspace = true }
+serde = { workspace = true }

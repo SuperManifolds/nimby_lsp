@@ -1,0 +1,30 @@
+{
+  "grammars": [
+    {
+      "name": "nimbyscript",
+      "camelcase": "Nimbyscript",
+      "scope": "source.nimbyscript",
+      "path": ".",
+      "file-types": [
+        "nimbyscript"
+      ],
+      "highlights": "queries/highlights.scm"
+    }
+  ],
+  "metadata": {
+    "version": "0.1.0",
+    "license": "MIT",
+    "description": "Tree-sitter grammar for NimbyScript",
+    "links": {
+      "repository": "https://github.com/supermanifolds/nimby_lsp"
+    }
+  },
+  "bindings": {
+    "c": true,
+    "go": true,
+    "node": true,
+    "python": true,
+    "rust": true,
+    "swift": true
+  }
+}

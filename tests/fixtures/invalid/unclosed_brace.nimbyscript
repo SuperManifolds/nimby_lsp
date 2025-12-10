@@ -1,0 +1,9 @@
+// Invalid: unclosed brace
+script meta {
+    lang: nimbyscript.v1,
+    api: nimbyrails.v1,
+}
+
+struct Broken {
+    field: i64,
+// <- missing closing brace

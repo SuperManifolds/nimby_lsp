@@ -1,0 +1,191 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "NimbyScript",
+  "scopeName": "source.nimbyscript",
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#meta-block" },
+    { "include": "#keywords" },
+    { "include": "#types" },
+    { "include": "#strings" },
+    { "include": "#numbers" },
+    { "include": "#operators" },
+    { "include": "#punctuation" },
+    { "include": "#function-definition" },
+    { "include": "#function-call" },
+    { "include": "#identifiers" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.double-slash.nimbyscript",
+          "match": "//.*$"
+        }
+      ]
+    },
+    "meta-block": {
+      "begin": "\\b(script)\\s+(meta)\\s*\\{",
+      "beginCaptures": {
+        "1": { "name": "keyword.other.script.nimbyscript" },
+        "2": { "name": "keyword.other.meta.nimbyscript" }
+      },
+      "end": "\\}",
+      "patterns": [
+        {
+          "match": "\\b(lang|api|description)\\s*:",
+          "captures": {
+            "1": { "name": "keyword.other.nimbyscript" }
+          }
+        },
+        { "include": "#strings" },
+        { "include": "#identifiers" }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.nimbyscript",
+          "match": "\\b(if|else|for|in|return|break|continue)\\b"
+        },
+        {
+          "name": "keyword.declaration.nimbyscript",
+          "match": "\\b(pub|struct|enum|extend|fn|let|mut|const)\\b"
+        },
+        {
+          "name": "keyword.other.nimbyscript",
+          "match": "\\b(script|meta|log)\\b"
+        },
+        {
+          "name": "constant.language.boolean.nimbyscript",
+          "match": "\\b(true|false)\\b"
+        }
+      ]
+    },
+    "types": {
+      "patterns": [
+        {
+          "name": "storage.type.primitive.nimbyscript",
+          "match": "\\b(i8|i16|i32|i64|u8|u16|u32|u64|f32|f64|bool)\\b"
+        },
+        {
+          "name": "storage.type.generic.nimbyscript",
+          "match": "\\bID\\b"
+        },
+        {
+          "name": "entity.name.type.nimbyscript",
+          "match": "\\b[A-Z][a-zA-Z0-9_]*\\b"
+        }
+      ]
+    },
+    "strings": {
+      "name": "string.quoted.double.nimbyscript",
+      "begin": "\"",
+      "end": "\"",
+      "patterns": [
+        {
+          "name": "constant.character.escape.nimbyscript",
+          "match": "\\\\."
+        },
+        {
+          "name": "constant.character.placeholder.nimbyscript",
+          "match": "@"
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.time.nimbyscript",
+          "match": "\\b[0-9]+:[0-9]+(:[0-9]+)?\\b"
+        },
+        {
+          "name": "constant.numeric.float.nimbyscript",
+          "match": "\\b-?[0-9]+\\.[0-9]+(f32|f64)?\\b"
+        },
+        {
+          "name": "constant.numeric.integer.nimbyscript",
+          "match": "\\b-?[0-9]+(i8|i16|i32|i64|u8|u16|u32|u64)?\\b"
+        }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.comparison.nimbyscript",
+          "match": "(==|!=|<=|>=|<|>)"
+        },
+        {
+          "name": "keyword.operator.logical.nimbyscript",
+          "match": "(&&|\\|\\||!)"
+        },
+        {
+          "name": "keyword.operator.arithmetic.nimbyscript",
+          "match": "(\\+|-|\\*|/|%)"
+        },
+        {
+          "name": "keyword.operator.assignment.nimbyscript",
+          "match": "(&?=)"
+        },
+        {
+          "name": "keyword.operator.access.nimbyscript",
+          "match": "::"
+        },
+        {
+          "name": "keyword.operator.reference.nimbyscript",
+          "match": "[&*]"
+        }
+      ]
+    },
+    "punctuation": {
+      "patterns": [
+        {
+          "name": "punctuation.terminator.nimbyscript",
+          "match": ";"
+        },
+        {
+          "name": "punctuation.separator.nimbyscript",
+          "match": ","
+        },
+        {
+          "name": "punctuation.accessor.nimbyscript",
+          "match": "\\."
+        },
+        {
+          "name": "punctuation.colon.nimbyscript",
+          "match": ":"
+        }
+      ]
+    },
+    "function-definition": {
+      "patterns": [
+        {
+          "match": "\\b(fn)\\s+([A-Z][a-zA-Z0-9_]*)(::)([a-zA-Z_][a-zA-Z0-9_]*)",
+          "captures": {
+            "1": { "name": "keyword.declaration.fn.nimbyscript" },
+            "2": { "name": "entity.name.type.nimbyscript" },
+            "3": { "name": "keyword.operator.access.nimbyscript" },
+            "4": { "name": "entity.name.function.nimbyscript" }
+          }
+        },
+        {
+          "match": "\\b(fn)\\s+([a-zA-Z_][a-zA-Z0-9_]*)",
+          "captures": {
+            "1": { "name": "keyword.declaration.fn.nimbyscript" },
+            "2": { "name": "entity.name.function.nimbyscript" }
+          }
+        }
+      ]
+    },
+    "function-call": {
+      "match": "\\b([a-z_][a-zA-Z0-9_]*)\\s*(<[^>]+>)?\\s*\\(",
+      "captures": {
+        "1": { "name": "entity.name.function.nimbyscript" }
+      }
+    },
+    "identifiers": {
+      "name": "variable.other.nimbyscript",
+      "match": "\\b[a-z_][a-zA-Z0-9_]*\\b"
+    }
+  }
+}

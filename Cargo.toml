@@ -1,0 +1,35 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/tree-sitter-nimbyscript",
+    "crates/nimbyscript-parser",
+    "crates/nimbyscript-analyzer",
+    "crates/nimbyscript-lsp",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/supermanifolds/nimby_lsp"
+
+[workspace.dependencies]
+# Parser
+pest = "2.7"
+pest_derive = "2.7"
+tree-sitter = "0.24"
+
+# LSP
+tower-lsp = "0.20"
+tokio = { version = "1.0", features = ["full"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+toml = "0.8"
+
+# Utilities
+dashmap = "6.1"
+thiserror = "2.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }

@@ -1,0 +1,10 @@
+// Invalid: missing semicolon
+script meta {
+    lang: nimbyscript.v1,
+    api: nimbyrails.v1,
+}
+
+fn test() {
+    let x = 1  // <- missing semicolon
+    return x;
+}

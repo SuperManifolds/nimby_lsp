@@ -1,0 +1,19 @@
+// NimbyScript PEG Grammar - Literals
+// Numbers, strings, booleans, and time literals
+
+constant = { time_literal | number | bool_const }
+
+// Numbers with optional type suffix
+number = @{ number_text ~ number_type? }
+number_text = @{ "-"? ~ ASCII_DIGIT+ ~ ("." ~ ASCII_DIGIT+)? }
+number_type = @{ "i64" | "u64" | "i32" | "u32" | "i16" | "u16" | "i8" | "u8" | "f64" | "f32" }
+
+// Time literals (e.g., 12:30, 1:30:45)
+time_literal = @{ ASCII_DIGIT+ ~ ":" ~ ASCII_DIGIT+ ~ (":" ~ ASCII_DIGIT+)? }
+
+// Boolean constants
+bool_const = { "true" | "false" }
+
+// String literals with escape sequences
+string_literal = @{ "\"" ~ string_inner ~ "\"" }
+string_inner = @{ (!("\"" | "\\") ~ ANY | "\\" ~ ANY)* }

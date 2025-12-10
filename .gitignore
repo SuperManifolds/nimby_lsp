@@ -1,0 +1,22 @@
+# Build artifacts
+target/
+*.so
+*.dylib
+*.dll
+
+# Node
+node_modules/
+package-lock.json
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Tree-sitter build artifacts (keep generated parser)
+crates/tree-sitter-nimbyscript/build/

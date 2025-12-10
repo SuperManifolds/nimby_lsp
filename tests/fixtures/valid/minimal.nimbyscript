@@ -1,0 +1,8 @@
+// Minimal valid NimbyScript file
+script meta {
+    lang: nimbyscript.v1,
+    api: nimbyrails.v1,
+}
+
+struct Empty extend Script {
+}

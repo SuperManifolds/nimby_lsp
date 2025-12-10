@@ -1,0 +1,246 @@
+// Auto-generated combined grammar file
+// DO NOT EDIT - edit files in grammar/ directory instead
+
+// === grammar/common.pest ===
+// NimbyScript PEG Grammar - Common definitions
+// Whitespace, comments, identifiers, and keywords
+
+// Whitespace and comments (silent rules)
+WHITESPACE = _{ " " | "\t" | "\r" | "\n" }
+COMMENT = _{ "//" ~ (!"\n" ~ ANY)* }
+
+// Identifiers
+NAME = @{ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* }
+
+// Reserved keywords (for reference)
+KEYWORD = {
+    "script" | "meta" | "const" | "struct" | "enum" | "fn" | "pub" | "extend"
+    | "let" | "mut" | "if" | "else" | "for" | "in" | "return" | "break" | "continue"
+    | "true" | "false" | "log"
+}
+
+
+// === grammar/declarations.pest ===
+// NimbyScript PEG Grammar - Declarations
+// Top-level declarations: structs, enums, functions, constants
+
+// Constant declaration: const NAME: Type = value;
+const_decl = { "const" ~ NAME ~ ":" ~ type_expr ~ "=" ~ constant ~ ";" }
+
+// Struct definition with optional extends
+struct_def = { vis_mod? ~ "struct" ~ NAME ~ struct_extend? ~ "{" ~ struct_body ~ "}" }
+struct_extend = { "extend" ~ NAME }
+struct_body = { (struct_field | meta_field)* }
+struct_field = { NAME ~ ":" ~ type_expr ~ meta? ~ "," }
+meta_field = { meta ~ "," }
+
+// Enum definition
+enum_def = { vis_mod? ~ "enum" ~ NAME ~ "{" ~ enum_body ~ "}" }
+enum_body = { enum_option* }
+enum_option = { NAME ~ meta? ~ "," }
+
+// Function definition: fn name(args): ReturnType { ... }
+// Methods: fn StructName::method(args) { ... }
+fn_decl = { vis_mod? ~ "fn" ~ fn_name ~ "(" ~ fn_args? ~ ")" ~ (":" ~ type_expr)? ~ block_stmt }
+fn_name = { NAME ~ ("::" ~ NAME)? }
+fn_args = { fn_arg ~ ("," ~ fn_arg)* }
+fn_arg = { NAME ~ ":" ~ type_expr }
+
+// Visibility modifier
+vis_mod = { "pub" }
+
+
+// === grammar/expressions.pest ===
+// NimbyScript PEG Grammar - Expressions
+// Expression parsing with operator precedence
+
+exp = { bool_exp }
+
+// Boolean operators (lowest precedence)
+bool_exp = { eq_exp ~ (bool_op ~ eq_exp)* }
+bool_op = { "&&" | "||" }
+
+// Equality operators
+eq_exp = { rel_exp ~ (eq_op ~ rel_exp)? }
+eq_op = { "==" | "!=" }
+
+// Relational operators
+rel_exp = { add_exp ~ (cmp_op ~ add_exp)? }
+cmp_op = { "<=" | ">=" | "<" | ">" }
+
+// Additive operators
+add_exp = { mul_exp ~ (add_op ~ mul_exp)* }
+add_op = { "+" | "-" }
+
+// Multiplicative operators
+mul_exp = { unary_exp ~ (mul_op ~ unary_exp)* }
+mul_op = { "*" | "/" | "%" }
+
+// Unary operators
+unary_exp = { unary_op? ~ postfix_exp }
+unary_op = { "!" | "-" }
+
+// Postfix expressions (method calls, field access)
+postfix_exp = { atom_exp ~ postfix_suffix* }
+postfix_suffix = { method_call | field_access }
+method_call = { "(" ~ call_args? ~ ")" }
+field_access = { "." ~ NAME }
+
+// Atomic expressions
+atom_exp = {
+    paren_exp
+    | call_exp
+    | constant
+    | path_exp
+}
+
+// Parenthesized expression
+paren_exp = { "(" ~ exp ~ ")" }
+
+// Function/method call
+call_exp = { path_exp ~ "(" ~ call_args? ~ ")" }
+
+// Path expression (e.g., DB::view, ID<Train>::empty, EnumName::Variant)
+// Each segment can have generic args: ID<Train>::empty
+path_exp = { path_segment ~ ("::" ~ path_segment)* }
+path_segment = { NAME ~ generic_args? }
+
+// Generic type arguments in calls
+generic_args = { "<" ~ type_args ~ ">" }
+
+// Comma-separated arguments
+call_args = { exp ~ ("," ~ exp)* }
+
+// Dot expression for assignment LHS
+dot_exp = { NAME ~ ("." ~ NAME)* }
+
+
+// === grammar/literals.pest ===
+// NimbyScript PEG Grammar - Literals
+// Numbers, strings, booleans, and time literals
+
+constant = { time_literal | number | bool_const }
+
+// Numbers with optional type suffix
+number = @{ number_text ~ number_type? }
+number_text = @{ "-"? ~ ASCII_DIGIT+ ~ ("." ~ ASCII_DIGIT+)? }
+number_type = @{ "i64" | "u64" | "i32" | "u32" | "i16" | "u16" | "i8" | "u8" | "f64" | "f32" }
+
+// Time literals (e.g., 12:30, 1:30:45)
+time_literal = @{ ASCII_DIGIT+ ~ ":" ~ ASCII_DIGIT+ ~ (":" ~ ASCII_DIGIT+)? }
+
+// Boolean constants
+bool_const = { "true" | "false" }
+
+// String literals with escape sequences
+string_literal = @{ "\"" ~ string_inner ~ "\"" }
+string_inner = @{ (!("\"" | "\\") ~ ANY | "\\" ~ ANY)* }
+
+
+// === grammar/main.pest ===
+// NimbyScript PEG Grammar - Main entry point
+// This file defines the top-level structure of a NimbyScript source file
+
+// Top-level source file structure
+source_file = { SOI ~ (top_meta | const_decl | fn_decl | struct_def | enum_def)* ~ EOI }
+
+// Script metadata block: script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+top_meta = { "script" ~ meta }
+
+
+// === grammar/metadata.pest ===
+// NimbyScript PEG Grammar - Metadata
+// Meta blocks for script configuration and field annotations
+
+meta = { "meta" ~ meta_map }
+
+meta_val = { meta_map | meta_vec | string_literal | meta_name | number_text }
+
+meta_map = { "{" ~ (meta_kv ~ ("," ~ meta_kv)* ~ ","?)? ~ "}" }
+
+meta_vec = { "[" ~ (meta_val ~ ("," ~ meta_val)* ~ ","?)? ~ "]" }
+
+meta_kv = { meta_name ~ ":" ~ meta_val }
+
+// Meta names can include dots (e.g., "nimbyscript.v1")
+meta_name = @{ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_" | ".")* }
+
+
+// === grammar/statements.pest ===
+// NimbyScript PEG Grammar - Statements
+// All statement types and control flow
+
+block_stmt = { "{" ~ stmt* ~ "}" }
+
+stmt = {
+    if_bind_stmt
+    | if_stmt
+    | for_stmt
+    | bind_else_stmt
+    | bind_stmt
+    | assign_stmt
+    | ret_stmt
+    | break_stmt
+    | continue_stmt
+    | log_stmt
+    | exp_stmt
+}
+
+// Variable binding: let x = expr;
+bind_stmt = { "let" ~ bind_body ~ ";" }
+
+// Variable binding with else: let x = expr else { ... }
+bind_else_stmt = { "let" ~ bind_body ~ "else" ~ block_stmt }
+
+// Binding body: name with optional type annotation and binding mode
+// Supports: let x = e, let x: T = e, let x &= e (ref), let x &mut= e (mut ref)
+bind_body = { NAME ~ bind_type_sep? ~ bind_op ~ exp }
+bind_type_sep = { ":" ~ type_pattern? }
+bind_op = { "&mut=" | "mut=" | "&=" | "=" }
+
+// Assignment: x.y.z = expr;
+assign_stmt = { dot_exp ~ "=" ~ exp ~ ";" }
+
+// If statement: if expr { ... } else { ... }
+if_stmt = { "if" ~ exp ~ block_stmt ~ else_clause? }
+
+// If-let statement: if let x = expr { ... }
+if_bind_stmt = { "if" ~ "let" ~ bind_body ~ block_stmt ~ else_clause? }
+
+// Else clause (can chain if/if-let)
+else_clause = { "else" ~ (if_stmt | if_bind_stmt | block_stmt) }
+
+// For loop: for x in expr { ... }
+for_stmt = { "for" ~ NAME ~ "in" ~ exp ~ block_stmt }
+
+// Control flow statements
+break_stmt = { "break" ~ ";" }
+continue_stmt = { "continue" ~ ";" }
+ret_stmt = { "return" ~ exp? ~ ";" }
+
+// Debug logging: log("message", args);
+log_stmt = { "log" ~ "(" ~ string_literal ~ ("," ~ call_args)? ~ ")" ~ ";" }
+
+// Expression statement: expr;
+exp_stmt = { exp ~ ";" }
+
+
+// === grammar/types.pest ===
+// NimbyScript PEG Grammar - Types
+// Type expressions, generics, storage modifiers
+
+type_expr = { type_store? ~ type_mut? ~ type_name }
+type_name = { NAME ~ generic_type? ~ ("::" ~ type_name)? }
+generic_type = { "<" ~ type_args ~ ">" }
+type_args = { type_name ~ ("," ~ type_name)* }
+
+// Storage class modifiers (reference or pointer)
+type_store = { "&" | "*" }
+
+// Mutability modifier
+type_mut = { "mut" }
+
+// Type pattern for bindings (partial type annotation)
+type_pattern = { type_store? ~ type_mut? ~ type_name? }
+
+

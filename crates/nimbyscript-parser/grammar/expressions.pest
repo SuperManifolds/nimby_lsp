@@ -1,0 +1,62 @@
+// NimbyScript PEG Grammar - Expressions
+// Expression parsing with operator precedence
+
+exp = { bool_exp }
+
+// Boolean operators (lowest precedence)
+bool_exp = { eq_exp ~ (bool_op ~ eq_exp)* }
+bool_op = { "&&" | "||" }
+
+// Equality operators
+eq_exp = { rel_exp ~ (eq_op ~ rel_exp)? }
+eq_op = { "==" | "!=" }
+
+// Relational operators
+rel_exp = { add_exp ~ (cmp_op ~ add_exp)? }
+cmp_op = { "<=" | ">=" | "<" | ">" }
+
+// Additive operators
+add_exp = { mul_exp ~ (add_op ~ mul_exp)* }
+add_op = { "+" | "-" }
+
+// Multiplicative operators
+mul_exp = { unary_exp ~ (mul_op ~ unary_exp)* }
+mul_op = { "*" | "/" | "%" }
+
+// Unary operators
+unary_exp = { unary_op? ~ postfix_exp }
+unary_op = { "!" | "-" }
+
+// Postfix expressions (method calls, field access)
+postfix_exp = { atom_exp ~ postfix_suffix* }
+postfix_suffix = { method_call | field_access }
+method_call = { "(" ~ call_args? ~ ")" }
+field_access = { "." ~ NAME }
+
+// Atomic expressions
+atom_exp = {
+    paren_exp
+    | call_exp
+    | constant
+    | path_exp
+}
+
+// Parenthesized expression
+paren_exp = { "(" ~ exp ~ ")" }
+
+// Function/method call
+call_exp = { path_exp ~ "(" ~ call_args? ~ ")" }
+
+// Path expression (e.g., DB::view, ID<Train>::empty, EnumName::Variant)
+// Each segment can have generic args: ID<Train>::empty
+path_exp = { path_segment ~ ("::" ~ path_segment)* }
+path_segment = { NAME ~ generic_args? }
+
+// Generic type arguments in calls
+generic_args = { "<" ~ type_args ~ ">" }
+
+// Comma-separated arguments
+call_args = { exp ~ ("," ~ exp)* }
+
+// Dot expression for assignment LHS
+dot_exp = { NAME ~ ("." ~ NAME)* }

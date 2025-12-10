@@ -1,0 +1,35 @@
+{
+  "name": "tree-sitter-nimbyscript",
+  "version": "0.1.0",
+  "description": "Tree-sitter grammar for NimbyScript",
+  "main": "bindings/node",
+  "keywords": [
+    "parser",
+    "tree-sitter",
+    "nimbyscript"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/supermanifolds/nimby_lsp"
+  },
+  "files": [
+    "grammar.js",
+    "binding.gyp",
+    "prebuilds/**",
+    "bindings/node/*",
+    "queries/*",
+    "src/**"
+  ],
+  "dependencies": {
+    "node-addon-api": "^8.3.0",
+    "node-gyp-build": "^4.8.4"
+  },
+  "devDependencies": {
+    "tree-sitter-cli": "^0.24.0"
+  },
+  "scripts": {
+    "generate": "tree-sitter generate",
+    "test": "tree-sitter test",
+    "parse": "tree-sitter parse"
+  }
+}

@@ -1,0 +1,96 @@
+{
+  "name": "nimbyscript",
+  "displayName": "NimbyScript",
+  "description": "Language support for NimbyScript - NIMBY Rails modding language",
+  "version": "0.1.0",
+  "publisher": "nimbyscript",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/supermanifolds/nimby_lsp"
+  },
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "keywords": [
+    "nimbyscript",
+    "nimby rails",
+    "modding",
+    "game mods",
+    "railway"
+  ],
+  "activationEvents": [
+    "onLanguage:nimbyscript"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "nimbyscript",
+        "aliases": [
+          "NimbyScript",
+          "nimbyscript"
+        ],
+        "extensions": [
+          ".nimbyscript"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "nimbyscript",
+        "scopeName": "source.nimbyscript",
+        "path": "./syntaxes/nimbyscript.tmLanguage.json"
+      }
+    ],
+    "configuration": {
+      "title": "NimbyScript",
+      "properties": {
+        "nimbyscript.server.path": {
+          "type": "string",
+          "default": "",
+          "description": "Path to the nimbyscript-lsp executable. If empty, searches PATH."
+        },
+        "nimbyscript.api.definitionsPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to custom API definitions file (TOML format)."
+        },
+        "nimbyscript.trace.server": {
+          "type": "string",
+          "enum": [
+            "off",
+            "messages",
+            "verbose"
+          ],
+          "default": "off",
+          "description": "Traces communication between VS Code and the language server."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint src --ext ts",
+    "package": "vsce package",
+    "publish": "vsce publish"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.75.0",
+    "@typescript-eslint/eslint-plugin": "^7.0.0",
+    "@typescript-eslint/parser": "^7.0.0",
+    "eslint": "^8.57.0",
+    "typescript": "^5.0.0",
+    "@vscode/vsce": "^2.22.0"
+  }
+}

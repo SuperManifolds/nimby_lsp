@@ -1,0 +1,20 @@
+[package]
+name = "nimbyscript-lsp"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "nimbyscript-lsp"
+path = "src/main.rs"
+
+[dependencies]
+nimbyscript-parser = { path = "../nimbyscript-parser" }
+nimbyscript-analyzer = { path = "../nimbyscript-analyzer" }
+pest = { workspace = true }
+tower-lsp = { workspace = true }
+tokio = { workspace = true }
+dashmap = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }

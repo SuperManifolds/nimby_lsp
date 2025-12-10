@@ -1,0 +1,953 @@
+# NimbyScript API Definitions for NIMBY Rails v1
+# These definitions provide completions and hover info for game types and functions
+# https://wiki.nimbyrails.com/NimbyScript
+
+version = "1.0.0"
+api_version = "nimbyrails.v1"
+
+# ============================================
+# Standard Library Functions
+# ============================================
+
+[[functions]]
+name = "abs"
+doc = "Returns the absolute value of a number"
+return_type = "f64"
+[[functions.params]]
+name = "value"
+type = "f64"
+
+[[functions]]
+name = "ceil"
+doc = "Returns the smallest integer greater than or equal to a number"
+return_type = "i64"
+[[functions.params]]
+name = "value"
+type = "f64"
+
+[[functions]]
+name = "floor"
+doc = "Returns the largest integer less than or equal to a number"
+return_type = "i64"
+[[functions.params]]
+name = "value"
+type = "f64"
+
+[[functions]]
+name = "round"
+doc = "Returns the nearest integer to a number"
+return_type = "i64"
+[[functions.params]]
+name = "value"
+type = "f64"
+
+[[functions]]
+name = "sqrt"
+doc = "Returns the square root of a number"
+return_type = "f64"
+[[functions.params]]
+name = "value"
+type = "f64"
+
+[[functions]]
+name = "pow"
+doc = "Returns base raised to the power of exponent"
+return_type = "f64"
+[[functions.params]]
+name = "base"
+type = "f64"
+[[functions.params]]
+name = "exponent"
+type = "f64"
+
+[[functions]]
+name = "exp"
+doc = "Returns e raised to the power of value"
+return_type = "f64"
+[[functions.params]]
+name = "value"
+type = "f64"
+
+[[functions]]
+name = "log10"
+doc = "Returns the base-10 logarithm"
+return_type = "f64"
+[[functions.params]]
+name = "value"
+type = "f64"
+
+[[functions]]
+name = "loge"
+doc = "Returns the natural logarithm"
+return_type = "f64"
+[[functions.params]]
+name = "value"
+type = "f64"
+
+[[functions]]
+name = "min"
+doc = "Returns the smaller of two values"
+return_type = "f64"
+[[functions.params]]
+name = "a"
+type = "f64"
+[[functions.params]]
+name = "b"
+type = "f64"
+
+[[functions]]
+name = "max"
+doc = "Returns the larger of two values"
+return_type = "f64"
+[[functions.params]]
+name = "a"
+type = "f64"
+[[functions.params]]
+name = "b"
+type = "f64"
+
+[[functions]]
+name = "zdiv"
+doc = "Safe division that returns 0 when dividing by zero"
+return_type = "f64"
+[[functions.params]]
+name = "numerator"
+type = "f64"
+[[functions.params]]
+name = "denominator"
+type = "f64"
+
+[[functions]]
+name = "zmod"
+doc = "Safe modulo that returns 0 when dividing by zero"
+return_type = "f64"
+[[functions.params]]
+name = "value"
+type = "f64"
+[[functions.params]]
+name = "divisor"
+type = "f64"
+
+[[functions]]
+name = "is_nan"
+doc = "Returns true if the value is NaN"
+return_type = "bool"
+[[functions.params]]
+name = "value"
+type = "f64"
+
+[[functions]]
+name = "is_inf"
+doc = "Returns true if the value is infinite"
+return_type = "bool"
+[[functions.params]]
+name = "value"
+type = "f64"
+
+[[functions]]
+name = "is_normal"
+doc = "Returns true if the value is a normal floating-point number"
+return_type = "bool"
+[[functions.params]]
+name = "value"
+type = "f64"
+
+[[functions]]
+name = "iround"
+doc = "Rounds a floating-point number to the nearest i64"
+return_type = "i64"
+[[functions.params]]
+name = "value"
+type = "f64"
+
+[[functions]]
+name = "is_null"
+doc = "Returns true if the pointer is null"
+return_type = "bool"
+type_params = ["T"]
+[[functions.params]]
+name = "ptr"
+type = "*T"
+
+[[functions]]
+name = "is_valid"
+doc = "Returns true if the ID references a valid entity"
+return_type = "bool"
+type_params = ["T"]
+[[functions.params]]
+name = "id"
+type = "ID<T>"
+
+[[functions]]
+name = "as_i64"
+doc = "Convert to i64"
+return_type = "i64"
+[[functions.params]]
+name = "value"
+type = "f64"
+
+[[functions]]
+name = "as_f64"
+doc = "Convert to f64"
+return_type = "f64"
+[[functions.params]]
+name = "value"
+type = "i64"
+
+# ============================================
+# Modules
+# ============================================
+
+[modules.DB]
+doc = "Database access for querying attached script data"
+
+[[modules.DB.functions]]
+name = "view"
+doc = "Returns a reference to script data attached to a game object"
+return_type = "&T"
+type_params = ["T"]
+[[modules.DB.functions.params]]
+name = "id"
+type = "ID<GameObject>"
+
+[modules.Sim]
+doc = "Simulation access for runtime game state"
+
+[[modules.Sim.functions]]
+name = "view"
+doc = "Returns a reference to simulation data for an entity"
+return_type = "&T"
+type_params = ["T"]
+[[modules.Sim.functions.params]]
+name = "id"
+type = "ID<T>"
+
+[[modules.Sim.functions]]
+name = "clock_us"
+doc = "Returns the current simulation clock in microseconds"
+return_type = "i64"
+
+[modules.Extrapolator]
+doc = "Query train reservations and timing"
+
+[[modules.Extrapolator.functions]]
+name = "probe_reservation"
+doc = "Check if a track section is reserved"
+return_type = "bool"
+[[modules.Extrapolator.functions.params]]
+name = "section"
+type = "ID<TrackSection>"
+
+# ============================================
+# Game Types
+# ============================================
+
+[types.Script]
+kind = "struct"
+doc = "Base type for script instances attached to game objects"
+
+[types.Signal]
+kind = "struct"
+doc = "A railway signal that controls train movement"
+[types.Signal.fields]
+id = { type = "ID<Signal>", doc = "Unique identifier", readonly = true }
+match_block_facing = { type = "bool", doc = "Match block facing direction" }
+check_beyond_stops = { type = "bool", doc = "Check beyond stops" }
+
+[[types.Signal.methods]]
+name = "forward"
+doc = "Get forward position"
+return_type = "Pos"
+
+[[types.Signal.methods]]
+name = "backward"
+doc = "Get backward position"
+return_type = "Pos"
+
+[[types.Signal.methods]]
+name = "kind"
+doc = "Get signal kind"
+return_type = "SignalKind"
+
+[types.Train]
+kind = "struct"
+doc = "A train entity in the simulation"
+[types.Train.fields]
+id = { type = "ID<Train>", doc = "Unique identifier", readonly = true }
+tags = { type = "Tags", doc = "Tags attached to this train", readonly = true }
+
+[types.Tag]
+kind = "struct"
+doc = "A tag that can be attached to game objects for grouping"
+[types.Tag.fields]
+id = { type = "ID<Tag>", doc = "Unique identifier", readonly = true }
+
+[types.Motion]
+kind = "struct"
+doc = "Motion state of a train"
+[types.Motion.fields]
+speed = { type = "f64", doc = "Current speed in m/s", readonly = true }
+acceleration = { type = "f64", doc = "Current acceleration in m/s²", readonly = true }
+train_id = { type = "ID<Train>", doc = "Train ID", readonly = true }
+presence = { type = "std::optional<Motion::Presence>", doc = "Presence state", readonly = true }
+drive = { type = "std::optional<Motion::Drive>", doc = "Drive state", readonly = true }
+timed_stop = { type = "std::optional<Motion::TimedStop>", doc = "Timed stop state", readonly = true }
+schedule_stop = { type = "std::optional<Motion::ScheduleStop>", doc = "Schedule stop state", readonly = true }
+hitch = { type = "std::optional<Motion::Hitch>", doc = "Hitch state", readonly = true }
+
+[types.Context]
+kind = "struct"
+doc = "Context object passed to event handlers"
+
+[types.SimController]
+kind = "struct"
+doc = "Controller for queuing simulation commands"
+
+[[types.SimController.methods]]
+name = "queue_train_intervention"
+doc = "Queue a train intervention (despawn)"
+[[types.SimController.methods.params]]
+name = "train"
+type = "ID<Train>"
+
+[[types.SimController.methods]]
+name = "queue_train_warp"
+doc = "Queue a train warp (reposition)"
+[[types.SimController.methods.params]]
+name = "train"
+type = "ID<Train>"
+[[types.SimController.methods.params]]
+name = "target"
+type = "ID<Signal>"
+
+[[types.SimController.methods]]
+name = "queue_train_drive_to"
+doc = "Queue a route modification"
+[[types.SimController.methods.params]]
+name = "train"
+type = "ID<Train>"
+[[types.SimController.methods.params]]
+name = "destination"
+type = "ID<Signal>"
+
+[[types.SimController.methods]]
+name = "queue_attach"
+doc = "Queue attaching script data to an entity"
+type_params = ["T"]
+[[types.SimController.methods.params]]
+name = "target"
+type = "ID<GameObject>"
+[[types.SimController.methods.params]]
+name = "data"
+type = "T"
+
+[[types.SimController.methods]]
+name = "queue_erase"
+doc = "Queue erasing script data from an entity"
+type_params = ["T"]
+[[types.SimController.methods.params]]
+name = "target"
+type = "ID<GameObject>"
+
+[[types.SimController.methods]]
+name = "queue_task"
+doc = "Queue a deferred task"
+[[types.SimController.methods.params]]
+name = "task"
+type = "Task"
+
+[[types.SimController.methods]]
+name = "queue_task_at"
+doc = "Queue a deferred task at a specific time"
+[[types.SimController.methods.params]]
+name = "task"
+type = "Task"
+[[types.SimController.methods.params]]
+name = "time_us"
+type = "i64"
+
+# ============================================
+# Enums
+# ============================================
+
+[enums.SignalCheck]
+doc = "Result of a signal check event"
+variants = [
+    { name = "Pass", doc = "Allow the train to pass" },
+    { name = "Stop", doc = "Stop the train at the signal" },
+]
+
+[enums.SignalAspect]
+doc = "Visual aspect of a signal"
+variants = [
+    { name = "Clear", doc = "Signal shows clear" },
+    { name = "Caution", doc = "Signal shows caution" },
+    { name = "Danger", doc = "Signal shows danger/stop" },
+]
+
+[enums.SignalKind]
+doc = "Type of signal"
+variants = [
+    { name = "Path", doc = "Path signal" },
+    { name = "Balise", doc = "Balise signal" },
+    { name = "Marker", doc = "Marker signal" },
+    { name = "OneWay", doc = "One-way signal" },
+    { name = "NoWay", doc = "No-way signal" },
+    { name = "PlatformStop", doc = "Platform stop signal" },
+]
+
+[enums.SignalChangePath]
+doc = "Result of signal change path event"
+variants = [
+    { name = "Keep", doc = "Keep current path" },
+    { name = "Change", doc = "Change path" },
+]
+
+[enums.ShiftAllow]
+doc = "Result of shift allow check"
+variants = [
+    { name = "Allow", doc = "Allow shift" },
+    { name = "Deny", doc = "Deny shift" },
+]
+
+# ============================================
+# Additional Game Types
+# ============================================
+
+[types.Building]
+kind = "struct"
+doc = "A building entity"
+[types.Building.fields]
+id = { type = "ID<Building>", doc = "Unique identifier", readonly = true }
+
+[types.Line]
+kind = "struct"
+doc = "A transit line"
+[types.Line.fields]
+id = { type = "ID<Line>", doc = "Unique identifier", readonly = true }
+tags = { type = "Tags", doc = "Tags attached to this line", readonly = true }
+
+[types.Schedule]
+kind = "struct"
+doc = "A schedule definition"
+[types.Schedule.fields]
+id = { type = "ID<Schedule>", doc = "Unique identifier", readonly = true }
+tags = { type = "Tags", doc = "Tags attached to this schedule", readonly = true }
+
+[types.Station]
+kind = "struct"
+doc = "A station entity"
+[types.Station.fields]
+id = { type = "ID<Station>", doc = "Unique identifier", readonly = true }
+tags = { type = "Tags", doc = "Tags attached to this station", readonly = true }
+
+[types.Track]
+kind = "struct"
+doc = "A track segment"
+[types.Track.fields]
+id = { type = "ID<Track>", doc = "Unique identifier", readonly = true }
+
+# Tags type
+[types.Tags]
+kind = "struct"
+doc = "Collection of tags"
+
+[[types.Tags.methods]]
+name = "contains"
+doc = "Check if tags contain a specific tag"
+return_type = "bool"
+[[types.Tags.methods.params]]
+name = "id"
+type = "ID<Tag>"
+
+# Position types
+[types.Pos]
+kind = "struct"
+doc = "A position on the track"
+[types.Pos.fields]
+track_id = { type = "ID<Track>", doc = "Track segment ID", readonly = true }
+
+[[types.Pos.methods]]
+name = "flip"
+doc = "Get flipped position"
+return_type = "Pos"
+
+[types.Pose]
+kind = "struct"
+doc = "A pose (head and tail positions)"
+[types.Pose.fields]
+head = { type = "Pos", doc = "Head position", readonly = true }
+tail = { type = "Pos", doc = "Tail position", readonly = true }
+
+[types.Path]
+kind = "struct"
+doc = "A path between positions"
+[types.Path.fields]
+found = { type = "bool", doc = "Whether path was found", readonly = true }
+goal_has_stop_time = { type = "bool", doc = "Goal has stop time", readonly = true }
+force_goal_reservation = { type = "bool", doc = "Force goal reservation", readonly = true }
+pose_start = { type = "Pose", doc = "Start pose", readonly = true }
+pose_goal = { type = "Pose", doc = "Goal pose", readonly = true }
+found_start = { type = "Pos", doc = "Found start position", readonly = true }
+found_goal = { type = "Pos", doc = "Found goal position", readonly = true }
+
+[types.TapeTrace]
+kind = "struct"
+doc = "A trace along the track"
+
+[[types.TapeTrace.methods]]
+name = "contains"
+doc = "Check if trace contains a position"
+return_type = "bool"
+[[types.TapeTrace.methods.params]]
+name = "pos"
+type = "&Pos"
+
+[[types.TapeTrace.methods]]
+name = "hits"
+doc = "Check if traces intersect"
+return_type = "bool"
+[[types.TapeTrace.methods.params]]
+name = "trace"
+type = "&TapeTrace"
+
+# Context types
+[types.EventCtx]
+kind = "struct"
+doc = "Context for event handlers"
+[types.EventCtx.fields]
+db = { type = "&DB", doc = "Database access", readonly = true }
+extrapolator = { type = "&Extrapolator", doc = "Extrapolator access", readonly = true }
+
+[types.ControlCtx]
+kind = "struct"
+doc = "Context for control handlers"
+[types.ControlCtx.fields]
+db = { type = "&DB", doc = "Database access", readonly = true }
+sim = { type = "&Sim", doc = "Simulation access", readonly = true }
+extrapolator = { type = "&Extrapolator", doc = "Extrapolator access", readonly = true }
+
+# Motion substates
+[types."Motion::Presence"]
+kind = "struct"
+doc = "Train presence state"
+[types."Motion::Presence".fields]
+pos = { type = "Pos", doc = "Current position", readonly = true }
+speed = { type = "f64", doc = "Current speed in m/s", readonly = true }
+
+[types."Motion::Drive"]
+kind = "struct"
+doc = "Train drive state"
+[types."Motion::Drive".fields]
+waiting_signal_id = { type = "ID<Signal>", doc = "Signal being waited on", readonly = true }
+waiting_signal_last_check = { type = "i64", doc = "Last check time", readonly = true }
+path = { type = "Path", doc = "Current path", readonly = true }
+goal_trace = { type = "TapeTrace", doc = "Goal trace", readonly = true }
+
+[types."Motion::TimedStop"]
+kind = "struct"
+doc = "Timed stop state"
+[types."Motion::TimedStop".fields]
+departure_epoch_s = { type = "i64", doc = "Departure time in epoch seconds", readonly = true }
+
+[types."Motion::ScheduleStop"]
+kind = "struct"
+doc = "Schedule stop state"
+[types."Motion::ScheduleStop".fields]
+sched_id = { type = "ID<Schedule>", doc = "Schedule ID", readonly = true }
+line_id = { type = "ID<Line>", doc = "Line ID", readonly = true }
+station_id = { type = "ID<Station>", doc = "Station ID", readonly = true }
+
+[types."Motion::Hitch"]
+kind = "struct"
+doc = "Hitch state"
+[types."Motion::Hitch".fields]
+driver_train_id = { type = "ID<Train>", doc = "Driver train ID", readonly = true }
+
+# std::optional
+[types."std::optional"]
+kind = "struct"
+doc = "Optional value wrapper"
+type_params = ["T"]
+
+[[types."std::optional".methods]]
+name = "get"
+doc = "Get pointer to contained value"
+return_type = "*T"
+
+# Run type
+[types.Run]
+kind = "struct"
+doc = "A schedule run"
+[types.Run.fields]
+line_id = { type = "ID<Line>", doc = "Line ID", readonly = true }
+
+# Additional SimController methods
+[[types.SimController.methods]]
+name = "queue_train_hitch"
+doc = "Queue hitching two trains together"
+[[types.SimController.methods.params]]
+name = "driver"
+type = "&Train"
+[[types.SimController.methods.params]]
+name = "hitcher"
+type = "&Train"
+
+[[types.SimController.methods]]
+name = "queue_train_unhitch"
+doc = "Queue unhitching a train"
+[[types.SimController.methods.params]]
+name = "hitcher"
+type = "&Train"
+
+[[types.SimController.methods]]
+name = "queue_train_set_configuration"
+doc = "Queue setting train configuration"
+[[types.SimController.methods.params]]
+name = "train"
+type = "&Train"
+[[types.SimController.methods.params]]
+name = "config"
+type = "i64"
+
+# Enhanced Extrapolator module
+[[modules.Extrapolator.functions]]
+name = "clock_us"
+doc = "Returns microseconds since game creation"
+return_type = "i64"
+
+[[modules.Extrapolator.functions]]
+name = "epoch_s"
+doc = "Returns seconds since 1970-01-01"
+return_type = "i64"
+
+[[modules.Extrapolator.functions]]
+name = "week_s"
+doc = "Returns current week second"
+return_type = "i64"
+
+[[modules.Extrapolator.functions]]
+name = "week_monday0000_epoch_s"
+doc = "Returns epoch seconds of current week's Monday 00:00"
+return_type = "i64"
+
+[[modules.Extrapolator.functions]]
+name = "get_one_occupation"
+doc = "Get one train occupying a position"
+return_type = "*Train"
+[[modules.Extrapolator.functions.params]]
+name = "pos"
+type = "&Pos"
+[[modules.Extrapolator.functions.params]]
+name = "ignore_train"
+type = "ID<Train>"
+
+[[modules.Extrapolator.functions]]
+name = "get_one_reservation"
+doc = "Get one train reserving a position"
+return_type = "*Train"
+[[modules.Extrapolator.functions.params]]
+name = "pos"
+type = "&Pos"
+[[modules.Extrapolator.functions.params]]
+name = "ignore_train"
+type = "ID<Train>"
+
+[[modules.Extrapolator.functions]]
+name = "is_occupying"
+doc = "Check if train is occupying a position"
+return_type = "bool"
+[[modules.Extrapolator.functions.params]]
+name = "pos"
+type = "&Pos"
+[[modules.Extrapolator.functions.params]]
+name = "train"
+type = "ID<Train>"
+
+[[modules.Extrapolator.functions]]
+name = "is_reserving"
+doc = "Check if train is reserving a position"
+return_type = "bool"
+[[modules.Extrapolator.functions.params]]
+name = "pos"
+type = "&Pos"
+[[modules.Extrapolator.functions.params]]
+name = "train"
+type = "ID<Train>"
+
+[[modules.Extrapolator.functions]]
+name = "reservation_probe"
+doc = "Probe reservations at a position"
+return_type = "ScResvProbeIt"
+[[modules.Extrapolator.functions.params]]
+name = "pos"
+type = "&Pos"
+
+# Iterator types
+[types.ScResvProbeIt]
+kind = "struct"
+doc = "Reservation probe iterator"
+
+[[types.ScResvProbeIt.methods]]
+name = "next"
+doc = "Get next probe result"
+return_type = "*ScResvProbeIt::Result"
+
+[types."ScResvProbeIt::Result"]
+kind = "struct"
+doc = "Reservation probe result"
+[types."ScResvProbeIt::Result".fields]
+is_occ = { type = "bool", doc = "Is occupation (vs reservation)", readonly = true }
+train = { type = "&Train", doc = "The train", readonly = true }
+
+# Signal result types
+[types.SignalLookaheadResult]
+kind = "struct"
+doc = "Result of signal lookahead"
+[types.SignalLookaheadResult.fields]
+max_speed = { type = "f64", doc = "Maximum allowed speed", readonly = true }
+
+[types.SignalChangePathResult]
+kind = "struct"
+doc = "Result of signal change path"
+[types.SignalChangePathResult.fields]
+pos = { type = "Pos", doc = "New position", readonly = true }
+goal_has_stop_time = { type = "bool", doc = "Goal has stop time", readonly = true }
+force_goal_reservation = { type = "bool", doc = "Force goal reservation", readonly = true }
+
+# Shift types
+[types.ShiftSetup]
+kind = "struct"
+doc = "Shift setup parameters"
+[types.ShiftSetup.fields]
+skip = { type = "bool", doc = "Skip shift" }
+match_pos = { type = "bool", doc = "Match position" }
+check_occupation = { type = "bool", doc = "Check occupation" }
+pos = { type = "Pos", doc = "Position" }
+epoch_s = { type = "i64", doc = "Epoch seconds" }
+
+# ============================================
+# Game Callbacks (valid public functions)
+# ============================================
+# These are the only functions that can be declared as `pub fn`
+# because they are entry points called by the game engine
+
+[[callbacks]]
+name = "event_signal_check"
+doc = "Called when a signal is checked during path validation"
+for_type = "Signal"
+return_type = "SignalCheck"
+[[callbacks.params]]
+name = "self"
+type = "&Self"
+[[callbacks.params]]
+name = "ctx"
+type = "&EventCtx"
+[[callbacks.params]]
+name = "train"
+type = "&Train"
+[[callbacks.params]]
+name = "motion"
+type = "&Motion"
+[[callbacks.params]]
+name = "signal"
+type = "&Signal"
+
+[[callbacks]]
+name = "event_signal_lookahead"
+doc = "Called at regular intervals for signals ahead of train"
+for_type = "Signal"
+[[callbacks.params]]
+name = "self"
+type = "&Self"
+[[callbacks.params]]
+name = "ctx"
+type = "&EventCtx"
+[[callbacks.params]]
+name = "train"
+type = "&Train"
+[[callbacks.params]]
+name = "motion"
+type = "&Motion"
+[[callbacks.params]]
+name = "signal"
+type = "&Signal"
+[[callbacks.params]]
+name = "train_distance"
+type = "f64"
+[[callbacks.params]]
+name = "check"
+type = "SignalCheck"
+[[callbacks.params]]
+name = "result"
+type = "&mut SignalLookaheadResult"
+
+[[callbacks]]
+name = "event_signal_change_path"
+doc = "Called when signal can modify train routing"
+for_type = "Signal"
+return_type = "SignalChangePath"
+[[callbacks.params]]
+name = "self"
+type = "&Self"
+[[callbacks.params]]
+name = "ctx"
+type = "&EventCtx"
+[[callbacks.params]]
+name = "train"
+type = "&Train"
+[[callbacks.params]]
+name = "motion"
+type = "&Motion"
+[[callbacks.params]]
+name = "signal"
+type = "&Signal"
+[[callbacks.params]]
+name = "check"
+type = "SignalCheck"
+[[callbacks.params]]
+name = "result"
+type = "&mut SignalChangePathResult"
+
+[[callbacks]]
+name = "event_signal_pass_by"
+doc = "Called when train passes exact signal location"
+for_type = "Signal"
+[[callbacks.params]]
+name = "self"
+type = "&Self"
+[[callbacks.params]]
+name = "ctx"
+type = "&EventCtx"
+[[callbacks.params]]
+name = "train"
+type = "&Train"
+[[callbacks.params]]
+name = "motion"
+type = "&Motion"
+[[callbacks.params]]
+name = "signal"
+type = "&Signal"
+[[callbacks.params]]
+name = "sc"
+type = "&mut SimController"
+
+[[callbacks]]
+name = "event_signal_marker_reserved"
+doc = "Queries reservation status for marker signals"
+for_type = "Signal"
+return_type = "ID<Train>"
+[[callbacks.params]]
+name = "self"
+type = "&Self"
+[[callbacks.params]]
+name = "db"
+type = "&DB"
+[[callbacks.params]]
+name = "signal"
+type = "&Signal"
+
+[[callbacks]]
+name = "event_signal_texture_state"
+doc = "Returns visual state index for signal rendering"
+for_type = "Signal"
+return_type = "i64"
+[[callbacks.params]]
+name = "self"
+type = "&Self"
+[[callbacks.params]]
+name = "db"
+type = "&DB"
+[[callbacks.params]]
+name = "signal"
+type = "&Signal"
+
+[[callbacks]]
+name = "event_train_shift_setup"
+doc = "Influences shift selection for unassigned trains"
+for_type = "Train"
+[[callbacks.params]]
+name = "self"
+type = "&Self"
+[[callbacks.params]]
+name = "ctx"
+type = "&EventCtx"
+[[callbacks.params]]
+name = "train"
+type = "&Train"
+[[callbacks.params]]
+name = "motion"
+type = "&Motion"
+[[callbacks.params]]
+name = "ss"
+type = "&mut ShiftSetup"
+
+[[callbacks]]
+name = "event_train_shift_allow"
+doc = "Approves or denies candidate shifts for trains"
+for_type = "Train"
+return_type = "ShiftAllow"
+[[callbacks.params]]
+name = "self"
+type = "&Self"
+[[callbacks.params]]
+name = "ctx"
+type = "&EventCtx"
+[[callbacks.params]]
+name = "train"
+type = "&Train"
+[[callbacks.params]]
+name = "motion"
+type = "&Motion"
+[[callbacks.params]]
+name = "sched"
+type = "&Schedule"
+[[callbacks.params]]
+name = "shift"
+type = "&Shift"
+[[callbacks.params]]
+name = "run"
+type = "&Run"
+[[callbacks.params]]
+name = "stop_idx"
+type = "i64"
+[[callbacks.params]]
+name = "arrival_us"
+type = "i64"
+[[callbacks.params]]
+name = "pose"
+type = "&Pose"
+
+[[callbacks]]
+name = "control_train"
+doc = "Executes periodically (every 6 sim-seconds) for train manipulation"
+for_type = "Controller"
+[[callbacks.params]]
+name = "self"
+type = "&Self"
+[[callbacks.params]]
+name = "ctx"
+type = "&ControlCtx"
+[[callbacks.params]]
+name = "train"
+type = "&Train"
+[[callbacks.params]]
+name = "motion"
+type = "&Motion"
+[[callbacks.params]]
+name = "sc"
+type = "&mut SimController"
+
+[[callbacks]]
+name = "task_run"
+doc = "Executes queued task with single-threaded data consistency"
+for_type = "Controller"
+[[callbacks.params]]
+name = "self"
+type = "&Self"
+[[callbacks.params]]
+name = "ctx"
+type = "&ControlCtx"
+[[callbacks.params]]
+name = "sc"
+type = "&mut SimController"
