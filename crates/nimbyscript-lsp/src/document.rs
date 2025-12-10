@@ -1,9 +1,11 @@
 use std::collections::HashMap;
 use tower_lsp::lsp_types::Position;
 
-use nimbyscript_analyzer::{ApiDefinitions, Diagnostic, SymbolTable};
+use nimbyscript_analyzer::semantic::context::collect_declarations;
+use nimbyscript_analyzer::semantic::{PassRegistry, SemanticContext};
 use nimbyscript_analyzer::symbols::{Symbol, SymbolKind};
-use nimbyscript_parser::{parse, has_errors, kind, Node, NodeExt, Tree};
+use nimbyscript_analyzer::{ApiDefinitions, Diagnostic, SymbolTable};
+use nimbyscript_parser::{has_errors, kind, parse, Node, NodeExt, Tree};
 
 use crate::validation::{validate_meta_blocks, validate_public_functions};
 
@@ -103,6 +105,13 @@ fn analyze(content: &str, tree: &Tree, api: Option<&ApiDefinitions>) -> (Vec<Dia
     // Validate public functions if API is available
     if let Some(api) = api {
         validate_public_functions(root, content, api, &mut diagnostics);
+
+        // Run semantic analysis passes
+        let mut ctx = SemanticContext::new(content, tree, api);
+        collect_declarations(&mut ctx);
+        let registry = PassRegistry::default();
+        let semantic_diagnostics = registry.run_all(&mut ctx);
+        diagnostics.extend(semantic_diagnostics);
     }
 
     (diagnostics, symbols, struct_extends)
