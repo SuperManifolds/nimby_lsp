@@ -3,6 +3,7 @@ mod completions;
 mod document;
 mod semantic_tokens;
 mod signature_help;
+mod validation;
 
 use tower_lsp::{LspService, Server};
 use tracing_subscriber::EnvFilter;

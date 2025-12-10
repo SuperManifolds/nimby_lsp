@@ -423,28 +423,26 @@ fn format_callback_documentation(func: &FunctionDef, struct_name: &str) -> Optio
     }
 }
 
+fn symbol_to_completion_kind(kind: SymbolKind) -> CompletionItemKind {
+    match kind {
+        SymbolKind::CONSTANT => CompletionItemKind::CONSTANT,
+        SymbolKind::STRUCT => CompletionItemKind::STRUCT,
+        SymbolKind::ENUM => CompletionItemKind::ENUM,
+        SymbolKind::ENUM_MEMBER => CompletionItemKind::ENUM_MEMBER,
+        SymbolKind::FUNCTION => CompletionItemKind::FUNCTION,
+        SymbolKind::METHOD => CompletionItemKind::METHOD,
+        SymbolKind::VARIABLE => CompletionItemKind::VARIABLE,
+        SymbolKind::FIELD => CompletionItemKind::FIELD,
+        _ => CompletionItemKind::VALUE,
+    }
+}
+
 fn add_document_symbols(items: &mut Vec<CompletionItem>, doc: &Document, prefix: &str) {
     for symbol in doc.document_symbols() {
         if symbol.name.starts_with(prefix) {
-            let kind = match symbol.kind {
-                nimbyscript_analyzer::symbols::SymbolKind::Const => CompletionItemKind::CONSTANT,
-                nimbyscript_analyzer::symbols::SymbolKind::Struct => CompletionItemKind::STRUCT,
-                nimbyscript_analyzer::symbols::SymbolKind::Enum => CompletionItemKind::ENUM,
-                nimbyscript_analyzer::symbols::SymbolKind::EnumVariant => {
-                    CompletionItemKind::ENUM_MEMBER
-                }
-                nimbyscript_analyzer::symbols::SymbolKind::Function => CompletionItemKind::FUNCTION,
-                nimbyscript_analyzer::symbols::SymbolKind::Method => CompletionItemKind::METHOD,
-                nimbyscript_analyzer::symbols::SymbolKind::Parameter
-                | nimbyscript_analyzer::symbols::SymbolKind::Variable => {
-                    CompletionItemKind::VARIABLE
-                }
-                nimbyscript_analyzer::symbols::SymbolKind::Field => CompletionItemKind::FIELD,
-            };
-
             items.push(CompletionItem {
                 label: symbol.name.clone(),
-                kind: Some(kind),
+                kind: Some(symbol_to_completion_kind(symbol.kind)),
                 detail: symbol.type_name.clone(),
                 ..Default::default()
             });

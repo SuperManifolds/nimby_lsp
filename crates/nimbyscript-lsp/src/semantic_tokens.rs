@@ -30,37 +30,22 @@ pub const TOKEN_MODIFIERS: &[SemanticTokenModifier] = &[
     SemanticTokenModifier::DEFINITION,
     SemanticTokenModifier::READONLY,
     SemanticTokenModifier::STATIC,
-    SemanticTokenModifier::DEFAULT_LIBRARY,  // For game API types/functions
+    SemanticTokenModifier::DEFAULT_LIBRARY,
 ];
 
-/// Token type indices (must match TOKEN_TYPES order)
-mod token_type {
-    pub const KEYWORD: u32 = 0;
-    pub const TYPE: u32 = 1;
-    pub const FUNCTION: u32 = 2;
-    pub const VARIABLE: u32 = 3;
-    pub const PROPERTY: u32 = 4;
-    pub const STRING: u32 = 5;
-    pub const NUMBER: u32 = 6;
-    pub const COMMENT: u32 = 7;
-    #[allow(dead_code)]
-    pub const OPERATOR: u32 = 8;
-    pub const PARAMETER: u32 = 9;
-    pub const ENUM_MEMBER: u32 = 10;
-    pub const STRUCT: u32 = 11;
-    pub const ENUM: u32 = 12;
+fn token_type_index(tt: &SemanticTokenType) -> u32 {
+    TOKEN_TYPES.iter().position(|t| t == tt).map_or(0, |i| i as u32)
 }
 
-/// Token modifier bit flags (must match TOKEN_MODIFIERS order)
-mod token_modifier {
-    pub const DECLARATION: u32 = 1 << 0;
-    pub const DEFINITION: u32 = 1 << 1;
-    #[allow(dead_code)]
-    pub const READONLY: u32 = 1 << 2;
-    #[allow(dead_code)]
-    pub const STATIC: u32 = 1 << 3;
-    pub const DEFAULT_LIBRARY: u32 = 1 << 4;  // For game API types/functions
+fn modifier_bitset(modifiers: &[SemanticTokenModifier]) -> u32 {
+    modifiers.iter().fold(0, |bits, m| {
+        bits | TOKEN_MODIFIERS.iter().position(|t| t == m).map_or(0, |i| 1 << i)
+    })
 }
+
+// Static modifier slices for returning from functions
+const MOD_NONE: &[SemanticTokenModifier] = &[];
+const MOD_DEFAULT_LIBRARY: &[SemanticTokenModifier] = &[SemanticTokenModifier::DEFAULT_LIBRARY];
 
 pub fn semantic_token_legend() -> SemanticTokensLegend {
     SemanticTokensLegend {
@@ -89,8 +74,8 @@ struct TokenCollector<'a> {
 struct RawToken {
     start: usize,
     length: usize,
-    token_type: u32,
-    modifiers: u32,
+    token_type: SemanticTokenType,
+    modifiers: Vec<SemanticTokenModifier>,
 }
 
 impl<'a> TokenCollector<'a> {
@@ -105,12 +90,12 @@ impl<'a> TokenCollector<'a> {
         }
     }
 
-    fn add_token(&mut self, start: usize, end: usize, token_type: u32, modifiers: u32) {
+    fn add_token(&mut self, start: usize, end: usize, token_type: SemanticTokenType, modifiers: &[SemanticTokenModifier]) {
         self.raw_tokens.push(RawToken {
             start,
             length: end - start,
             token_type,
-            modifiers,
+            modifiers: modifiers.to_vec(),
         });
     }
 
@@ -124,12 +109,12 @@ impl<'a> TokenCollector<'a> {
             | kind::STORAGE_MODIFIER
             | kind::MUTABILITY_MODIFIER
             | kind::BOOLEAN => {
-                self.add_token(start, end, token_type::KEYWORD, 0);
+                self.add_token(start, end, SemanticTokenType::KEYWORD, &[]);
             }
 
             // Comments
             kind::COMMENT => {
-                self.add_token(start, end, token_type::COMMENT, 0);
+                self.add_token(start, end, SemanticTokenType::COMMENT, &[]);
             }
 
             // Type definitions
@@ -152,10 +137,10 @@ impl<'a> TokenCollector<'a> {
 
             // Literals
             kind::NUMBER | kind::TIME_LITERAL => {
-                self.add_token(start, end, token_type::NUMBER, 0);
+                self.add_token(start, end, SemanticTokenType::NUMBER, &[]);
             }
             kind::STRING_LITERAL => {
-                self.add_token(start, end, token_type::STRING, 0);
+                self.add_token(start, end, SemanticTokenType::STRING, &[]);
             }
 
             // Function calls
@@ -172,7 +157,7 @@ impl<'a> TokenCollector<'a> {
             kind::LET_STATEMENT | kind::LET_ELSE_STATEMENT => {
                 if let Some(binding) = node.child_by_kind("binding") {
                     if let Some(name_node) = binding.child_by_field("name") {
-                        self.add_token(name_node.start_byte(), name_node.end_byte(), token_type::VARIABLE, token_modifier::DECLARATION);
+                        self.add_token(name_node.start_byte(), name_node.end_byte(), SemanticTokenType::VARIABLE, &[SemanticTokenModifier::DECLARATION]);
                     }
                 }
                 // Recurse for children
@@ -185,7 +170,7 @@ impl<'a> TokenCollector<'a> {
             // Parameters
             kind::PARAMETER => {
                 if let Some(name_node) = node.child_by_field("name") {
-                    self.add_token(name_node.start_byte(), name_node.end_byte(), token_type::PARAMETER, token_modifier::DECLARATION);
+                    self.add_token(name_node.start_byte(), name_node.end_byte(), SemanticTokenType::PARAMETER, &[SemanticTokenModifier::DECLARATION]);
                 }
                 // Recurse for type
                 let mut cursor = node.walk();
@@ -204,8 +189,8 @@ impl<'a> TokenCollector<'a> {
         }
     }
 
-    fn game_type_modifier(&self, name: &str) -> u32 {
-        if self.game_types.contains(name) { token_modifier::DEFAULT_LIBRARY } else { 0 }
+    fn game_type_modifiers(&self, name: &str) -> &'static [SemanticTokenModifier] {
+        if self.game_types.contains(name) { MOD_DEFAULT_LIBRARY } else { MOD_NONE }
     }
 
     fn collect_struct_tokens(&mut self, node: Node) {
@@ -213,23 +198,23 @@ impl<'a> TokenCollector<'a> {
         for child in node.children(&mut cursor) {
             match child.kind() {
                 kind::VISIBILITY_MODIFIER => {
-                    self.add_token(child.start_byte(), child.end_byte(), token_type::KEYWORD, 0);
+                    self.add_token(child.start_byte(), child.end_byte(), SemanticTokenType::KEYWORD, &[]);
                 }
                 kind::IDENTIFIER => {
                     // Struct name
                     if node.child_by_field("name").map(|n| n.id()) == Some(child.id()) {
-                        self.add_token(child.start_byte(), child.end_byte(), token_type::STRUCT, token_modifier::DEFINITION);
+                        self.add_token(child.start_byte(), child.end_byte(), SemanticTokenType::STRUCT, &[SemanticTokenModifier::DEFINITION]);
                     }
                 }
                 kind::EXTENDS_CLAUSE => {
                     if let Some(type_node) = child.child_by_field("type") {
-                        let modifiers = self.game_type_modifier(type_node.text(self.content));
-                        self.add_token(type_node.start_byte(), type_node.end_byte(), token_type::TYPE, modifiers);
+                        let modifiers = self.game_type_modifiers(type_node.text(self.content));
+                        self.add_token(type_node.start_byte(), type_node.end_byte(), SemanticTokenType::TYPE, modifiers);
                     }
                 }
                 kind::STRUCT_FIELD => {
                     if let Some(name_node) = child.child_by_field("name") {
-                        self.add_token(name_node.start_byte(), name_node.end_byte(), token_type::PROPERTY, token_modifier::DEFINITION);
+                        self.add_token(name_node.start_byte(), name_node.end_byte(), SemanticTokenType::PROPERTY, &[SemanticTokenModifier::DEFINITION]);
                     }
                     // Recurse for type
                     self.collect_tokens(child);
@@ -246,17 +231,17 @@ impl<'a> TokenCollector<'a> {
         for child in node.children(&mut cursor) {
             match child.kind() {
                 kind::VISIBILITY_MODIFIER => {
-                    self.add_token(child.start_byte(), child.end_byte(), token_type::KEYWORD, 0);
+                    self.add_token(child.start_byte(), child.end_byte(), SemanticTokenType::KEYWORD, &[]);
                 }
                 kind::IDENTIFIER => {
                     // Enum name
                     if node.child_by_field("name").map(|n| n.id()) == Some(child.id()) {
-                        self.add_token(child.start_byte(), child.end_byte(), token_type::ENUM, token_modifier::DEFINITION);
+                        self.add_token(child.start_byte(), child.end_byte(), SemanticTokenType::ENUM, &[SemanticTokenModifier::DEFINITION]);
                     }
                 }
                 kind::ENUM_VARIANT => {
                     if let Some(name_node) = child.child_by_field("name") {
-                        self.add_token(name_node.start_byte(), name_node.end_byte(), token_type::ENUM_MEMBER, token_modifier::DEFINITION);
+                        self.add_token(name_node.start_byte(), name_node.end_byte(), SemanticTokenType::ENUM_MEMBER, &[SemanticTokenModifier::DEFINITION]);
                     }
                 }
                 _ => {
@@ -271,7 +256,7 @@ impl<'a> TokenCollector<'a> {
         for child in node.children(&mut cursor) {
             match child.kind() {
                 kind::VISIBILITY_MODIFIER => {
-                    self.add_token(child.start_byte(), child.end_byte(), token_type::KEYWORD, 0);
+                    self.add_token(child.start_byte(), child.end_byte(), SemanticTokenType::KEYWORD, &[]);
                 }
                 kind::FUNCTION_NAME => {
                     self.tokenize_function_name(child);
@@ -286,28 +271,28 @@ impl<'a> TokenCollector<'a> {
     fn tokenize_function_name(&mut self, child: Node) {
         let text = child.text(self.content);
         let Some(sep_pos) = text.find("::") else {
-            self.add_token(child.start_byte(), child.end_byte(), token_type::FUNCTION, token_modifier::DEFINITION);
+            self.add_token(child.start_byte(), child.end_byte(), SemanticTokenType::FUNCTION, &[SemanticTokenModifier::DEFINITION]);
             return;
         };
 
         let pos = child.start_byte();
         let type_name = &text[..sep_pos];
         let method_name = &text[sep_pos + 2..];
-        self.add_token(pos, pos + type_name.len(), token_type::TYPE, 0);
+        self.add_token(pos, pos + type_name.len(), SemanticTokenType::TYPE, &[]);
         let method_start = pos + type_name.len() + 2;
-        self.add_token(method_start, method_start + method_name.len(), token_type::FUNCTION, token_modifier::DEFINITION);
+        self.add_token(method_start, method_start + method_name.len(), SemanticTokenType::FUNCTION, &[SemanticTokenModifier::DEFINITION]);
     }
 
     fn collect_type_tokens(&mut self, node: Node) {
         // Get the first identifier in the type
         if let Some(id_node) = node.child_by_kind(kind::IDENTIFIER) {
             let name = id_node.text(self.content);
-            let (tok_type, modifiers) = if self.game_types.contains(name) {
-                (token_type::TYPE, token_modifier::DEFAULT_LIBRARY)
+            let (tok_type, modifiers): (SemanticTokenType, &[SemanticTokenModifier]) = if self.game_types.contains(name) {
+                (SemanticTokenType::TYPE, &[SemanticTokenModifier::DEFAULT_LIBRARY])
             } else if self.game_enums.contains(name) {
-                (token_type::ENUM, token_modifier::DEFAULT_LIBRARY)
+                (SemanticTokenType::ENUM, &[SemanticTokenModifier::DEFAULT_LIBRARY])
             } else {
-                (token_type::TYPE, 0)
+                (SemanticTokenType::TYPE, &[])
             };
             self.add_token(id_node.start_byte(), id_node.end_byte(), tok_type, modifiers);
         }
@@ -328,12 +313,12 @@ impl<'a> TokenCollector<'a> {
                 self.collect_path_tokens(func_node);
             } else {
                 // Simple function call
-                let modifiers = if self.game_functions.contains(text) {
-                    token_modifier::DEFAULT_LIBRARY
+                let modifiers: &[SemanticTokenModifier] = if self.game_functions.contains(text) {
+                    &[SemanticTokenModifier::DEFAULT_LIBRARY]
                 } else {
-                    0
+                    &[]
                 };
-                self.add_token(func_node.start_byte(), func_node.end_byte(), token_type::FUNCTION, modifiers);
+                self.add_token(func_node.start_byte(), func_node.end_byte(), SemanticTokenType::FUNCTION, modifiers);
             }
         }
 
@@ -346,22 +331,22 @@ impl<'a> TokenCollector<'a> {
         }
     }
 
-    fn path_prefix_token(&self, part: &str) -> (u32, u32) {
+    fn path_prefix_token(&self, part: &str) -> (SemanticTokenType, &'static [SemanticTokenModifier]) {
         if self.game_types.contains(part) {
-            (token_type::TYPE, token_modifier::DEFAULT_LIBRARY)
+            (SemanticTokenType::TYPE, MOD_DEFAULT_LIBRARY)
         } else if self.game_enums.contains(part) {
-            (token_type::ENUM, token_modifier::DEFAULT_LIBRARY)
+            (SemanticTokenType::ENUM, MOD_DEFAULT_LIBRARY)
         } else if self.game_modules.contains(part) {
-            (token_type::TYPE, token_modifier::DEFAULT_LIBRARY)
+            (SemanticTokenType::TYPE, MOD_DEFAULT_LIBRARY)
         } else {
-            (token_type::TYPE, 0)
+            (SemanticTokenType::TYPE, MOD_NONE)
         }
     }
 
     fn collect_path_tokens(&mut self, node: Node) {
         let text = node.text(self.content);
         if !text.contains("::") {
-            self.add_token(node.start_byte(), node.end_byte(), token_type::VARIABLE, 0);
+            self.add_token(node.start_byte(), node.end_byte(), SemanticTokenType::VARIABLE, &[]);
             return;
         }
 
@@ -369,8 +354,8 @@ impl<'a> TokenCollector<'a> {
         let mut pos = node.start_byte();
         for (i, part) in parts.iter().enumerate() {
             let is_last = i == parts.len() - 1;
-            let (tok_type, modifiers) = if is_last {
-                (token_type::ENUM_MEMBER, 0)
+            let (tok_type, modifiers): (SemanticTokenType, &[SemanticTokenModifier]) = if is_last {
+                (SemanticTokenType::ENUM_MEMBER, &[])
             } else {
                 self.path_prefix_token(part)
             };
@@ -402,8 +387,8 @@ impl<'a> TokenCollector<'a> {
                 delta_line,
                 delta_start,
                 length: token.length as u32,
-                token_type: token.token_type,
-                token_modifiers_bitset: token.modifiers,
+                token_type: token_type_index(&token.token_type),
+                token_modifiers_bitset: modifier_bitset(&token.modifiers),
             });
 
             prev_line = line;

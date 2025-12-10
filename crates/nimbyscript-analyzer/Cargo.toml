@@ -6,6 +6,7 @@ license.workspace = true
 
 [dependencies]
 nimbyscript-parser = { path = "../nimbyscript-parser" }
+lsp-types = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 toml = { workspace = true }

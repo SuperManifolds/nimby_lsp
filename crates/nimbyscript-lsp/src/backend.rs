@@ -244,29 +244,13 @@ impl LanguageServer for Backend {
             let lsp_symbols: Vec<DocumentSymbol> = symbols
                 .iter()
                 .map(|s| {
-                    let kind = match s.kind {
-                        nimbyscript_analyzer::symbols::SymbolKind::Const => SymbolKind::CONSTANT,
-                        nimbyscript_analyzer::symbols::SymbolKind::Struct => SymbolKind::STRUCT,
-                        nimbyscript_analyzer::symbols::SymbolKind::Enum => SymbolKind::ENUM,
-                        nimbyscript_analyzer::symbols::SymbolKind::EnumVariant => {
-                            SymbolKind::ENUM_MEMBER
-                        }
-                        nimbyscript_analyzer::symbols::SymbolKind::Function => SymbolKind::FUNCTION,
-                        nimbyscript_analyzer::symbols::SymbolKind::Method => SymbolKind::METHOD,
-                        nimbyscript_analyzer::symbols::SymbolKind::Parameter => {
-                            SymbolKind::VARIABLE
-                        }
-                        nimbyscript_analyzer::symbols::SymbolKind::Variable => SymbolKind::VARIABLE,
-                        nimbyscript_analyzer::symbols::SymbolKind::Field => SymbolKind::FIELD,
-                    };
-
                     let range = self.offset_to_range(uri, s.span.start, s.span.end);
 
                     #[allow(deprecated)]
                     DocumentSymbol {
                         name: s.name.clone(),
                         detail: s.type_name.clone(),
-                        kind,
+                        kind: s.kind,
                         range,
                         selection_range: range,
                         children: None,

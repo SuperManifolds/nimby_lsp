@@ -1,19 +1,8 @@
 use dashmap::DashMap;
 use nimbyscript_parser::ast::{Identifier, Span};
 
-/// Symbol kinds
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SymbolKind {
-    Const,
-    Struct,
-    Enum,
-    EnumVariant,
-    Function,
-    Method,
-    Parameter,
-    Variable,
-    Field,
-}
+// Re-export LSP's SymbolKind for use by consumers
+pub use lsp_types::SymbolKind;
 
 /// A symbol in the symbol table
 #[derive(Debug, Clone)]
