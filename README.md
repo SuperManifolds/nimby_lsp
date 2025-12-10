@@ -15,14 +15,15 @@ A Language Server Protocol (LSP) implementation for [NimbyScript](https://wiki.n
 ```
 nimby_lsp/
 ├── crates/
-│   ├── nimbyscript-parser/     # PEG-based parser using pest
-│   ├── nimbyscript-analyzer/   # Semantic analysis and API definitions
-│   └── nimbyscript-lsp/        # LSP server implementation
-├── api-definitions/            # Game API definitions (TOML)
+│   ├── tree-sitter-nimbyscript/  # Tree-sitter grammar definition
+│   ├── nimbyscript-parser/       # Parser wrapper and utilities
+│   ├── nimbyscript-analyzer/     # Semantic analysis and API definitions
+│   └── nimbyscript-lsp/          # LSP server implementation
+├── api-definitions/              # Game API definitions (TOML)
 ├── editors/
-│   ├── vscode/                 # VSCode extension
-│   └── neovim/                 # Neovim plugin
-└── tests/fixtures/             # Test NimbyScript files
+│   ├── vscode/                   # VSCode extension
+│   └── neovim/                   # Neovim plugin
+└── tests/fixtures/               # Test NimbyScript files
 ```
 
 ## Installation
@@ -69,16 +70,13 @@ Quick setup with lazy.nvim:
 
 ## Grammar
 
-The parser uses a PEG grammar based on the [official NimbyScript documentation](https://wiki.nimbyrails.com/NimbyScript). Grammar files are located in `crates/nimbyscript-parser/grammar/`:
+The parser uses [tree-sitter](https://tree-sitter.github.io/tree-sitter/) based on the [official NimbyScript documentation](https://wiki.nimbyrails.com/NimbyScript). Tree-sitter provides:
 
-- `common.pest` - Whitespace, comments, identifiers
-- `literals.pest` - Numbers, strings, booleans
-- `types.pest` - Type expressions
-- `metadata.pest` - Meta blocks
-- `expressions.pest` - Expression grammar
-- `statements.pest` - Statement grammar
-- `declarations.pest` - Top-level declarations
-- `main.pest` - Entry point
+- **Error recovery** - Parses incomplete/invalid code for better editor support
+- **Incremental parsing** - Fast re-parsing on edits
+- **Editor integration** - Native support in Neovim, Helix, and others
+
+The grammar is defined in `crates/tree-sitter-nimbyscript/grammar.js` with syntax highlighting queries in `queries/highlights.scm`.
 
 ## API Definitions
 

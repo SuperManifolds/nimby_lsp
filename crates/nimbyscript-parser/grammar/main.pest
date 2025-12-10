@@ -1,8 +1,0 @@
-// NimbyScript PEG Grammar - Main entry point
-// This file defines the top-level structure of a NimbyScript source file
-
-// Top-level source file structure
-source_file = { SOI ~ (top_meta | const_decl | fn_decl | struct_def | enum_def)* ~ EOI }
-
-// Script metadata block: script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
-top_meta = { "script" ~ meta }
