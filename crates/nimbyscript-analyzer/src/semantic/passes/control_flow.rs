@@ -209,11 +209,17 @@ fn all_paths_return_if(node: Node, source: &str) -> bool {
 /// Check for unreachable code in a block
 fn check_unreachable(block: Node, source: &str, diagnostics: &mut Vec<Diagnostic>) {
     let mut cursor = block.walk();
-    let children: Vec<_> = block.children(&mut cursor).collect();
+    // Use named_children to skip punctuation like { and }
+    let children: Vec<_> = block.named_children(&mut cursor).collect();
 
     let mut saw_terminator = false;
 
     for child in children {
+        // Skip non-statement nodes (punctuation, etc.)
+        if !child.is_named() {
+            continue;
+        }
+
         if saw_terminator {
             // This code is unreachable
             diagnostics.push(
@@ -237,7 +243,7 @@ fn check_unreachable(block: Node, source: &str, diagnostics: &mut Vec<Diagnostic
                 }
                 if let Some(else_clause) = child.child_by_kind(kind::ELSE_CLAUSE) {
                     let mut else_cursor = else_clause.walk();
-                    for else_child in else_clause.children(&mut else_cursor) {
+                    for else_child in else_clause.named_children(&mut else_cursor) {
                         if else_child.kind() == kind::BLOCK {
                             check_unreachable(else_child, source, diagnostics);
                         }

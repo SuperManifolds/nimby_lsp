@@ -512,6 +512,93 @@ name = "trace"
 type = "&TapeTrace"
 
 # Context types
+[types.DB]
+kind = "struct"
+doc = "The database of all player-created objects and associated script struct objects"
+[[types.DB.methods]]
+name = "view"
+doc = "Get a read-only view of an entity by ID. Returns a pointer that must be validated."
+return_type = "*Signal"
+[[types.DB.methods.params]]
+name = "id"
+type = "ID<Signal>"
+
+# ID generic type - wrapper for referencing game objects
+[types."ID<Signal>"]
+kind = "struct"
+doc = "ID reference to a Signal entity"
+[[types."ID<Signal>".methods]]
+name = "empty"
+doc = "Returns a sentinel empty ID value"
+return_type = "ID<Signal>"
+[[types."ID<Signal>".methods]]
+name = "equals"
+doc = "Compare two ID instances"
+return_type = "bool"
+[[types."ID<Signal>".methods.params]]
+name = "other"
+type = "ID<Signal>"
+
+[types."ID<Train>"]
+kind = "struct"
+doc = "ID reference to a Train entity"
+[[types."ID<Train>".methods]]
+name = "empty"
+doc = "Returns a sentinel empty ID value"
+return_type = "ID<Train>"
+[[types."ID<Train>".methods]]
+name = "equals"
+doc = "Compare two ID instances"
+return_type = "bool"
+[[types."ID<Train>".methods.params]]
+name = "other"
+type = "ID<Train>"
+
+[types."ID<Tag>"]
+kind = "struct"
+doc = "ID reference to a Tag entity"
+[[types."ID<Tag>".methods]]
+name = "empty"
+doc = "Returns a sentinel empty ID value"
+return_type = "ID<Tag>"
+[[types."ID<Tag>".methods]]
+name = "equals"
+doc = "Compare two ID instances"
+return_type = "bool"
+[[types."ID<Tag>".methods.params]]
+name = "other"
+type = "ID<Tag>"
+
+[types."ID<Line>"]
+kind = "struct"
+doc = "ID reference to a Line entity"
+[[types."ID<Line>".methods]]
+name = "empty"
+doc = "Returns a sentinel empty ID value"
+return_type = "ID<Line>"
+[[types."ID<Line>".methods]]
+name = "equals"
+doc = "Compare two ID instances"
+return_type = "bool"
+[[types."ID<Line>".methods.params]]
+name = "other"
+type = "ID<Line>"
+
+[types."ID<Schedule>"]
+kind = "struct"
+doc = "ID reference to a Schedule entity"
+[[types."ID<Schedule>".methods]]
+name = "empty"
+doc = "Returns a sentinel empty ID value"
+return_type = "ID<Schedule>"
+[[types."ID<Schedule>".methods]]
+name = "equals"
+doc = "Compare two ID instances"
+return_type = "bool"
+[[types."ID<Schedule>".methods.params]]
+name = "other"
+type = "ID<Schedule>"
+
 [types.EventCtx]
 kind = "struct"
 doc = "Context for event handlers"

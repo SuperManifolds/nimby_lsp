@@ -326,6 +326,19 @@ fn check_type_reference(node: Node, ctx: &SemanticContext, diagnostics: &mut Vec
         .trim_start_matches('*')
         .trim();
 
+    // For ID<T> types, check the full type name first (e.g., "ID<Signal>")
+    // since they are defined as complete types in the API
+    if base_type.starts_with("ID<") && base_type.ends_with('>') {
+        // Check if the full ID<T> type exists
+        if ctx.is_game_type(base_type) {
+            return;
+        }
+        // If not found as a complete type, check inner type at least
+        let inner = &base_type[3..base_type.len() - 1];
+        check_type_exists(inner, node, ctx, diagnostics);
+        return;
+    }
+
     // Extract generic base type (e.g., "Option<Signal>" -> "Option")
     let (outer_type, inner_type) = if let Some(idx) = base_type.find('<') {
         let outer = &base_type[..idx];
@@ -359,6 +372,11 @@ fn check_type_exists(name: &str, node: Node, ctx: &SemanticContext, diagnostics:
         return;
     }
 
+    // Skip built-in generic wrapper types (ID<T> for entity references)
+    if name == "ID" {
+        return;
+    }
+
     // Check if type exists
     if ctx.is_game_type(name) || ctx.is_game_enum(name) || ctx.is_user_struct(name) || ctx.is_user_enum(name) {
         return;
@@ -377,7 +395,7 @@ fn check_type_exists(name: &str, node: Node, ctx: &SemanticContext, diagnostics:
 fn resolve_path(node: Node, ctx: &SemanticContext, diagnostics: &mut Vec<Diagnostic>) {
     let path_text = node.text(ctx.source);
 
-    // Handle module::function or Enum::Variant
+    // Handle module::function or Enum::Variant or Type::method
     if let Some((first, second)) = path_text.split_once("::") {
         // Check if first is a module
         if ctx.is_module(first) {
@@ -400,6 +418,21 @@ fn resolve_path(node: Node, ctx: &SemanticContext, diagnostics: &mut Vec<Diagnos
                         Span::new(node.start_byte(), node.end_byte()),
                     )
                     .with_code("E0304"),
+                );
+            }
+        } else if ctx.is_game_type(first) {
+            // Type::method call (e.g., ID<Train>::empty())
+            // For now, just accept it - method validation can be done separately
+        } else if first.starts_with("ID<") && first.ends_with('>') {
+            // Handle generic ID types like ID<Train>::empty()
+            // These are valid if the full type exists
+            if !ctx.is_game_type(first) {
+                diagnostics.push(
+                    Diagnostic::error(
+                        format!("Undefined type '{}'", first),
+                        Span::new(node.start_byte(), node.end_byte()),
+                    )
+                    .with_code("E0302"),
                 );
             }
         } else {

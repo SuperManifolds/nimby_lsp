@@ -128,6 +128,9 @@ fn check_block(
             kind::RETURN_STATEMENT => {
                 check_return(child, ctx, diagnostics, local_types);
             }
+            kind::EXPRESSION_STATEMENT => {
+                check_expression_statement(child, ctx, diagnostics, local_types);
+            }
             _ => {
                 check_expression(child, ctx, diagnostics, local_types);
             }
@@ -143,13 +146,7 @@ fn check_expression(
 ) {
     match node.kind() {
         kind::BINARY_EXPRESSION => check_binary_expr(node, ctx, diagnostics, local_types),
-        kind::CALL_EXPRESSION => {
-            // Recurse into arguments
-            let mut cursor = node.walk();
-            for child in node.children(&mut cursor) {
-                check_expression(child, ctx, diagnostics, local_types);
-            }
-        }
+        kind::CALL_EXPRESSION => check_call_expression(node, ctx, diagnostics, local_types),
         kind::FIELD_ACCESS => check_field_access(node, ctx, diagnostics, local_types),
         _ => {
             // Recurse into children
@@ -158,6 +155,148 @@ fn check_expression(
                 check_expression(child, ctx, diagnostics, local_types);
             }
         }
+    }
+}
+
+fn check_call_expression(
+    node: Node,
+    ctx: &SemanticContext,
+    diagnostics: &mut Vec<Diagnostic>,
+    local_types: &HashMap<String, TypeInfo>,
+) {
+    // Get the function name
+    let func_name = if let Some(callee) = node.child_by_field("function") {
+        let name = callee.text(ctx.source);
+        // For method calls like module::func, we'll skip validation for now
+        if name.contains("::") {
+            // Recurse into arguments and return
+            let mut cursor = node.walk();
+            for child in node.children(&mut cursor) {
+                check_expression(child, ctx, diagnostics, local_types);
+            }
+            return;
+        }
+        name.to_string()
+    } else {
+        return;
+    };
+
+    // Count arguments
+    let mut arg_count = 0;
+    let mut args_node = None;
+    if let Some(args) = node.child_by_kind("arguments") {
+        args_node = Some(args);
+        let mut cursor = args.walk();
+        for child in args.named_children(&mut cursor) {
+            // Count expression children (skip punctuation)
+            if child.is_named() && child.kind() != "," {
+                arg_count += 1;
+            }
+        }
+    }
+
+    // Get function parameter info
+    if let Some(func_info) = ctx.get_function_params(&func_name) {
+        // Check argument count
+        if arg_count < func_info.min_params {
+            let span = args_node
+                .map(|a| Span::new(a.start_byte(), a.end_byte()))
+                .unwrap_or_else(|| Span::new(node.start_byte(), node.end_byte()));
+
+            diagnostics.push(
+                Diagnostic::error(
+                    format!(
+                        "Function '{}' expects {} argument(s), but {} provided",
+                        func_name, func_info.min_params, arg_count
+                    ),
+                    span,
+                )
+                .with_code("E0403"),
+            );
+        } else if arg_count > func_info.max_params {
+            let span = args_node
+                .map(|a| Span::new(a.start_byte(), a.end_byte()))
+                .unwrap_or_else(|| Span::new(node.start_byte(), node.end_byte()));
+
+            diagnostics.push(
+                Diagnostic::error(
+                    format!(
+                        "Function '{}' expects {} argument(s), but {} provided",
+                        func_name, func_info.max_params, arg_count
+                    ),
+                    span,
+                )
+                .with_code("E0403"),
+            );
+        }
+
+        // TODO: Check argument types (E0403)
+    }
+
+    // Recurse into arguments to check their expressions
+    // Skip the "function" child if it's a field_access (method call) to avoid
+    // false positives from field validation on method names
+    let func_child = node.child_by_field("function");
+    let skip_func = func_child
+        .map(|f| f.kind() == kind::FIELD_ACCESS)
+        .unwrap_or(false);
+
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        // Skip function child if it's a method call (field_access)
+        if skip_func && Some(child) == func_child {
+            // But still check the object part of the field access
+            if let Some(object) = child.child_by_field("object") {
+                check_expression(object, ctx, diagnostics, local_types);
+            }
+            continue;
+        }
+        check_expression(child, ctx, diagnostics, local_types);
+    }
+}
+
+fn check_expression_statement(
+    node: Node,
+    ctx: &SemanticContext,
+    diagnostics: &mut Vec<Diagnostic>,
+    local_types: &HashMap<String, TypeInfo>,
+) {
+    // Find the expression inside the expression_statement
+    let mut cursor = node.walk();
+    for child in node.named_children(&mut cursor) {
+        // Skip semicolons and other punctuation
+        if !child.is_named() {
+            continue;
+        }
+
+        // Check if this expression has side effects
+        let has_side_effects = match child.kind() {
+            // Function calls have side effects
+            kind::CALL_EXPRESSION => true,
+            // Field access might be a method call at the end of a chain
+            kind::FIELD_ACCESS => {
+                // Check if this is really a method call by looking at the parent
+                // For now, assume field access alone has no side effects
+                false
+            }
+            // Everything else (identifiers, literals, binary expressions without assignment)
+            // has no side effects
+            _ => false,
+        };
+
+        if !has_side_effects {
+            diagnostics.push(
+                Diagnostic::warning(
+                    "Expression statement has no effect",
+                    Span::new(child.start_byte(), child.end_byte()),
+                )
+                .with_code("W0400"),
+            );
+        }
+
+        // Still check the expression for other errors
+        check_expression(child, ctx, diagnostics, local_types);
+        return;
     }
 }
 
@@ -765,6 +904,137 @@ fn test(train: &Train) {
             errs.iter().any(|d| d.code.as_deref() == Some("E0303")),
             "Should error on undefined field in chain: {:?}",
             errs
+        );
+    }
+
+    // E0403 - Wrong number of arguments
+
+    #[test]
+    fn test_too_few_arguments() {
+        let source = r#"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+fn test() {
+    max(1);
+}
+"#;
+        let diags = check(source);
+        let errs = errors(&diags);
+        assert!(
+            errs.iter().any(|d| d.code.as_deref() == Some("E0403")),
+            "Should error on too few arguments: {:?}",
+            errs
+        );
+    }
+
+    #[test]
+    fn test_too_many_arguments() {
+        let source = r#"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+fn test() {
+    max(1, 2, 3);
+}
+"#;
+        let diags = check(source);
+        let errs = errors(&diags);
+        assert!(
+            errs.iter().any(|d| d.code.as_deref() == Some("E0403")),
+            "Should error on too many arguments: {:?}",
+            errs
+        );
+    }
+
+    #[test]
+    fn test_correct_argument_count() {
+        let source = r#"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+fn test() {
+    let x = max(1, 2);
+}
+"#;
+        let diags = check(source);
+        let errs = errors(&diags);
+        assert!(
+            errs.iter().all(|d| d.code.as_deref() != Some("E0403")),
+            "Correct argument count should not error: {:?}",
+            errs
+        );
+    }
+
+    #[test]
+    fn test_zero_argument_function() {
+        // abs() takes 1 argument
+        let source = r#"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+fn test() {
+    abs();
+}
+"#;
+        let diags = check(source);
+        let errs = errors(&diags);
+        assert!(
+            errs.iter().any(|d| d.code.as_deref() == Some("E0403")),
+            "Should error on zero arguments when 1 expected: {:?}",
+            errs
+        );
+    }
+
+    // W0400 - Expression has no effect
+
+    fn warnings(diags: &[Diagnostic]) -> Vec<&Diagnostic> {
+        diags
+            .iter()
+            .filter(|d| matches!(d.severity, Severity::Warning))
+            .collect()
+    }
+
+    #[test]
+    fn test_identifier_expression_no_effect() {
+        let source = r#"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+fn test() {
+    max;
+}
+"#;
+        let diags = check(source);
+        let warns = warnings(&diags);
+        assert!(
+            warns.iter().any(|d| d.code.as_deref() == Some("W0400")),
+            "Should warn on identifier with no effect: {:?}",
+            warns
+        );
+    }
+
+    #[test]
+    fn test_literal_expression_no_effect() {
+        let source = r#"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+fn test() {
+    42;
+}
+"#;
+        let diags = check(source);
+        let warns = warnings(&diags);
+        assert!(
+            warns.iter().any(|d| d.code.as_deref() == Some("W0400")),
+            "Should warn on literal with no effect: {:?}",
+            warns
+        );
+    }
+
+    #[test]
+    fn test_function_call_has_effect() {
+        let source = r#"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+fn test() {
+    max(1, 2);
+}
+"#;
+        let diags = check(source);
+        let warns = warnings(&diags);
+        assert!(
+            warns.iter().all(|d| d.code.as_deref() != Some("W0400")),
+            "Function call should not warn about no effect: {:?}",
+            warns
         );
     }
 }

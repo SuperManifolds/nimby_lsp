@@ -148,8 +148,11 @@ impl<'a> SemanticContext<'a> {
         match type_info {
             TypeInfo::Bool | TypeInfo::I64 | TypeInfo::F64 => true,
 
-            // User-defined enums are allowed
+            // User-defined enums are allowed (parsed as Enum variant)
             TypeInfo::Enum { name } => self.is_user_enum(name),
+
+            // User-defined enums may also be parsed as Struct (type parser doesn't distinguish)
+            TypeInfo::Struct { name, .. } => self.is_user_enum(name),
 
             // ID<T> is allowed for specific types
             TypeInfo::Generic { name, args } if name == "ID" => {
@@ -231,6 +234,32 @@ impl<'a> SemanticContext<'a> {
     /// Get a global function from the API
     pub fn get_global_function(&self, name: &str) -> Option<&crate::api::FunctionDef> {
         self.api.get_function(name)
+    }
+
+    /// Get parameter info for any callable: user function or API function
+    pub fn get_function_params(&self, name: &str) -> Option<FunctionParamInfo> {
+        // Check API functions (includes built-ins like abs, max, min, etc.)
+        if let Some(func) = self.api.get_function(name) {
+            return Some(FunctionParamInfo {
+                min_params: func.params.len(),
+                max_params: func.params.len(),
+                param_types: func.params.iter().map(|p| p.ty.clone()).collect(),
+                return_type: func.return_type.as_ref().map(|t| self.resolve_type(t)),
+            });
+        }
+
+        // Check user functions - we'd need to store param info during collection
+        // For now, skip validation for user functions
+        if self.user_functions.contains_key(name) {
+            return Some(FunctionParamInfo {
+                min_params: 0,
+                max_params: usize::MAX,
+                param_types: vec![],
+                return_type: self.user_functions.get(name).and_then(|t| t.clone()),
+            });
+        }
+
+        None
     }
 
     /// Check if a struct is public
@@ -416,6 +445,15 @@ fn collect_const(node: Node, ctx: &mut SemanticContext) {
         Span::new(node.start_byte(), node.end_byte()),
         Span::new(name_node.start_byte(), name_node.end_byte()),
     );
+}
+
+/// Parameter info for function call validation
+#[derive(Debug, Clone)]
+pub struct FunctionParamInfo {
+    pub min_params: usize,
+    pub max_params: usize,
+    pub param_types: Vec<String>,
+    pub return_type: Option<TypeInfo>,
 }
 
 #[cfg(test)]
