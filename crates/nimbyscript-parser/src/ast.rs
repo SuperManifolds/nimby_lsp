@@ -346,11 +346,11 @@ pub enum Literal {
 impl Literal {
     pub fn span(&self) -> Span {
         match self {
-            Literal::Int { span, .. } => *span,
-            Literal::Float { span, .. } => *span,
-            Literal::Bool { span, .. } => *span,
-            Literal::String { span, .. } => *span,
-            Literal::Time { span, .. } => *span,
+            Literal::Int { span, .. }
+            | Literal::Float { span, .. }
+            | Literal::Bool { span, .. }
+            | Literal::String { span, .. }
+            | Literal::Time { span, .. } => *span,
         }
     }
 }

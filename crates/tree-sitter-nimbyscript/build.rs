@@ -6,7 +6,10 @@ fn main() {
 
     let parser_path = src_dir.join("parser.c");
     c_config.file(&parser_path);
-    println!("cargo:rerun-if-changed={}", parser_path.to_str().unwrap());
+    println!(
+        "cargo:rerun-if-changed={}",
+        parser_path.to_str().expect("parser path should be valid UTF-8")
+    );
 
     c_config.compile("tree-sitter-nimbyscript");
 }

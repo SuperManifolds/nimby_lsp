@@ -43,6 +43,7 @@ mod token_type {
     pub const STRING: u32 = 5;
     pub const NUMBER: u32 = 6;
     pub const COMMENT: u32 = 7;
+    #[allow(dead_code)]
     pub const OPERATOR: u32 = 8;
     pub const PARAMETER: u32 = 9;
     pub const ENUM_MEMBER: u32 = 10;
@@ -118,8 +119,11 @@ impl<'a> TokenCollector<'a> {
         let end = node.end_byte();
 
         match node.kind() {
-            // Keywords
-            kind::VISIBILITY_MODIFIER | kind::STORAGE_MODIFIER | kind::MUTABILITY_MODIFIER => {
+            // Keywords (including boolean literals true/false)
+            kind::VISIBILITY_MODIFIER
+            | kind::STORAGE_MODIFIER
+            | kind::MUTABILITY_MODIFIER
+            | kind::BOOLEAN => {
                 self.add_token(start, end, token_type::KEYWORD, 0);
             }
 
@@ -152,9 +156,6 @@ impl<'a> TokenCollector<'a> {
             }
             kind::STRING_LITERAL => {
                 self.add_token(start, end, token_type::STRING, 0);
-            }
-            kind::BOOLEAN => {
-                self.add_token(start, end, token_type::KEYWORD, 0);
             }
 
             // Function calls
@@ -203,6 +204,10 @@ impl<'a> TokenCollector<'a> {
         }
     }
 
+    fn game_type_modifier(&self, name: &str) -> u32 {
+        if self.game_types.contains(name) { token_modifier::DEFAULT_LIBRARY } else { 0 }
+    }
+
     fn collect_struct_tokens(&mut self, node: Node) {
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
@@ -218,12 +223,7 @@ impl<'a> TokenCollector<'a> {
                 }
                 kind::EXTENDS_CLAUSE => {
                     if let Some(type_node) = child.child_by_field("type") {
-                        let name = type_node.text(self.content);
-                        let modifiers = if self.game_types.contains(name) {
-                            token_modifier::DEFAULT_LIBRARY
-                        } else {
-                            0
-                        };
+                        let modifiers = self.game_type_modifier(type_node.text(self.content));
                         self.add_token(type_node.start_byte(), type_node.end_byte(), token_type::TYPE, modifiers);
                     }
                 }
@@ -274,25 +274,28 @@ impl<'a> TokenCollector<'a> {
                     self.add_token(child.start_byte(), child.end_byte(), token_type::KEYWORD, 0);
                 }
                 kind::FUNCTION_NAME => {
-                    let text = child.text(self.content);
-                    if text.contains("::") {
-                        // Method: StructName::method_name
-                        let parts: Vec<&str> = text.split("::").collect();
-                        let mut pos = child.start_byte();
-                        if parts.len() == 2 {
-                            self.add_token(pos, pos + parts[0].len(), token_type::TYPE, 0);
-                            pos += parts[0].len() + 2; // skip ::
-                            self.add_token(pos, pos + parts[1].len(), token_type::FUNCTION, token_modifier::DEFINITION);
-                        }
-                    } else {
-                        self.add_token(child.start_byte(), child.end_byte(), token_type::FUNCTION, token_modifier::DEFINITION);
-                    }
+                    self.tokenize_function_name(child);
                 }
                 _ => {
                     self.collect_tokens(child);
                 }
             }
         }
+    }
+
+    fn tokenize_function_name(&mut self, child: Node) {
+        let text = child.text(self.content);
+        let Some(sep_pos) = text.find("::") else {
+            self.add_token(child.start_byte(), child.end_byte(), token_type::FUNCTION, token_modifier::DEFINITION);
+            return;
+        };
+
+        let pos = child.start_byte();
+        let type_name = &text[..sep_pos];
+        let method_name = &text[sep_pos + 2..];
+        self.add_token(pos, pos + type_name.len(), token_type::TYPE, 0);
+        let method_start = pos + type_name.len() + 2;
+        self.add_token(method_start, method_start + method_name.len(), token_type::FUNCTION, token_modifier::DEFINITION);
     }
 
     fn collect_type_tokens(&mut self, node: Node) {
@@ -343,33 +346,36 @@ impl<'a> TokenCollector<'a> {
         }
     }
 
+    fn path_prefix_token(&self, part: &str) -> (u32, u32) {
+        if self.game_types.contains(part) {
+            (token_type::TYPE, token_modifier::DEFAULT_LIBRARY)
+        } else if self.game_enums.contains(part) {
+            (token_type::ENUM, token_modifier::DEFAULT_LIBRARY)
+        } else if self.game_modules.contains(part) {
+            (token_type::TYPE, token_modifier::DEFAULT_LIBRARY)
+        } else {
+            (token_type::TYPE, 0)
+        }
+    }
+
     fn collect_path_tokens(&mut self, node: Node) {
         let text = node.text(self.content);
-        if text.contains("::") {
-            let parts: Vec<&str> = text.split("::").collect();
-            let mut pos = node.start_byte();
-            for (i, part) in parts.iter().enumerate() {
-                let (tok_type, modifiers) = if i == parts.len() - 1 {
-                    // Last part could be enum variant or function
-                    (token_type::ENUM_MEMBER, 0)
-                } else {
-                    // First parts are type/module/enum names
-                    if self.game_types.contains(part) {
-                        (token_type::TYPE, token_modifier::DEFAULT_LIBRARY)
-                    } else if self.game_enums.contains(part) {
-                        (token_type::ENUM, token_modifier::DEFAULT_LIBRARY)
-                    } else if self.game_modules.contains(part) {
-                        (token_type::TYPE, token_modifier::DEFAULT_LIBRARY)
-                    } else {
-                        (token_type::TYPE, 0)
-                    }
-                };
-                self.add_token(pos, pos + part.len(), tok_type, modifiers);
-                pos += part.len() + 2; // skip ::
-            }
-        } else {
-            // Simple identifier
+        if !text.contains("::") {
             self.add_token(node.start_byte(), node.end_byte(), token_type::VARIABLE, 0);
+            return;
+        }
+
+        let parts: Vec<&str> = text.split("::").collect();
+        let mut pos = node.start_byte();
+        for (i, part) in parts.iter().enumerate() {
+            let is_last = i == parts.len() - 1;
+            let (tok_type, modifiers) = if is_last {
+                (token_type::ENUM_MEMBER, 0)
+            } else {
+                self.path_prefix_token(part)
+            };
+            self.add_token(pos, pos + part.len(), tok_type, modifiers);
+            pos += part.len() + 2;
         }
     }
 

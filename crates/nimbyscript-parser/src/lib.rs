@@ -127,6 +127,7 @@ impl<'a> NodeExt<'a> for Node<'a> {
         self.utf8_text(source.as_bytes()).unwrap_or("")
     }
 
+    #[allow(clippy::manual_find)]
     fn child_by_kind(&self, kind: &str) -> Option<Node<'a>> {
         let mut cursor = self.walk();
         for child in self.children(&mut cursor) {

@@ -91,8 +91,7 @@ fn extract_function_name(before_paren: &str) -> Option<(String, Option<String>)>
             let before_colon = &before_paren[..colon_pos];
             let start = before_colon
                 .rfind(|c: char| !c.is_alphanumeric() && c != '_')
-                .map(|i| i + 1)
-                .unwrap_or(0);
+                .map_or(0, |i| i + 1);
             let prefix = before_colon[start..].trim();
             if is_valid_identifier(prefix) {
                 return Some((func_name.to_string(), Some(prefix.to_string())));
@@ -103,8 +102,7 @@ fn extract_function_name(before_paren: &str) -> Option<(String, Option<String>)>
     // Handle simple function calls: function_name
     let start = before_paren
         .rfind(|c: char| !c.is_alphanumeric() && c != '_')
-        .map(|i| i + 1)
-        .unwrap_or(0);
+        .map_or(0, |i| i + 1);
     let func_name = before_paren[start..].trim();
 
     if is_valid_identifier(func_name) {
@@ -115,7 +113,8 @@ fn extract_function_name(before_paren: &str) -> Option<(String, Option<String>)>
 }
 
 fn is_valid_identifier(s: &str) -> bool {
-    !s.is_empty() && s.chars().next().map(|c| c.is_alphabetic() || c == '_').unwrap_or(false)
+    !s.is_empty()
+        && s.chars().next().is_some_and(|c| c.is_alphabetic() || c == '_')
         && s.chars().all(|c| c.is_alphanumeric() || c == '_')
 }
 

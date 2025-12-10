@@ -2,14 +2,12 @@ use std::collections::HashMap;
 use tower_lsp::lsp_types::Position;
 
 use nimbyscript_analyzer::{ApiDefinitions, Diagnostic, SymbolTable};
-use nimbyscript_analyzer::diagnostics::Severity;
 use nimbyscript_analyzer::symbols::{Symbol, SymbolKind};
 use nimbyscript_parser::{parse, has_errors, kind, Node, NodeExt, Tree};
 
 /// Document state containing parsed content and analysis results
 pub struct Document {
     pub content: String,
-    pub version: i32,
     line_offsets: Vec<usize>,
     diagnostics: Vec<Diagnostic>,
     symbols: SymbolTable,
@@ -20,18 +18,13 @@ pub struct Document {
 }
 
 impl Document {
-    pub fn new(content: String, version: i32) -> Self {
-        Self::new_with_api(content, version, None)
-    }
-
-    pub fn new_with_api(content: String, version: i32, api: Option<&ApiDefinitions>) -> Self {
+    pub fn new(content: String, api: Option<&ApiDefinitions>) -> Self {
         let line_offsets = compute_line_offsets(&content);
         let tree = parse(&content);
         let (diagnostics, symbols, struct_extends) = analyze(&content, &tree, api);
 
         Self {
             content,
-            version,
             line_offsets,
             diagnostics,
             symbols,
@@ -54,7 +47,7 @@ impl Document {
 
     /// Get the game type a struct extends (e.g., "Signal" for a struct that extends Signal)
     pub fn struct_extends(&self, struct_name: &str) -> Option<&str> {
-        self.struct_extends.get(struct_name).map(|s| s.as_str())
+        self.struct_extends.get(struct_name).map(String::as_str)
     }
 
     pub fn offset_to_position(&self, offset: usize) -> Position {
@@ -96,7 +89,7 @@ fn analyze(content: &str, tree: &Tree, api: Option<&ApiDefinitions>) -> (Vec<Dia
 
     // Check for parse errors
     if has_errors(tree) {
-        collect_errors(root, content, &mut diagnostics);
+        collect_errors(root, &mut diagnostics);
     }
 
     // Extract symbols and struct extends info
@@ -113,7 +106,7 @@ fn analyze(content: &str, tree: &Tree, api: Option<&ApiDefinitions>) -> (Vec<Dia
     (diagnostics, symbols, struct_extends)
 }
 
-fn collect_errors(node: Node, _content: &str, diagnostics: &mut Vec<Diagnostic>) {
+fn collect_errors(node: Node, diagnostics: &mut Vec<Diagnostic>) {
     if node.is_error() {
         diagnostics.push(
             Diagnostic::error(
@@ -135,7 +128,7 @@ fn collect_errors(node: Node, _content: &str, diagnostics: &mut Vec<Diagnostic>)
 
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        collect_errors(child, _content, diagnostics);
+        collect_errors(child, diagnostics);
     }
 }
 
@@ -260,17 +253,74 @@ fn validate_public_functions(
     api: &ApiDefinitions,
     diagnostics: &mut Vec<Diagnostic>,
 ) {
-    match node.kind() {
-        kind::FUNCTION_DEFINITION => {
-            validate_fn_decl(node, content, api, diagnostics);
-        }
-        _ => {
-            let mut cursor = node.walk();
-            for child in node.children(&mut cursor) {
-                validate_public_functions(child, content, api, diagnostics);
-            }
+    if node.kind() == kind::FUNCTION_DEFINITION {
+        validate_fn_decl(node, content, api, diagnostics);
+    } else {
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            validate_public_functions(child, content, api, diagnostics);
         }
     }
+}
+
+/// Extract a single parameter's name and type from a parameter node
+fn extract_parameter(param: Node, content: &str) -> (String, String) {
+    let param_name = param
+        .child_by_field("name")
+        .map_or_else(String::new, |n| n.text(content).to_string());
+    let param_type = param
+        .child_by_field("type")
+        .map_or_else(String::new, |n| n.text(content).to_string());
+    (param_name, param_type)
+}
+
+/// Parsed function signature info
+struct FnSignature {
+    is_pub: bool,
+    name_full: String,
+    name_start: usize,
+    name_end: usize,
+    params: Vec<(String, String)>,
+    return_type: Option<String>,
+}
+
+/// Parse function signature from AST node
+fn parse_fn_signature(node: Node, content: &str) -> FnSignature {
+    let mut sig = FnSignature {
+        is_pub: false,
+        name_full: String::new(),
+        name_start: node.start_byte(),
+        name_end: node.end_byte(),
+        params: Vec::new(),
+        return_type: None,
+    };
+
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        match child.kind() {
+            kind::VISIBILITY_MODIFIER => sig.is_pub = true,
+            kind::FUNCTION_NAME => {
+                sig.name_full = child.text(content).to_string();
+                sig.name_start = child.start_byte();
+                sig.name_end = child.end_byte();
+            }
+            kind::PARAMETERS => {
+                let mut param_cursor = child.walk();
+                for param in child.children(&mut param_cursor) {
+                    if param.kind() == kind::PARAMETER {
+                        sig.params.push(extract_parameter(param, content));
+                    }
+                }
+            }
+            kind::TYPE => {
+                if node.child_by_field("return_type").map(|n| n.id()) == Some(child.id()) {
+                    sig.return_type = Some(child.text(content).to_string());
+                }
+            }
+            _ => {}
+        }
+    }
+    sig
 }
 
 fn validate_fn_decl(
@@ -279,191 +329,106 @@ fn validate_fn_decl(
     api: &ApiDefinitions,
     diagnostics: &mut Vec<Diagnostic>,
 ) {
-    let mut is_pub = false;
-    let mut fn_name_full = String::new();
-    let mut fn_name_start = node.start_byte();
-    let mut fn_name_end = node.end_byte();
-    let mut params: Vec<(String, String)> = Vec::new();
-    let mut return_type: Option<String> = None;
-
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        match child.kind() {
-            kind::VISIBILITY_MODIFIER => {
-                is_pub = true;
-            }
-            kind::FUNCTION_NAME => {
-                fn_name_full = child.text(content).to_string();
-                fn_name_start = child.start_byte();
-                fn_name_end = child.end_byte();
-            }
-            kind::PARAMETERS => {
-                let mut param_cursor = child.walk();
-                for param in child.children(&mut param_cursor) {
-                    if param.kind() == kind::PARAMETER {
-                        let mut param_name = String::new();
-                        let mut param_type = String::new();
-                        if let Some(name_node) = param.child_by_field("name") {
-                            param_name = name_node.text(content).to_string();
-                        }
-                        if let Some(type_node) = param.child_by_field("type") {
-                            param_type = type_node.text(content).to_string();
-                        }
-                        params.push((param_name, param_type));
-                    }
-                }
-            }
-            kind::TYPE => {
-                // This is the return type (field name is "return_type")
-                if node.child_by_field("return_type").map(|n| n.id()) == Some(child.id()) {
-                    return_type = Some(child.text(content).to_string());
-                }
-            }
-            _ => {}
-        }
-    }
-
-    // Only validate public methods (functions with :: in name)
-    if !is_pub {
+    let sig = parse_fn_signature(node, content);
+    if !sig.is_pub {
         return;
     }
 
-    // Extract method name (part after ::)
-    let method_name = if let Some(pos) = fn_name_full.find("::") {
-        &fn_name_full[pos + 2..]
-    } else {
-        // Public standalone function - also needs to be a valid callback
-        &fn_name_full
-    };
+    let span = nimbyscript_parser::ast::Span::new(sig.name_start, sig.name_end);
+    let method_name = sig.name_full.find("::").map_or(sig.name_full.as_str(), |pos| &sig.name_full[pos + 2..]);
 
-    // Check if it's a valid callback
-    let callback = api.get_callback(method_name);
-    if callback.is_none() {
+    let Some(callback) = api.get_callback(method_name) else {
         let valid_names: Vec<_> = api.callback_names().collect();
         diagnostics.push(
             Diagnostic::error(
-                format!(
-                    "'{}' is not a valid game callback. Valid callbacks are: {}",
-                    method_name,
-                    valid_names.join(", ")
-                ),
-                nimbyscript_parser::ast::Span::new(fn_name_start, fn_name_end),
+                format!("'{method_name}' is not a valid game callback. Valid callbacks are: {}", valid_names.join(", ")),
+                span,
             )
             .with_code("E0100"),
         );
         return;
-    }
+    };
 
-    let callback = callback.unwrap();
-
-    // Validate parameter count
     let expected_params: Vec<_> = callback.params.iter().collect();
-    if params.len() != expected_params.len() {
+    if sig.params.len() != expected_params.len() {
         diagnostics.push(
             Diagnostic::error(
-                format!(
-                    "'{}' expects {} parameters, but {} were provided",
-                    method_name,
-                    expected_params.len(),
-                    params.len()
-                ),
-                nimbyscript_parser::ast::Span::new(fn_name_start, fn_name_end),
+                format!("'{method_name}' expects {} parameters, but {} were provided", expected_params.len(), sig.params.len()),
+                span,
             )
             .with_code("E0101"),
         );
         return;
     }
 
-    // Validate parameter names and types
-    for (i, ((param_name, param_type), expected)) in params.iter().zip(expected_params.iter()).enumerate() {
-        // Check parameter name (skip 'self' name check - any name is fine for self)
-        let expected_name = &expected.name;
-        if expected_name != "self" && param_name != expected_name {
+    validate_callback_params(&sig.params, &expected_params, method_name, span, diagnostics);
+    validate_callback_return(sig.return_type.as_deref(), callback.return_type.as_deref(), method_name, span, diagnostics);
+}
+
+fn validate_callback_params(
+    params: &[(String, String)],
+    expected: &[&nimbyscript_analyzer::ParamDef],
+    method_name: &str,
+    span: nimbyscript_parser::ast::Span,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    for (i, ((param_name, param_type), exp)) in params.iter().zip(expected.iter()).enumerate() {
+        if exp.name != "self" && param_name != &exp.name {
             diagnostics.push(
                 Diagnostic::error(
-                    format!(
-                        "Parameter {} of '{}' is named '{}', expected '{}'",
-                        i + 1,
-                        method_name,
-                        param_name,
-                        expected_name
-                    ),
-                    nimbyscript_parser::ast::Span::new(fn_name_start, fn_name_end),
+                    format!("Parameter {} of '{method_name}' is named '{param_name}', expected '{}'", i + 1, exp.name),
+                    span,
                 )
                 .with_code("E0104"),
             );
         }
 
-        // Check parameter type
-        let expected_type = &expected.ty;
-        let param_type_normalized = param_type.trim().replace(' ', "");
-        let expected_type_normalized = expected_type.trim().replace(' ', "");
-
-        // &Self matches any &TypeName for the self parameter
-        let types_match = if expected_type_normalized == "&Self" {
-            param_type_normalized.starts_with('&')
-        } else {
-            param_type_normalized == expected_type_normalized
-        };
+        let param_norm = param_type.trim().replace(' ', "");
+        let exp_norm = exp.ty.trim().replace(' ', "");
+        let types_match = if exp_norm == "&Self" { param_norm.starts_with('&') } else { param_norm == exp_norm };
 
         if !types_match {
             diagnostics.push(
                 Diagnostic::error(
-                    format!(
-                        "Parameter {} of '{}' has type '{}', expected '{}'",
-                        i + 1,
-                        method_name,
-                        param_type.trim(),
-                        expected_type
-                    ),
-                    nimbyscript_parser::ast::Span::new(fn_name_start, fn_name_end),
+                    format!("Parameter {} of '{method_name}' has type '{}', expected '{}'", i + 1, param_type.trim(), exp.ty),
+                    span,
                 )
                 .with_code("E0102"),
             );
         }
     }
+}
 
-    // Validate return type
-    let expected_return = callback.return_type.as_deref();
-    match (&return_type, expected_return) {
+fn validate_callback_return(
+    actual: Option<&str>,
+    expected: Option<&str>,
+    method_name: &str,
+    span: nimbyscript_parser::ast::Span,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    match (actual, expected) {
         (Some(actual), Some(expected)) => {
-            let actual_normalized = actual.trim().replace(' ', "");
-            let expected_normalized = expected.trim().replace(' ', "");
-            if actual_normalized != expected_normalized {
+            let actual_norm = actual.trim().replace(' ', "");
+            let expected_norm = expected.trim().replace(' ', "");
+            if actual_norm != expected_norm {
                 diagnostics.push(
-                    Diagnostic::error(
-                        format!(
-                            "'{}' should return '{}', but returns '{}'",
-                            method_name, expected, actual
-                        ),
-                        nimbyscript_parser::ast::Span::new(fn_name_start, fn_name_end),
-                    )
-                    .with_code("E0103"),
+                    Diagnostic::error(format!("'{method_name}' should return '{expected}', but returns '{actual}'"), span)
+                        .with_code("E0103"),
                 );
             }
         }
         (None, Some(expected)) => {
             diagnostics.push(
-                Diagnostic::error(
-                    format!("'{}' should return '{}'", method_name, expected),
-                    nimbyscript_parser::ast::Span::new(fn_name_start, fn_name_end),
-                )
-                .with_code("E0103"),
+                Diagnostic::error(format!("'{method_name}' should return '{expected}'"), span).with_code("E0103"),
             );
         }
         (Some(actual), None) => {
             diagnostics.push(
-                Diagnostic::error(
-                    format!(
-                        "'{}' should not have a return type, but returns '{}'",
-                        method_name, actual
-                    ),
-                    nimbyscript_parser::ast::Span::new(fn_name_start, fn_name_end),
-                )
-                .with_code("E0103"),
+                Diagnostic::error(format!("'{method_name}' should not have a return type, but returns '{actual}'"), span)
+                    .with_code("E0103"),
             );
         }
-        (None, None) => {} // Both have no return type, OK
+        (None, None) => {}
     }
 }
 
@@ -520,38 +485,32 @@ fn validate_meta_blocks_inner(
     }
 }
 
-/// Validate script-level meta (requires lang and api)
-fn validate_script_meta(node: Node, content: &str, diagnostics: &mut Vec<Diagnostic>) {
-    let mut has_lang = false;
-    let mut has_api = false;
-
-    // Find the meta block within script_meta
-    if let Some(meta_block) = node.child_by_kind(kind::META_BLOCK) {
-        if let Some(meta_map) = meta_block.child_by_kind(kind::META_MAP) {
-            let mut cursor = meta_map.walk();
-            for child in meta_map.children(&mut cursor) {
-                if child.kind() == kind::META_ENTRY {
-                    if let Some(key_node) = child.child_by_field("key") {
-                        let key = key_node.text(content);
-                        match key {
-                            "lang" => has_lang = true,
-                            "api" => has_api = true,
-                            "description" => {} // Valid optional field
-                            other => {
-                                diagnostics.push(
-                                    Diagnostic::warning(
-                                        format!("Unknown script meta field '{}'", other),
-                                        nimbyscript_parser::ast::Span::new(child.start_byte(), child.end_byte()),
-                                    )
-                                    .with_code("E0201"),
-                                );
-                            }
-                        }
-                    }
-                }
-            }
+/// Validate a single script meta entry
+fn validate_script_meta_entry(child: Node, content: &str, diagnostics: &mut Vec<Diagnostic>) -> (bool, bool) {
+    let Some(key_node) = child.child_by_field("key") else {
+        return (false, false);
+    };
+    let key = key_node.text(content);
+    match key {
+        "lang" => (true, false),
+        "api" => (false, true),
+        "description" => (false, false),
+        other => {
+            diagnostics.push(
+                Diagnostic::warning(
+                    format!("Unknown script meta field '{other}'"),
+                    nimbyscript_parser::ast::Span::new(child.start_byte(), child.end_byte()),
+                )
+                .with_code("E0201"),
+            );
+            (false, false)
         }
     }
+}
+
+/// Validate script-level meta (requires lang and api)
+fn validate_script_meta(node: Node, content: &str, diagnostics: &mut Vec<Diagnostic>) {
+    let (has_lang, has_api) = collect_script_meta_flags(node, content, diagnostics);
 
     if !has_lang {
         diagnostics.push(
@@ -574,6 +533,23 @@ fn validate_script_meta(node: Node, content: &str, diagnostics: &mut Vec<Diagnos
     }
 }
 
+fn collect_script_meta_flags(node: Node, content: &str, diagnostics: &mut Vec<Diagnostic>) -> (bool, bool) {
+    let Some(meta_block) = node.child_by_kind(kind::META_BLOCK) else { return (false, false); };
+    let Some(meta_map) = meta_block.child_by_kind(kind::META_MAP) else { return (false, false); };
+
+    let mut has_lang = false;
+    let mut has_api = false;
+    let mut cursor = meta_map.walk();
+    for child in meta_map.children(&mut cursor) {
+        if child.kind() == kind::META_ENTRY {
+            let (lang, api) = validate_script_meta_entry(child, content, diagnostics);
+            has_lang = has_lang || lang;
+            has_api = has_api || api;
+        }
+    }
+    (has_lang, has_api)
+}
+
 /// Validate struct-level and field-level meta
 fn validate_struct_meta(node: Node, content: &str, diagnostics: &mut Vec<Diagnostic>) {
     let mut cursor = node.walk();
@@ -594,6 +570,41 @@ fn validate_struct_meta(node: Node, content: &str, diagnostics: &mut Vec<Diagnos
     }
 }
 
+/// Validate a single field meta entry
+fn validate_field_meta_entry(child: Node, key: &str, field_type: &str, diagnostics: &mut Vec<Diagnostic>) {
+    let is_numeric = field_type == "i64" || field_type == "f64";
+    let is_bool = field_type == "bool";
+    let span = nimbyscript_parser::ast::Span::new(child.start_byte(), child.end_byte());
+
+    match key {
+        "min" | "max" if !is_numeric => {
+            diagnostics.push(
+                Diagnostic::error(
+                    format!("'{key}' is only valid for numeric types (i64, f64), not '{field_type}'"),
+                    span,
+                )
+                .with_code("E0202"),
+            );
+        }
+        "default" if !is_numeric && !is_bool && !field_type.chars().next().is_some_and(char::is_uppercase) => {
+            diagnostics.push(
+                Diagnostic::warning(format!("'default' may not be valid for type '{field_type}'"), span)
+                    .with_code("E0203"),
+            );
+        }
+        "label" | "min" | "max" | "default" => {} // Valid keys
+        other => {
+            diagnostics.push(
+                Diagnostic::warning(
+                    format!("Unknown field meta key '{other}'. Valid keys: label, min, max, default"),
+                    span,
+                )
+                .with_code("E0201"),
+            );
+        }
+    }
+}
+
 /// Validate field meta based on field type
 fn validate_field_meta(node: Node, content: &str, diagnostics: &mut Vec<Diagnostic>) {
     let mut field_type = String::new();
@@ -602,66 +613,20 @@ fn validate_field_meta(node: Node, content: &str, diagnostics: &mut Vec<Diagnost
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         match child.kind() {
-            kind::TYPE => {
-                field_type = child.text(content).to_string();
-            }
-            kind::META_BLOCK => {
-                meta_node = Some(child);
-            }
+            kind::TYPE => field_type = child.text(content).to_string(),
+            kind::META_BLOCK => meta_node = Some(child),
             _ => {}
         }
     }
 
-    if let Some(meta) = meta_node {
-        let is_numeric = field_type == "i64" || field_type == "f64";
-        let is_bool = field_type == "bool";
+    let Some(meta) = meta_node else { return; };
+    let Some(meta_map) = meta.child_by_kind(kind::META_MAP) else { return; };
 
-        if let Some(meta_map) = meta.child_by_kind(kind::META_MAP) {
-            let mut cursor = meta_map.walk();
-            for child in meta_map.children(&mut cursor) {
-                if child.kind() == kind::META_ENTRY {
-                    if let Some(key_node) = child.child_by_field("key") {
-                        let key = key_node.text(content);
-
-                        match key {
-                            "label" => {} // Valid for all types
-                            "min" | "max" => {
-                                if !is_numeric {
-                                    diagnostics.push(
-                                        Diagnostic::error(
-                                            format!("'{}' is only valid for numeric types (i64, f64), not '{}'", key, field_type),
-                                            nimbyscript_parser::ast::Span::new(child.start_byte(), child.end_byte()),
-                                        )
-                                        .with_code("E0202"),
-                                    );
-                                }
-                            }
-                            "default" => {
-                                // Valid for bool, i64, f64, and enum types
-                                if !is_numeric && !is_bool && !field_type.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
-                                    diagnostics.push(
-                                        Diagnostic::warning(
-                                            format!("'default' may not be valid for type '{}'", field_type),
-                                            nimbyscript_parser::ast::Span::new(child.start_byte(), child.end_byte()),
-                                        )
-                                        .with_code("E0203"),
-                                    );
-                                }
-                            }
-                            other => {
-                                diagnostics.push(
-                                    Diagnostic::warning(
-                                        format!("Unknown field meta key '{}'. Valid keys: label, min, max, default", other),
-                                        nimbyscript_parser::ast::Span::new(child.start_byte(), child.end_byte()),
-                                    )
-                                    .with_code("E0201"),
-                                );
-                            }
-                        }
-                    }
-                }
-            }
-        }
+    let mut cursor = meta_map.walk();
+    for child in meta_map.children(&mut cursor) {
+        if child.kind() != kind::META_ENTRY { continue; }
+        let Some(key_node) = child.child_by_field("key") else { continue; };
+        validate_field_meta_entry(child, key_node.text(content), &field_type, diagnostics);
     }
 }
 
@@ -686,40 +651,34 @@ fn validate_meta_keys(
     context: &str,
     diagnostics: &mut Vec<Diagnostic>,
 ) {
-    if let Some(meta_map) = node.child_by_kind(kind::META_MAP) {
-        let mut cursor = meta_map.walk();
-        for child in meta_map.children(&mut cursor) {
-            if child.kind() == kind::META_ENTRY {
-                if let Some(key_node) = child.child_by_field("key") {
-                    let key = key_node.text(content);
-                    if !allowed.contains(&key) {
-                        diagnostics.push(
-                            Diagnostic::warning(
-                                format!(
-                                    "Unknown {} meta key '{}'. Valid keys: {}",
-                                    context,
-                                    key,
-                                    allowed.join(", ")
-                                ),
-                                nimbyscript_parser::ast::Span::new(child.start_byte(), child.end_byte()),
-                            )
-                            .with_code("E0201"),
-                        );
-                    }
-                }
-            }
-        }
+    let Some(meta_map) = node.child_by_kind(kind::META_MAP) else { return; };
+
+    let mut cursor = meta_map.walk();
+    for child in meta_map.children(&mut cursor) {
+        if child.kind() != kind::META_ENTRY { continue; }
+        let Some(key_node) = child.child_by_field("key") else { continue; };
+        let key = key_node.text(content);
+        if allowed.contains(&key) { continue; }
+
+        diagnostics.push(
+            Diagnostic::warning(
+                format!("Unknown {context} meta key '{key}'. Valid keys: {}", allowed.join(", ")),
+                nimbyscript_parser::ast::Span::new(child.start_byte(), child.end_byte()),
+            )
+            .with_code("E0201"),
+        );
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use nimbyscript_analyzer::diagnostics::Severity;
 
     #[test]
     fn test_example_file_meta_validation() {
         let content = include_str!("../../../tests/fixtures/valid/example.nimbyscript");
-        let doc = Document::new_with_api(content.to_string(), 1, None);
+        let doc = Document::new(content.to_string(), None);
 
         println!("\nMeta validation diagnostics ({}):", doc.diagnostics().len());
         for d in doc.diagnostics() {
@@ -737,7 +696,7 @@ mod tests {
     #[test]
     fn test_struct_extends_tracking() {
         let content = include_str!("../../../tests/fixtures/valid/example.nimbyscript");
-        let doc = Document::new_with_api(content.to_string(), 1, None);
+        let doc = Document::new(content.to_string(), None);
 
         // Verify struct extends are tracked correctly
         assert_eq!(doc.struct_extends("ProbeCheck"), Some("Signal"));
@@ -760,7 +719,7 @@ script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub struct Test extend Signal { }
 pub fn Test::
 "#;
-        let doc = Document::new_with_api(content.to_string(), 1, None);
+        let doc = Document::new(content.to_string(), None);
 
         // Should still track struct extends even with the incomplete function
         assert_eq!(doc.struct_extends("Test"), Some("Signal"));

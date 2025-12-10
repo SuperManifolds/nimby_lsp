@@ -118,12 +118,12 @@ impl ApiDefinitions {
 
     /// Get all type names for completion
     pub fn type_names(&self) -> impl Iterator<Item = &str> {
-        self.types.keys().map(|s| s.as_str())
+        self.types.keys().map(std::string::String::as_str)
     }
 
     /// Get all enum names for completion
     pub fn enum_names(&self) -> impl Iterator<Item = &str> {
-        self.enums.keys().map(|s| s.as_str())
+        self.enums.keys().map(std::string::String::as_str)
     }
 
     /// Get all function names for completion
@@ -133,7 +133,7 @@ impl ApiDefinitions {
 
     /// Get all module names for completion
     pub fn module_names(&self) -> impl Iterator<Item = &str> {
-        self.modules.keys().map(|s| s.as_str())
+        self.modules.keys().map(std::string::String::as_str)
     }
 
     /// Get function by name

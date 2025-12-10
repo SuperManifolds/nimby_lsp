@@ -95,7 +95,7 @@ impl SymbolTable {
     /// Find symbol at position
     pub fn find_at_position(&self, pos: usize) -> Option<Symbol> {
         // Check globals
-        for entry in self.globals.iter() {
+        for entry in &self.globals {
             let symbol = entry.value();
             if pos >= symbol.span.start && pos < symbol.span.end {
                 return Some(symbol.clone());
@@ -103,7 +103,7 @@ impl SymbolTable {
         }
 
         // Check all locals
-        for entry in self.locals.iter() {
+        for entry in &self.locals {
             for symbol in entry.value() {
                 if pos >= symbol.span.start && pos < symbol.span.end {
                     return Some(symbol.clone());

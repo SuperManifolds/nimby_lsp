@@ -1,3 +1,5 @@
+use std::fmt::Write;
+
 use dashmap::DashMap;
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
@@ -24,7 +26,7 @@ impl Backend {
         // Load embedded API definitions
         let api_definitions = ApiDefinitions::load_from_str(API_DEFINITIONS_TOML)
             .unwrap_or_else(|e| {
-                eprintln!("Failed to load API definitions: {}", e);
+                eprintln!("Failed to load API definitions: {e}");
                 ApiDefinitions::default()
             });
 
@@ -36,7 +38,7 @@ impl Backend {
     }
 
     async fn update_document(&self, uri: Url, content: String, version: i32) {
-        let doc = Document::new_with_api(content, version, Some(&self.api_definitions));
+        let doc = Document::new(content, Some(&self.api_definitions));
         let diagnostics: Vec<_> = doc.diagnostics().to_vec();
         self.documents.insert(uri.clone(), doc);
 
@@ -211,11 +213,11 @@ impl LanguageServer for Backend {
                 let mut contents = format!("**{}**", symbol.name);
 
                 if let Some(type_name) = &symbol.type_name {
-                    contents.push_str(&format!(": `{}`", type_name));
+                    let _ = write!(contents, ": `{type_name}`");
                 }
 
                 if let Some(doc_str) = &symbol.doc {
-                    contents.push_str(&format!("\n\n{}", doc_str));
+                    let _ = write!(contents, "\n\n{doc_str}");
                 }
 
                 return Ok(Some(Hover {

@@ -13,6 +13,29 @@ edition = "2021"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/supermanifolds/nimby_lsp"
 
+[workspace.lints.clippy]
+complexity = "warn"
+perf = "warn"
+style = "warn"
+suspicious = "warn"
+pedantic = "warn"
+unwrap_used = { level = "warn", priority = 1 }
+implicit_hasher = { level = "allow", priority = 1 }
+manual_midpoint = { level = "allow", priority = 1 }
+float_cmp = { level = "allow", priority = 1 }
+# Noisy pedantic lints
+doc_markdown = { level = "allow", priority = 1 }
+must_use_candidate = { level = "allow", priority = 1 }
+return_self_not_must_use = { level = "allow", priority = 1 }
+missing_errors_doc = { level = "allow", priority = 1 }
+missing_panics_doc = { level = "allow", priority = 1 }
+module_name_repetitions = { level = "allow", priority = 1 }
+# LSP uses u32 for positions, common truncation is expected
+cast_possible_truncation = { level = "allow", priority = 1 }
+similar_names = { level = "allow", priority = 1 }
+# Wildcard imports are fine for tower_lsp types
+wildcard_imports = { level = "allow", priority = 1 }
+
 [workspace.dependencies]
 # Parser
 pest = "2.7"

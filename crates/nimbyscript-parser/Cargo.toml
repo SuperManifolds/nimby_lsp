@@ -9,3 +9,6 @@ tree-sitter = { workspace = true }
 tree-sitter-nimbyscript = { path = "../tree-sitter-nimbyscript" }
 thiserror = { workspace = true }
 serde = { workspace = true }
+
+[lints]
+workspace = true

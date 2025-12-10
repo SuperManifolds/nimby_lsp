@@ -1,3 +1,4 @@
+use std::fmt::Write;
 use tower_lsp::lsp_types::*;
 
 use nimbyscript_analyzer::{ApiDefinitions, FunctionDef};
@@ -28,15 +29,15 @@ fn format_signature(func: &FunctionDef) -> String {
         .join(", ");
 
     match &func.return_type {
-        Some(ret) => format!("({}) -> {}", params, ret),
-        None => format!("({})", params),
+        Some(ret) => format!("({params}) -> {ret}"),
+        None => format!("({params})"),
     }
 }
 
 /// Generate snippet with named parameter placeholders
 fn format_snippet(name: &str, func: &FunctionDef) -> String {
     if func.params.is_empty() {
-        return format!("{}()", name);
+        return format!("{name}()");
     }
 
     let placeholders = func.params.iter()
@@ -45,7 +46,7 @@ fn format_snippet(name: &str, func: &FunctionDef) -> String {
         .collect::<Vec<_>>()
         .join(", ");
 
-    format!("{}({})", name, placeholders)
+    format!("{name}({placeholders})")
 }
 
 /// Format documentation with parameter details
@@ -58,25 +59,25 @@ fn format_documentation(func: &FunctionDef) -> Option<Documentation> {
         }
         doc.push_str("**Parameters:**\n");
         for p in &func.params {
-            doc.push_str(&format!("- `{}`: `{}`", p.name, p.ty));
+            let _ = write!(doc, "- `{}`: `{}`", p.name, p.ty);
             if let Some(param_doc) = &p.doc {
-                doc.push_str(&format!(" — {}", param_doc));
+                let _ = write!(doc, " — {param_doc}");
             }
             doc.push('\n');
         }
     }
 
     if let Some(ret) = &func.return_type {
-        doc.push_str(&format!("\n**Returns:** `{}`", ret));
+        let _ = write!(doc, "\n**Returns:** `{ret}`");
     }
 
-    if !doc.is_empty() {
+    if doc.is_empty() {
+        None
+    } else {
         Some(Documentation::MarkupContent(MarkupContent {
             kind: MarkupKind::Markdown,
             value: doc,
         }))
-    } else {
-        None
     }
 }
 
@@ -141,8 +142,7 @@ fn get_completion_context(content: &str, offset: usize) -> CompletionContext {
             let before_colon = &before[..colon_pos];
             let start = before_colon
                 .rfind(|c: char| !c.is_alphanumeric() && c != '_')
-                .map(|i| i + 1)
-                .unwrap_or(0);
+                .map_or(0, |i| i + 1);
             let module = before_colon[start..].to_string();
             if !module.is_empty() {
                 return CompletionContext::PathAfterColon(module);
@@ -171,16 +171,15 @@ fn get_prefix(content: &str, offset: usize) -> String {
     let before = &content[..offset];
     let start = before
         .rfind(|c: char| !c.is_alphanumeric() && c != '_')
-        .map(|i| i + 1)
-        .unwrap_or(0);
+        .map_or(0, |i| i + 1);
     before[start..].to_string()
 }
 
 fn add_keywords(items: &mut Vec<CompletionItem>, prefix: &str) {
-    for keyword in KEYWORDS {
+    for &keyword in KEYWORDS {
         if keyword.starts_with(prefix) {
             items.push(CompletionItem {
-                label: keyword.to_string(),
+                label: (*keyword).to_string(),
                 kind: Some(CompletionItemKind::KEYWORD),
                 detail: Some("keyword".to_string()),
                 ..Default::default()
@@ -190,10 +189,10 @@ fn add_keywords(items: &mut Vec<CompletionItem>, prefix: &str) {
 }
 
 fn add_primitive_types(items: &mut Vec<CompletionItem>, prefix: &str) {
-    for ty in PRIMITIVE_TYPES {
+    for &ty in PRIMITIVE_TYPES {
         if ty.starts_with(prefix) {
             items.push(CompletionItem {
-                label: ty.to_string(),
+                label: (*ty).to_string(),
                 kind: Some(CompletionItemKind::TYPE_PARAMETER),
                 detail: Some("primitive type".to_string()),
                 ..Default::default()
@@ -308,7 +307,7 @@ fn add_module_members(
                 items.push(CompletionItem {
                     label: variant.name.clone(),
                     kind: Some(CompletionItemKind::ENUM_MEMBER),
-                    detail: Some(format!("{}::{}", module, variant.name)),
+                    detail: Some(format!("{module}::{}", variant.name)),
                     documentation: variant.doc.clone().map(Documentation::String),
                     ..Default::default()
                 });
@@ -331,13 +330,13 @@ fn add_struct_callbacks(
         for callback in api.callbacks_for_type(extends_type) {
             if callback.name.starts_with(prefix) {
                 // Format callback signature for this struct (replace &Self with &StructName)
-                let signature = format_callback_signature(&callback, struct_name);
+                let signature = format_callback_signature(callback, struct_name);
                 items.push(CompletionItem {
                     label: callback.name.clone(),
                     kind: Some(CompletionItemKind::METHOD),
-                    detail: Some(format!("callback {}", signature)),
-                    documentation: format_callback_documentation(&callback, struct_name),
-                    insert_text: Some(format_callback_snippet(&callback, struct_name)),
+                    detail: Some(format!("callback {signature}")),
+                    documentation: format_callback_documentation(callback, struct_name),
+                    insert_text: Some(format_callback_snippet(callback, struct_name)),
                     insert_text_format: Some(InsertTextFormat::SNIPPET),
                     ..Default::default()
                 });
@@ -351,18 +350,18 @@ fn format_callback_signature(func: &FunctionDef, struct_name: &str) -> String {
     let params = func.params.iter()
         .map(|p| {
             let ty = if p.ty == "&Self" {
-                format!("&{}", struct_name)
+                format!("&{struct_name}")
             } else {
                 p.ty.clone()
             };
-            format!("{}: {}", p.name, ty)
+            format!("{}: {ty}", p.name)
         })
         .collect::<Vec<_>>()
         .join(", ");
 
     match &func.return_type {
-        Some(ret) => format!("({}) -> {}", params, ret),
-        None => format!("({})", params),
+        Some(ret) => format!("({params}) -> {ret}"),
+        None => format!("({params})"),
     }
 }
 
@@ -372,18 +371,18 @@ fn format_callback_snippet(func: &FunctionDef, struct_name: &str) -> String {
         .enumerate()
         .map(|(i, p)| {
             let ty = if p.ty == "&Self" {
-                format!("&{}", struct_name)
+                format!("&{struct_name}")
             } else {
                 p.ty.clone()
             };
-            format!("${{{}:{}: {}}}", i + 1, p.name, ty)
+            format!("${{{}:{}: {ty}}}", i + 1, p.name)
         })
         .collect::<Vec<_>>()
         .join(", ");
 
     match &func.return_type {
-        Some(ret) => format!("{}({})$0: {} {{\n\t\n}}", func.name, params, ret),
-        None => format!("{}({})$0 {{\n\t\n}}", func.name, params),
+        Some(ret) => format!("{}({params})$0: {ret} {{\n\t\n}}", func.name),
+        None => format!("{}({params})$0 {{\n\t\n}}", func.name),
     }
 }
 
@@ -398,29 +397,29 @@ fn format_callback_documentation(func: &FunctionDef, struct_name: &str) -> Optio
         doc.push_str("**Parameters:**\n");
         for p in &func.params {
             let ty = if p.ty == "&Self" {
-                format!("&{}", struct_name)
+                format!("&{struct_name}")
             } else {
                 p.ty.clone()
             };
-            doc.push_str(&format!("- `{}`: `{}`", p.name, ty));
+            let _ = write!(doc, "- `{}`: `{ty}`", p.name);
             if let Some(param_doc) = &p.doc {
-                doc.push_str(&format!(" — {}", param_doc));
+                let _ = write!(doc, " — {param_doc}");
             }
             doc.push('\n');
         }
     }
 
     if let Some(ret) = &func.return_type {
-        doc.push_str(&format!("\n**Returns:** `{}`", ret));
+        let _ = write!(doc, "\n**Returns:** `{ret}`");
     }
 
-    if !doc.is_empty() {
+    if doc.is_empty() {
+        None
+    } else {
         Some(Documentation::MarkupContent(MarkupContent {
             kind: MarkupKind::Markdown,
             value: doc,
         }))
-    } else {
-        None
     }
 }
 
