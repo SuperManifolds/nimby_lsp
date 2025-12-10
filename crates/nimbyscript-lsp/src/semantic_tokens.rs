@@ -416,3 +416,408 @@ impl<'a> TokenCollector<'a> {
         (line, char)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_api() -> ApiDefinitions {
+        let toml_content = include_str!("../../../api-definitions/nimbyrails.v1.toml");
+        ApiDefinitions::load_from_str(toml_content).expect("Failed to parse API")
+    }
+
+    // Token legend tests
+
+    #[test]
+    fn test_semantic_token_legend_types() {
+        let legend = semantic_token_legend();
+        assert!(!legend.token_types.is_empty());
+        assert!(legend.token_types.contains(&SemanticTokenType::KEYWORD));
+        assert!(legend.token_types.contains(&SemanticTokenType::TYPE));
+        assert!(legend.token_types.contains(&SemanticTokenType::FUNCTION));
+        assert!(legend.token_types.contains(&SemanticTokenType::VARIABLE));
+        assert!(legend.token_types.contains(&SemanticTokenType::COMMENT));
+        assert!(legend.token_types.contains(&SemanticTokenType::STRING));
+        assert!(legend.token_types.contains(&SemanticTokenType::NUMBER));
+    }
+
+    #[test]
+    fn test_semantic_token_legend_modifiers() {
+        let legend = semantic_token_legend();
+        assert!(!legend.token_modifiers.is_empty());
+        assert!(legend.token_modifiers.contains(&SemanticTokenModifier::DECLARATION));
+        assert!(legend.token_modifiers.contains(&SemanticTokenModifier::DEFINITION));
+        assert!(legend.token_modifiers.contains(&SemanticTokenModifier::DEFAULT_LIBRARY));
+    }
+
+    // Token type index tests
+
+    #[test]
+    fn test_token_type_index_keyword() {
+        let idx = token_type_index(&SemanticTokenType::KEYWORD);
+        assert_eq!(idx, 0);
+    }
+
+    #[test]
+    fn test_token_type_index_type() {
+        let idx = token_type_index(&SemanticTokenType::TYPE);
+        assert_eq!(idx, 1);
+    }
+
+    #[test]
+    fn test_token_type_index_function() {
+        let idx = token_type_index(&SemanticTokenType::FUNCTION);
+        assert_eq!(idx, 2);
+    }
+
+    #[test]
+    fn test_token_type_index_unknown() {
+        // Unknown types default to 0
+        let idx = token_type_index(&SemanticTokenType::new("unknown"));
+        assert_eq!(idx, 0);
+    }
+
+    // Modifier bitset tests
+
+    #[test]
+    fn test_modifier_bitset_empty() {
+        let bits = modifier_bitset(&[]);
+        assert_eq!(bits, 0);
+    }
+
+    #[test]
+    fn test_modifier_bitset_declaration() {
+        let bits = modifier_bitset(&[SemanticTokenModifier::DECLARATION]);
+        assert_eq!(bits, 1); // First modifier, bit 0
+    }
+
+    #[test]
+    fn test_modifier_bitset_definition() {
+        let bits = modifier_bitset(&[SemanticTokenModifier::DEFINITION]);
+        assert_eq!(bits, 2); // Second modifier, bit 1
+    }
+
+    #[test]
+    fn test_modifier_bitset_multiple() {
+        let bits = modifier_bitset(&[
+            SemanticTokenModifier::DECLARATION,
+            SemanticTokenModifier::DEFINITION,
+        ]);
+        assert_eq!(bits, 3); // bits 0 and 1
+    }
+
+    #[test]
+    fn test_modifier_bitset_default_library() {
+        let bits = modifier_bitset(&[SemanticTokenModifier::DEFAULT_LIBRARY]);
+        assert_eq!(bits, 16); // Fifth modifier, bit 4
+    }
+
+    // Snapshot tests for full tokenization
+
+    #[test]
+    fn test_snapshot_minimal() {
+        let content = r#"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }"#;
+        let api = test_api();
+        let doc = Document::new(content.to_string(), Some(&api));
+        let tokens = compute_semantic_tokens(&doc, &api);
+
+        // Convert to readable format for snapshot
+        let readable: Vec<_> = tokens.iter().map(|t| {
+            (t.delta_line, t.delta_start, t.length, t.token_type, t.token_modifiers_bitset)
+        }).collect();
+
+        insta::assert_debug_snapshot!(readable);
+    }
+
+    #[test]
+    fn test_snapshot_struct_definition() {
+        let content = r#"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+
+pub struct Test extend Signal {
+    count: i64,
+}"#;
+        let api = test_api();
+        let doc = Document::new(content.to_string(), Some(&api));
+        let tokens = compute_semantic_tokens(&doc, &api);
+
+        let readable: Vec<_> = tokens.iter().map(|t| {
+            (t.delta_line, t.delta_start, t.length, t.token_type, t.token_modifiers_bitset)
+        }).collect();
+
+        insta::assert_debug_snapshot!(readable);
+    }
+
+    #[test]
+    fn test_snapshot_function_definition() {
+        let content = r#"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+
+pub fn test_func(x: i64): i64 {
+    return x + 1;
+}"#;
+        let api = test_api();
+        let doc = Document::new(content.to_string(), Some(&api));
+        let tokens = compute_semantic_tokens(&doc, &api);
+
+        let readable: Vec<_> = tokens.iter().map(|t| {
+            (t.delta_line, t.delta_start, t.length, t.token_type, t.token_modifiers_bitset)
+        }).collect();
+
+        insta::assert_debug_snapshot!(readable);
+    }
+
+    #[test]
+    fn test_snapshot_method_definition() {
+        let content = r#"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+
+pub struct Test extend Signal { }
+
+pub fn Test::do_something(self: &Test, value: i64): i64 {
+    return value * 2;
+}"#;
+        let api = test_api();
+        let doc = Document::new(content.to_string(), Some(&api));
+        let tokens = compute_semantic_tokens(&doc, &api);
+
+        let readable: Vec<_> = tokens.iter().map(|t| {
+            (t.delta_line, t.delta_start, t.length, t.token_type, t.token_modifiers_bitset)
+        }).collect();
+
+        insta::assert_debug_snapshot!(readable);
+    }
+
+    #[test]
+    fn test_snapshot_enum_definition() {
+        let content = r#"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+
+pub enum Status {
+    Active,
+    Inactive,
+    Pending = 5,
+}"#;
+        let api = test_api();
+        let doc = Document::new(content.to_string(), Some(&api));
+        let tokens = compute_semantic_tokens(&doc, &api);
+
+        let readable: Vec<_> = tokens.iter().map(|t| {
+            (t.delta_line, t.delta_start, t.length, t.token_type, t.token_modifiers_bitset)
+        }).collect();
+
+        insta::assert_debug_snapshot!(readable);
+    }
+
+    #[test]
+    fn test_snapshot_let_statement() {
+        let content = r#"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+
+pub fn test() {
+    let x: i64 = 42;
+    let name: String = "hello";
+}"#;
+        let api = test_api();
+        let doc = Document::new(content.to_string(), Some(&api));
+        let tokens = compute_semantic_tokens(&doc, &api);
+
+        let readable: Vec<_> = tokens.iter().map(|t| {
+            (t.delta_line, t.delta_start, t.length, t.token_type, t.token_modifiers_bitset)
+        }).collect();
+
+        insta::assert_debug_snapshot!(readable);
+    }
+
+    #[test]
+    fn test_snapshot_path_expression() {
+        let content = r#"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+
+pub fn test(): SignalCheck {
+    return SignalCheck::Pass;
+}"#;
+        let api = test_api();
+        let doc = Document::new(content.to_string(), Some(&api));
+        let tokens = compute_semantic_tokens(&doc, &api);
+
+        let readable: Vec<_> = tokens.iter().map(|t| {
+            (t.delta_line, t.delta_start, t.length, t.token_type, t.token_modifiers_bitset)
+        }).collect();
+
+        insta::assert_debug_snapshot!(readable);
+    }
+
+    #[test]
+    fn test_snapshot_function_call() {
+        let content = r#"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+
+pub fn test() {
+    let x: f64 = abs(-5.0);
+    let y: f64 = sqrt(16.0);
+}"#;
+        let api = test_api();
+        let doc = Document::new(content.to_string(), Some(&api));
+        let tokens = compute_semantic_tokens(&doc, &api);
+
+        let readable: Vec<_> = tokens.iter().map(|t| {
+            (t.delta_line, t.delta_start, t.length, t.token_type, t.token_modifiers_bitset)
+        }).collect();
+
+        insta::assert_debug_snapshot!(readable);
+    }
+
+    #[test]
+    fn test_snapshot_comments() {
+        let content = r#"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+
+// This is a comment
+pub fn test() {
+    // Another comment
+    let x: i64 = 1;
+}"#;
+        let api = test_api();
+        let doc = Document::new(content.to_string(), Some(&api));
+        let tokens = compute_semantic_tokens(&doc, &api);
+
+        let readable: Vec<_> = tokens.iter().map(|t| {
+            (t.delta_line, t.delta_start, t.length, t.token_type, t.token_modifiers_bitset)
+        }).collect();
+
+        insta::assert_debug_snapshot!(readable);
+    }
+
+    // Game type modifier tests
+
+    #[test]
+    fn test_game_type_has_library_modifier() {
+        let content = r#"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+
+pub struct Test extend Signal { }"#;
+        let api = test_api();
+        let doc = Document::new(content.to_string(), Some(&api));
+        let tokens = compute_semantic_tokens(&doc, &api);
+
+        // Find the token for "Signal" - it should have DEFAULT_LIBRARY modifier
+        // Signal appears at some delta position with library modifier (bit 4 = 16)
+        let has_library_type = tokens.iter().any(|t| {
+            t.token_modifiers_bitset & 16 != 0 // DEFAULT_LIBRARY is bit 4
+        });
+        assert!(has_library_type, "Signal should have DEFAULT_LIBRARY modifier");
+    }
+
+    #[test]
+    fn test_user_type_no_library_modifier() {
+        let content = r#"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+
+pub struct UserType { }
+
+pub fn test(x: UserType) { }"#;
+        let api = test_api();
+        let doc = Document::new(content.to_string(), Some(&api));
+        let tokens = compute_semantic_tokens(&doc, &api);
+
+        // The struct definition token should have DEFINITION modifier but not DEFAULT_LIBRARY
+        // DEFINITION is bit 1 = 2, DEFAULT_LIBRARY is bit 4 = 16
+        let struct_def_token = tokens.iter().find(|t| {
+            t.token_modifiers_bitset & 2 != 0 && // Has DEFINITION
+            t.token_type == token_type_index(&SemanticTokenType::STRUCT)
+        });
+        assert!(struct_def_token.is_some(), "Should find struct definition");
+        let token = struct_def_token.unwrap();
+        assert_eq!(token.token_modifiers_bitset & 16, 0, "User type should not have DEFAULT_LIBRARY modifier");
+    }
+
+    // Delta encoding tests
+
+    #[test]
+    fn test_delta_encoding_same_line() {
+        let content = r#"let x: i64 = 42;"#;
+        let api = test_api();
+        let doc = Document::new(content.to_string(), Some(&api));
+        let tokens = compute_semantic_tokens(&doc, &api);
+
+        // All tokens on same line should have delta_line = 0 (except first)
+        for (i, token) in tokens.iter().enumerate() {
+            if i > 0 {
+                assert_eq!(token.delta_line, 0, "Token {} should be on same line", i);
+            }
+        }
+    }
+
+    #[test]
+    fn test_delta_encoding_different_lines() {
+        let content = r#"let x: i64 = 1;
+let y: i64 = 2;"#;
+        let api = test_api();
+        let doc = Document::new(content.to_string(), Some(&api));
+        let tokens = compute_semantic_tokens(&doc, &api);
+
+        // Some token should have delta_line > 0
+        let has_line_delta = tokens.iter().any(|t| t.delta_line > 0);
+        assert!(has_line_delta, "Should have tokens on different lines");
+    }
+
+    // Offset to line/char conversion tests
+
+    #[test]
+    fn test_offset_to_line_char_start() {
+        let api = test_api();
+        let collector = TokenCollector::new("hello\nworld", &api);
+        let (line, char) = collector.offset_to_line_char(0);
+        assert_eq!(line, 0);
+        assert_eq!(char, 0);
+    }
+
+    #[test]
+    fn test_offset_to_line_char_same_line() {
+        let api = test_api();
+        let collector = TokenCollector::new("hello\nworld", &api);
+        let (line, char) = collector.offset_to_line_char(3);
+        assert_eq!(line, 0);
+        assert_eq!(char, 3);
+    }
+
+    #[test]
+    fn test_offset_to_line_char_second_line() {
+        let api = test_api();
+        let collector = TokenCollector::new("hello\nworld", &api);
+        let (line, char) = collector.offset_to_line_char(6); // 'w' in world
+        assert_eq!(line, 1);
+        assert_eq!(char, 0);
+    }
+
+    #[test]
+    fn test_offset_to_line_char_middle_second_line() {
+        let api = test_api();
+        let collector = TokenCollector::new("hello\nworld", &api);
+        let (line, char) = collector.offset_to_line_char(8); // 'r' in world
+        assert_eq!(line, 1);
+        assert_eq!(char, 2);
+    }
+
+    // Edge case tests
+
+    #[test]
+    fn test_empty_content() {
+        let content = "";
+        let api = test_api();
+        let doc = Document::new(content.to_string(), Some(&api));
+        let tokens = compute_semantic_tokens(&doc, &api);
+        assert!(tokens.is_empty());
+    }
+
+    #[test]
+    fn test_only_whitespace() {
+        let content = "   \n\n   ";
+        let api = test_api();
+        let doc = Document::new(content.to_string(), Some(&api));
+        let tokens = compute_semantic_tokens(&doc, &api);
+        assert!(tokens.is_empty());
+    }
+
+    #[test]
+    fn test_only_comment() {
+        let content = "// This is just a comment";
+        let api = test_api();
+        let doc = Document::new(content.to_string(), Some(&api));
+        let tokens = compute_semantic_tokens(&doc, &api);
+
+        assert_eq!(tokens.len(), 1);
+        assert_eq!(tokens[0].token_type, token_type_index(&SemanticTokenType::COMMENT));
+    }
+}

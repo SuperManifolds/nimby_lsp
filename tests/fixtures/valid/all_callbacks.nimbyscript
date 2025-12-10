@@ -1,0 +1,61 @@
+script meta {
+    lang: nimbyscript.v1,
+    api: nimbyrails.v1,
+}
+
+// Signal callbacks
+pub struct SignalHandler extend Signal {
+    meta { label: "Signal Handler" },
+}
+
+pub fn SignalHandler::event_signal_check(
+    self: &SignalHandler,
+    ctx: &EventCtx,
+    train: &Train,
+    motion: &Motion,
+    signal: &Signal
+): SignalCheck {
+    return SignalCheck::Pass;
+}
+
+pub fn SignalHandler::event_signal_lookahead(
+    self: &SignalHandler,
+    ctx: &EventCtx,
+    train: &Train,
+    motion: &Motion,
+    signal: &Signal
+): SignalAspect {
+    return SignalAspect::Clear;
+}
+
+pub fn SignalHandler::event_signal_speed(
+    self: &SignalHandler,
+    ctx: &EventCtx,
+    train: &Train,
+    motion: &Motion,
+    signal: &Signal
+): std::optional<f64> {
+    return nil;
+}
+
+// Train callbacks
+pub struct TrainHandler extend Train {
+    meta { label: "Train Handler" },
+}
+
+pub fn TrainHandler::event_train_shift_allow(
+    self: &TrainHandler,
+    ctx: &EventCtx,
+    motion: &Motion
+): ShiftAllow {
+    return ShiftAllow::Allow;
+}
+
+pub fn TrainHandler::event_train_speed_adjust(
+    self: &TrainHandler,
+    ctx: &EventCtx,
+    motion: &Motion,
+    speed: &mut f64
+) {
+    // No adjustment
+}

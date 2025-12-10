@@ -449,3 +449,260 @@ fn add_document_symbols(items: &mut Vec<CompletionItem>, doc: &Document, prefix:
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn load_api() -> ApiDefinitions {
+        let toml = include_str!("../../../api-definitions/nimbyrails.v1.toml");
+        ApiDefinitions::load_from_str(toml).expect("should parse")
+    }
+
+    // Context detection tests
+
+    #[test]
+    fn test_context_type_after_colon() {
+        // After `: ` in a type annotation
+        let ctx = get_completion_context("let x: ", 7);
+        assert!(matches!(ctx, CompletionContext::Type));
+    }
+
+    #[test]
+    fn test_context_path_after_double_colon() {
+        // After `Module::` or `Enum::`
+        let ctx = get_completion_context("SignalCheck::", 13);
+        assert!(matches!(ctx, CompletionContext::PathAfterColon(name) if name == "SignalCheck"));
+    }
+
+    #[test]
+    fn test_context_path_with_partial() {
+        // After `Module::par` (partial identifier)
+        let ctx = get_completion_context("Math::ab", 8);
+        assert!(matches!(ctx, CompletionContext::PathAfterColon(name) if name == "Math"));
+    }
+
+    #[test]
+    fn test_context_field_after_dot() {
+        let ctx = get_completion_context("foo.", 4);
+        assert!(matches!(ctx, CompletionContext::FieldAccess));
+    }
+
+    #[test]
+    fn test_context_general() {
+        let ctx = get_completion_context("let x = ", 8);
+        assert!(matches!(ctx, CompletionContext::General));
+    }
+
+    // Prefix extraction tests
+
+    #[test]
+    fn test_prefix_word_start() {
+        let prefix = get_prefix("let sig", 7);
+        assert_eq!(prefix, "sig");
+    }
+
+    #[test]
+    fn test_prefix_mid_word() {
+        let prefix = get_prefix("SignalChe", 9);
+        assert_eq!(prefix, "SignalChe");
+    }
+
+    #[test]
+    fn test_prefix_empty() {
+        let prefix = get_prefix("let ", 4);
+        assert_eq!(prefix, "");
+    }
+
+    #[test]
+    fn test_prefix_after_operator() {
+        let prefix = get_prefix("x + y", 5);
+        assert_eq!(prefix, "y");
+    }
+
+    // Completion provider tests
+
+    #[test]
+    fn test_keyword_completions() {
+        let mut items = Vec::new();
+        add_keywords(&mut items, "if");
+        assert!(!items.is_empty());
+        assert!(items.iter().any(|i| i.label == "if"));
+    }
+
+    #[test]
+    fn test_keyword_filter_by_prefix() {
+        let mut items = Vec::new();
+        add_keywords(&mut items, "ret");
+        // Should only have "return"
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].label, "return");
+    }
+
+    #[test]
+    fn test_keyword_no_match() {
+        let mut items = Vec::new();
+        add_keywords(&mut items, "xyz");
+        assert!(items.is_empty());
+    }
+
+    #[test]
+    fn test_primitive_type_completions() {
+        let mut items = Vec::new();
+        add_primitive_types(&mut items, "i");
+        // Should have i8, i16, i32, i64
+        assert!(items.iter().any(|i| i.label == "i64"));
+        assert!(items.iter().any(|i| i.label == "i32"));
+    }
+
+    #[test]
+    fn test_id_generic_completion() {
+        let mut items = Vec::new();
+        add_primitive_types(&mut items, "ID");
+        assert!(items.iter().any(|i| i.label == "ID"));
+        // Should have snippet
+        let id_item = items.iter().find(|i| i.label == "ID").expect("ID should exist");
+        assert!(id_item.insert_text.as_ref().is_some_and(|t| t.contains("<")));
+    }
+
+    #[test]
+    fn test_api_type_completions() {
+        let api = load_api();
+        let mut items = Vec::new();
+        add_api_types(&mut items, &api, "Sig");
+        // Should have Signal, SignalCheck, SignalAspect, etc.
+        assert!(items.iter().any(|i| i.label == "Signal"));
+    }
+
+    #[test]
+    fn test_module_member_completions() {
+        let api = load_api();
+        let mut items = Vec::new();
+        add_module_members(&mut items, &api, "DB", "");
+        // DB module should have functions
+        assert!(!items.is_empty());
+    }
+
+    #[test]
+    fn test_enum_variant_completions() {
+        let api = load_api();
+        let mut items = Vec::new();
+        add_module_members(&mut items, &api, "SignalCheck", "");
+        // SignalCheck enum should have Pass, Stop variants
+        assert!(items.iter().any(|i| i.label == "Pass"));
+        assert!(items.iter().any(|i| i.label == "Stop"));
+    }
+
+    #[test]
+    fn test_struct_callback_completions() {
+        let api = load_api();
+        let content = r#"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+pub struct MySignal extend Signal { }
+"#;
+        let doc = Document::new(content.to_string(), Some(&api));
+        let mut items = Vec::new();
+        add_struct_callbacks(&mut items, &doc, &api, "MySignal", "");
+        // Should have Signal callbacks like event_signal_check
+        assert!(items.iter().any(|i| i.label == "event_signal_check"));
+    }
+
+    #[test]
+    fn test_document_symbol_completions() {
+        let api = load_api();
+        let content = r#"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+pub struct UserStruct { }
+fn user_function() { }
+"#;
+        let doc = Document::new(content.to_string(), Some(&api));
+        let mut items = Vec::new();
+        add_document_symbols(&mut items, &doc, "");
+        // Should have user-defined symbols
+        assert!(items.iter().any(|i| i.label == "UserStruct"));
+        assert!(items.iter().any(|i| i.label == "user_function"));
+    }
+
+    // Snippet formatting tests
+
+    #[test]
+    fn test_snippet_with_params() {
+        let func = FunctionDef {
+            name: "test".to_string(),
+            params: vec![
+                nimbyscript_analyzer::ParamDef {
+                    name: "a".to_string(),
+                    ty: "i64".to_string(),
+                    doc: None,
+                    is_mut: false,
+                    is_ref: false,
+                },
+                nimbyscript_analyzer::ParamDef {
+                    name: "b".to_string(),
+                    ty: "f64".to_string(),
+                    doc: None,
+                    is_mut: false,
+                    is_ref: false,
+                },
+            ],
+            return_type: None,
+            doc: None,
+            type_params: vec![],
+            for_type: None,
+        };
+        let snippet = format_snippet("test", &func);
+        assert_eq!(snippet, "test(${1:a}, ${2:b})");
+    }
+
+    #[test]
+    fn test_snippet_no_params() {
+        let func = FunctionDef {
+            name: "empty".to_string(),
+            params: vec![],
+            return_type: None,
+            doc: None,
+            type_params: vec![],
+            for_type: None,
+        };
+        let snippet = format_snippet("empty", &func);
+        assert_eq!(snippet, "empty()");
+    }
+
+    #[test]
+    fn test_format_signature() {
+        let func = FunctionDef {
+            name: "add".to_string(),
+            params: vec![
+                nimbyscript_analyzer::ParamDef {
+                    name: "a".to_string(),
+                    ty: "i64".to_string(),
+                    doc: None,
+                    is_mut: false,
+                    is_ref: false,
+                },
+            ],
+            return_type: Some("i64".to_string()),
+            doc: None,
+            type_params: vec![],
+            for_type: None,
+        };
+        let sig = format_signature(&func);
+        assert_eq!(sig, "(a: i64) -> i64");
+    }
+
+    // Integration test
+
+    #[test]
+    fn test_get_completions_general_context() {
+        let api = load_api();
+        let content = r#"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+pub struct MyStruct { }
+"#;
+        let doc = Document::new(content.to_string(), Some(&api));
+        let items = get_completions(&doc, Position::new(2, 0), &api);
+        // Should have keywords, types, functions, and document symbols
+        assert!(items.iter().any(|i| i.kind == Some(CompletionItemKind::KEYWORD)));
+        assert!(items.iter().any(|i| i.kind == Some(CompletionItemKind::STRUCT)));
+    }
+}

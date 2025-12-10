@@ -1,0 +1,26 @@
+script meta {
+    lang: nimbyscript.v1,
+    api: nimbyrails.v1,
+}
+
+pub struct BadSig extend Signal {
+    meta { label: "Bad Signature Test" },
+}
+
+// Wrong return type - should be SignalCheck, not i64
+pub fn BadSig::event_signal_check(
+    self: &BadSig,
+    ctx: &EventCtx,
+    train: &Train,
+    motion: &Motion,
+    signal: &Signal
+): i64 {
+    return 0;
+}
+
+// Wrong parameter count - missing parameters
+pub fn BadSig::event_signal_lookahead(
+    self: &BadSig
+): SignalAspect {
+    return SignalAspect::Clear;
+}

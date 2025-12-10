@@ -184,15 +184,246 @@ impl ApiDefinitions {
 mod tests {
     use super::*;
 
+    fn load_api() -> ApiDefinitions {
+        let toml_content = include_str!("../../../api-definitions/nimbyrails.v1.toml");
+        ApiDefinitions::load_from_str(toml_content).expect("Failed to parse TOML")
+    }
+
+    // Basic loading tests
+
     #[test]
     fn test_load_callbacks() {
-        let toml_content = include_str!("../../../api-definitions/nimbyrails.v1.toml");
-        let api = ApiDefinitions::load_from_str(toml_content).expect("Failed to parse TOML");
-        println!("Loaded {} callbacks", api.callbacks.len());
-        for cb in &api.callbacks {
-            println!("  - {}", cb.name);
-        }
+        let api = load_api();
         assert!(!api.callbacks.is_empty(), "Callbacks should not be empty");
         assert!(api.is_valid_callback("event_signal_check"), "event_signal_check should be valid");
+    }
+
+    #[test]
+    fn test_load_from_str_empty() {
+        let api = ApiDefinitions::load_from_str("").expect("should parse empty");
+        assert!(api.types.is_empty());
+        assert!(api.enums.is_empty());
+        assert!(api.functions.is_empty());
+    }
+
+    #[test]
+    fn test_load_from_str_minimal() {
+        let toml = r#"
+            version = "1.0"
+            api_version = "test"
+        "#;
+        let api = ApiDefinitions::load_from_str(toml).expect("should parse");
+        assert_eq!(api.version, "1.0");
+        assert_eq!(api.api_version, "test");
+    }
+
+    // Type lookup tests
+
+    #[test]
+    fn test_get_type_signal() {
+        let api = load_api();
+        let signal = api.get_type("Signal");
+        assert!(signal.is_some(), "Signal type should exist");
+        let signal = signal.expect("checked above");
+        assert!(matches!(signal.kind, TypeKind::Struct));
+    }
+
+    #[test]
+    fn test_get_type_nonexistent() {
+        let api = load_api();
+        assert!(api.get_type("NonExistentType").is_none());
+    }
+
+    #[test]
+    fn test_type_names_iterator() {
+        let api = load_api();
+        let names: Vec<_> = api.type_names().collect();
+        assert!(!names.is_empty());
+        assert!(names.contains(&"Signal"));
+        assert!(names.contains(&"Train"));
+    }
+
+    #[test]
+    fn test_type_has_methods() {
+        let api = load_api();
+        let signal = api.get_type("Signal").expect("Signal should exist");
+        assert!(!signal.methods.is_empty(), "Signal should have methods");
+    }
+
+    // Enum lookup tests
+
+    #[test]
+    fn test_get_enum_signal_check() {
+        let api = load_api();
+        let signal_check = api.get_enum("SignalCheck");
+        assert!(signal_check.is_some(), "SignalCheck enum should exist");
+    }
+
+    #[test]
+    fn test_get_enum_nonexistent() {
+        let api = load_api();
+        assert!(api.get_enum("FakeEnum").is_none());
+    }
+
+    #[test]
+    fn test_enum_names_iterator() {
+        let api = load_api();
+        let names: Vec<_> = api.enum_names().collect();
+        assert!(!names.is_empty());
+        assert!(names.contains(&"SignalCheck"));
+        assert!(names.contains(&"SignalAspect"));
+    }
+
+    #[test]
+    fn test_enum_variants() {
+        let api = load_api();
+        let signal_check = api.get_enum("SignalCheck").expect("should exist");
+        assert!(!signal_check.variants.is_empty());
+        let variant_names: Vec<_> = signal_check.variants.iter().map(|v| v.name.as_str()).collect();
+        assert!(variant_names.contains(&"Pass"));
+        assert!(variant_names.contains(&"Stop"));
+    }
+
+    // Function lookup tests
+
+    #[test]
+    fn test_get_function_abs() {
+        let api = load_api();
+        let abs = api.get_function("abs");
+        assert!(abs.is_some(), "abs function should exist");
+        let abs = abs.expect("checked above");
+        assert!(!abs.params.is_empty());
+    }
+
+    #[test]
+    fn test_get_function_nonexistent() {
+        let api = load_api();
+        assert!(api.get_function("not_a_real_function").is_none());
+    }
+
+    #[test]
+    fn test_function_names_iterator() {
+        let api = load_api();
+        let names: Vec<_> = api.function_names().collect();
+        assert!(!names.is_empty());
+        assert!(names.contains(&"abs"));
+        assert!(names.contains(&"sqrt"));
+    }
+
+    // Module lookup tests
+
+    #[test]
+    fn test_get_module_db() {
+        let api = load_api();
+        let db = api.get_module("DB");
+        assert!(db.is_some(), "DB module should exist");
+    }
+
+    #[test]
+    fn test_get_module_sim() {
+        let api = load_api();
+        let sim = api.get_module("Sim");
+        assert!(sim.is_some(), "Sim module should exist");
+    }
+
+    #[test]
+    fn test_get_module_nonexistent() {
+        let api = load_api();
+        assert!(api.get_module("FakeModule").is_none());
+    }
+
+    #[test]
+    fn test_module_names_iterator() {
+        let api = load_api();
+        let names: Vec<_> = api.module_names().collect();
+        assert!(!names.is_empty());
+        assert!(names.contains(&"DB"));
+        assert!(names.contains(&"Sim"));
+    }
+
+    #[test]
+    fn test_module_functions() {
+        let api = load_api();
+        let db = api.get_module("DB").expect("DB should exist");
+        assert!(!db.functions.is_empty(), "DB should have functions");
+    }
+
+    // Callback lookup tests
+
+    #[test]
+    fn test_callbacks_for_type_signal() {
+        let api = load_api();
+        let signal_callbacks = api.callbacks_for_type("Signal");
+        assert!(!signal_callbacks.is_empty(), "Signal should have callbacks");
+        let names: Vec<_> = signal_callbacks.iter().map(|c| c.name.as_str()).collect();
+        assert!(names.contains(&"event_signal_check"));
+    }
+
+    #[test]
+    fn test_callbacks_for_type_train() {
+        let api = load_api();
+        let train_callbacks = api.callbacks_for_type("Train");
+        assert!(!train_callbacks.is_empty(), "Train should have callbacks");
+    }
+
+    #[test]
+    fn test_callbacks_for_type_nonexistent() {
+        let api = load_api();
+        let callbacks = api.callbacks_for_type("NotARealType");
+        assert!(callbacks.is_empty());
+    }
+
+    #[test]
+    fn test_is_valid_callback_true() {
+        let api = load_api();
+        assert!(api.is_valid_callback("event_signal_check"));
+        assert!(api.is_valid_callback("event_signal_lookahead"));
+    }
+
+    #[test]
+    fn test_is_valid_callback_false() {
+        let api = load_api();
+        assert!(!api.is_valid_callback("not_a_callback"));
+        assert!(!api.is_valid_callback("random_name"));
+    }
+
+    #[test]
+    fn test_get_callback() {
+        let api = load_api();
+        let cb = api.get_callback("event_signal_check");
+        assert!(cb.is_some());
+        let cb = cb.expect("checked above");
+        assert_eq!(cb.name, "event_signal_check");
+        assert!(cb.return_type.is_some());
+    }
+
+    #[test]
+    fn test_callback_names_iterator() {
+        let api = load_api();
+        let names: Vec<_> = api.callback_names().collect();
+        assert!(!names.is_empty());
+        assert!(names.contains(&"event_signal_check"));
+    }
+
+    // Deserialization edge cases
+
+    #[test]
+    fn test_param_def_fields() {
+        let api = load_api();
+        let cb = api.get_callback("event_signal_check").expect("should exist");
+        // Check that params have expected structure
+        assert!(!cb.params.is_empty());
+        for param in &cb.params {
+            assert!(!param.name.is_empty());
+            assert!(!param.ty.is_empty());
+        }
+    }
+
+    #[test]
+    fn test_function_return_type() {
+        let api = load_api();
+        let cb = api.get_callback("event_signal_check").expect("should exist");
+        assert!(cb.return_type.is_some());
+        assert_eq!(cb.return_type.as_deref(), Some("SignalCheck"));
     }
 }

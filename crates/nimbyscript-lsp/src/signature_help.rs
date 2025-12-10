@@ -228,6 +228,13 @@ fn build_signature_info(func: &FunctionDef, active_param: usize) -> SignatureInf
 mod tests {
     use super::*;
 
+    fn test_api() -> ApiDefinitions {
+        let toml_content = include_str!("../../../api-definitions/nimbyrails.v1.toml");
+        ApiDefinitions::load_from_str(toml_content).expect("Failed to parse API")
+    }
+
+    // Basic call context tests
+
     #[test]
     fn test_call_context_simple() {
         let content = "foo(bar, ";
@@ -259,5 +266,274 @@ mod tests {
         let ctx = get_call_context(content, content.len()).unwrap();
         assert_eq!(ctx.function_name, "foo");
         assert_eq!(ctx.active_parameter, 1); // second param of foo
+    }
+
+    #[test]
+    fn test_call_context_method_call() {
+        let content = "obj.method(arg1, ";
+        let ctx = get_call_context(content, content.len()).unwrap();
+        assert_eq!(ctx.function_name, "method");
+        assert_eq!(ctx.prefix, None); // method calls don't have prefix without type info
+        assert_eq!(ctx.active_parameter, 1);
+    }
+
+    #[test]
+    fn test_call_context_no_paren() {
+        let content = "foo bar";
+        let ctx = get_call_context(content, content.len());
+        assert!(ctx.is_none());
+    }
+
+    #[test]
+    fn test_call_context_empty_args() {
+        let content = "foo()";
+        let ctx = get_call_context(content, content.len() - 1); // before closing paren
+        assert!(ctx.is_some());
+        let ctx = ctx.unwrap();
+        assert_eq!(ctx.function_name, "foo");
+        assert_eq!(ctx.active_parameter, 0);
+    }
+
+    // count_parameters tests
+
+    #[test]
+    fn test_count_parameters_zero() {
+        assert_eq!(count_parameters(""), 0);
+    }
+
+    #[test]
+    fn test_count_parameters_one_comma() {
+        assert_eq!(count_parameters("x, "), 1);
+    }
+
+    #[test]
+    fn test_count_parameters_multiple_commas() {
+        assert_eq!(count_parameters("x, y, z, "), 3);
+    }
+
+    #[test]
+    fn test_count_parameters_nested_parens() {
+        // Commas inside nested parens shouldn't count
+        assert_eq!(count_parameters("foo(a, b), "), 1);
+    }
+
+    #[test]
+    fn test_count_parameters_deeply_nested() {
+        assert_eq!(count_parameters("foo(bar(x, y), z), "), 1);
+    }
+
+    // extract_function_name tests
+
+    #[test]
+    fn test_extract_simple_function() {
+        let result = extract_function_name("foo");
+        assert!(result.is_some());
+        let (name, prefix) = result.unwrap();
+        assert_eq!(name, "foo");
+        assert!(prefix.is_none());
+    }
+
+    #[test]
+    fn test_extract_module_function() {
+        let result = extract_function_name("Math::abs");
+        assert!(result.is_some());
+        let (name, prefix) = result.unwrap();
+        assert_eq!(name, "abs");
+        assert_eq!(prefix, Some("Math".to_string()));
+    }
+
+    #[test]
+    fn test_extract_method_call() {
+        let result = extract_function_name("obj.method");
+        assert!(result.is_some());
+        let (name, _prefix) = result.unwrap();
+        assert_eq!(name, "method");
+    }
+
+    #[test]
+    fn test_extract_with_preceding_code() {
+        let result = extract_function_name("let x = foo");
+        assert!(result.is_some());
+        let (name, prefix) = result.unwrap();
+        assert_eq!(name, "foo");
+        assert!(prefix.is_none());
+    }
+
+    #[test]
+    fn test_extract_invalid_identifier() {
+        let result = extract_function_name("123invalid");
+        assert!(result.is_none());
+    }
+
+    // is_valid_identifier tests
+
+    #[test]
+    fn test_valid_identifier_simple() {
+        assert!(is_valid_identifier("foo"));
+    }
+
+    #[test]
+    fn test_valid_identifier_with_numbers() {
+        assert!(is_valid_identifier("foo123"));
+    }
+
+    #[test]
+    fn test_valid_identifier_underscore() {
+        assert!(is_valid_identifier("_foo"));
+        assert!(is_valid_identifier("foo_bar"));
+    }
+
+    #[test]
+    fn test_invalid_identifier_starts_with_number() {
+        assert!(!is_valid_identifier("123foo"));
+    }
+
+    #[test]
+    fn test_invalid_identifier_empty() {
+        assert!(!is_valid_identifier(""));
+    }
+
+    #[test]
+    fn test_invalid_identifier_special_chars() {
+        assert!(!is_valid_identifier("foo-bar"));
+        assert!(!is_valid_identifier("foo.bar"));
+    }
+
+    // build_signature_info tests
+
+    #[test]
+    fn test_build_signature_no_params() {
+        let func = FunctionDef {
+            name: "test".to_string(),
+            doc: None,
+            params: vec![],
+            return_type: None,
+            type_params: vec![],
+            for_type: None,
+        };
+
+        let sig = build_signature_info(&func, 0);
+        assert_eq!(sig.label, "test()");
+        assert!(sig.parameters.unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_build_signature_with_params() {
+        use nimbyscript_analyzer::ParamDef;
+
+        let func = FunctionDef {
+            name: "add".to_string(),
+            doc: None,
+            params: vec![
+                ParamDef {
+                    name: "a".to_string(),
+                    ty: "i64".to_string(),
+                    doc: None,
+                    is_mut: false,
+                    is_ref: false,
+                },
+                ParamDef {
+                    name: "b".to_string(),
+                    ty: "i64".to_string(),
+                    doc: None,
+                    is_mut: false,
+                    is_ref: false,
+                },
+            ],
+            return_type: Some("i64".to_string()),
+            type_params: vec![],
+            for_type: None,
+        };
+
+        let sig = build_signature_info(&func, 0);
+        assert_eq!(sig.label, "add(a: i64, b: i64) -> i64");
+        assert_eq!(sig.parameters.as_ref().unwrap().len(), 2);
+        assert_eq!(sig.active_parameter, Some(0));
+    }
+
+    #[test]
+    fn test_build_signature_with_doc() {
+        let func = FunctionDef {
+            name: "documented".to_string(),
+            doc: Some("This function does something.".to_string()),
+            params: vec![],
+            return_type: None,
+            type_params: vec![],
+            for_type: None,
+        };
+
+        let sig = build_signature_info(&func, 0);
+        assert!(sig.documentation.is_some());
+    }
+
+    // Integration tests with API
+
+    #[test]
+    fn test_find_global_function() {
+        let api = test_api();
+        let content = "script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+pub fn test() {
+    let x = abs(";
+        let doc = Document::new(content.to_string(), Some(&api));
+
+        let context = CallContext {
+            function_name: "abs".to_string(),
+            prefix: None,
+            active_parameter: 0,
+        };
+
+        let func = find_function_def(&context, &doc, &api);
+        assert!(func.is_some());
+        assert_eq!(func.unwrap().name, "abs");
+    }
+
+    #[test]
+    fn test_find_module_function() {
+        let api = test_api();
+        let content = "script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }";
+        let doc = Document::new(content.to_string(), Some(&api));
+
+        let context = CallContext {
+            function_name: "view".to_string(),
+            prefix: Some("DB".to_string()),
+            active_parameter: 0,
+        };
+
+        let func = find_function_def(&context, &doc, &api);
+        assert!(func.is_some());
+        assert_eq!(func.unwrap().name, "view");
+    }
+
+    #[test]
+    fn test_find_nonexistent_function() {
+        let api = test_api();
+        let content = "script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }";
+        let doc = Document::new(content.to_string(), Some(&api));
+
+        let context = CallContext {
+            function_name: "nonexistent_function".to_string(),
+            prefix: None,
+            active_parameter: 0,
+        };
+
+        let func = find_function_def(&context, &doc, &api);
+        assert!(func.is_none());
+    }
+
+    #[test]
+    fn test_get_signature_help_integration() {
+        let api = test_api();
+        let content = "script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+pub fn test() {
+    let x = abs(";
+        let doc = Document::new(content.to_string(), Some(&api));
+
+        let position = Position { line: 2, character: 16 }; // inside abs(
+        let help = get_signature_help(&doc, position, &api);
+
+        assert!(help.is_some());
+        let help = help.unwrap();
+        assert_eq!(help.signatures.len(), 1);
+        assert!(help.signatures[0].label.starts_with("abs("));
     }
 }

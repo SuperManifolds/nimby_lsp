@@ -1,0 +1,50 @@
+script meta {
+    lang: nimbyscript.v1,
+    api: nimbyrails.v1,
+}
+
+// Struct with various complex type fields
+pub struct TypeTest extend Script {
+    // ID generics
+    signal_id: ID<Signal>,
+    train_id: ID<Train>,
+
+    // Optional types
+    maybe_value: std::optional<i64>,
+
+    // Array types
+    position: [f64; 3],
+
+    // Simple types
+    count: i64,
+    ratio: f64,
+    enabled: bool,
+    name: String,
+}
+
+// Function using complex types
+pub fn use_generics(id: ID<Signal>): std::optional<f64> {
+    return nil;
+}
+
+// Function with multiple generic types
+pub fn multi_generics(a: ID<Signal>, b: ID<Train>): bool {
+    return a.valid() && b.valid();
+}
+
+// Working with arrays
+pub fn array_sum(arr: [f64; 3]): f64 {
+    return arr[0] + arr[1] + arr[2];
+}
+
+// Const definitions
+const MAX_SPEED: f64 = 300.0;
+const MIN_COUNT: i64 = 0;
+const ENABLED_DEFAULT: bool = true;
+
+// Enum definition
+pub enum Status {
+    Active,
+    Inactive,
+    Pending = 5,
+}

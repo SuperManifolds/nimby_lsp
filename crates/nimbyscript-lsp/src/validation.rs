@@ -434,3 +434,263 @@ fn validate_meta_keys(
         );
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use nimbyscript_analyzer::diagnostics::Severity;
+    use nimbyscript_parser::parse;
+
+    fn load_api() -> ApiDefinitions {
+        let toml = include_str!("../../../api-definitions/nimbyrails.v1.toml");
+        ApiDefinitions::load_from_str(toml).expect("should parse")
+    }
+
+    fn get_diagnostics(content: &str) -> Vec<Diagnostic> {
+        let tree = parse(content);
+        let mut diagnostics = Vec::new();
+        validate_meta_blocks(tree.root_node(), content, &mut diagnostics);
+        diagnostics
+    }
+
+    fn get_callback_diagnostics(content: &str) -> Vec<Diagnostic> {
+        let tree = parse(content);
+        let api = load_api();
+        let mut diagnostics = Vec::new();
+        validate_public_functions(tree.root_node(), content, &api, &mut diagnostics);
+        diagnostics
+    }
+
+    fn errors(diags: &[Diagnostic]) -> Vec<&Diagnostic> {
+        diags.iter().filter(|d| matches!(d.severity, Severity::Error)).collect()
+    }
+
+    fn warnings(diags: &[Diagnostic]) -> Vec<&Diagnostic> {
+        diags.iter().filter(|d| matches!(d.severity, Severity::Warning)).collect()
+    }
+
+    // Meta block validation tests
+
+    #[test]
+    fn test_valid_script_meta() {
+        let content = "script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }";
+        let diags = get_diagnostics(content);
+        assert!(errors(&diags).is_empty(), "Valid meta should have no errors: {diags:?}");
+    }
+
+    #[test]
+    fn test_missing_script_meta() {
+        let content = "pub struct Foo { }";
+        let diags = get_diagnostics(content);
+        let errs = errors(&diags);
+        assert!(!errs.is_empty(), "Missing meta should produce error");
+        assert!(errs.iter().any(|d| d.code.as_deref() == Some("E0200")));
+    }
+
+    #[test]
+    fn test_missing_lang_field() {
+        let content = "script meta { api: nimbyrails.v1, }";
+        let diags = get_diagnostics(content);
+        let errs = errors(&diags);
+        assert!(errs.iter().any(|d| d.message.contains("lang")));
+    }
+
+    #[test]
+    fn test_missing_api_field() {
+        let content = "script meta { lang: nimbyscript.v1, }";
+        let diags = get_diagnostics(content);
+        let errs = errors(&diags);
+        assert!(errs.iter().any(|d| d.message.contains("api")));
+    }
+
+    #[test]
+    fn test_unknown_meta_field_warning() {
+        let content = "script meta { lang: nimbyscript.v1, api: nimbyrails.v1, foo: bar, }";
+        let diags = get_diagnostics(content);
+        let warns = warnings(&diags);
+        assert!(!warns.is_empty(), "Unknown field should produce warning");
+        assert!(warns.iter().any(|d| d.message.contains("foo")));
+    }
+
+    #[test]
+    fn test_description_meta_allowed() {
+        let content = "script meta { lang: nimbyscript.v1, api: nimbyrails.v1, description: test, }";
+        let diags = get_diagnostics(content);
+        let warns = warnings(&diags);
+        assert!(warns.iter().all(|d| !d.message.contains("description")), "description should be allowed");
+    }
+
+    #[test]
+    fn test_struct_meta_label() {
+        let content = r#"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+pub struct Foo {
+    meta { label: "My Struct", }
+}
+"#;
+        let diags = get_diagnostics(content);
+        // label is valid for struct meta
+        assert!(errors(&diags).is_empty());
+    }
+
+    #[test]
+    fn test_field_meta_min_max_numeric() {
+        let content = r#"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+pub struct Foo {
+    value: i64 meta { min: 0, max: 100, },
+}
+"#;
+        let diags = get_diagnostics(content);
+        assert!(errors(&diags).is_empty(), "min/max on i64 should be valid");
+    }
+
+    #[test]
+    fn test_field_meta_min_on_string_error() {
+        let content = r#"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+pub struct Foo {
+    name: string meta { min: 0, },
+}
+"#;
+        let diags = get_diagnostics(content);
+        let errs = errors(&diags);
+        assert!(!errs.is_empty(), "min on string should error");
+        assert!(errs.iter().any(|d| d.code.as_deref() == Some("E0202")));
+    }
+
+    #[test]
+    fn test_enum_variant_meta() {
+        let content = r#"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+pub enum Color {
+    Red meta { label: "Red Color", },
+    Green,
+}
+"#;
+        let diags = get_diagnostics(content);
+        assert!(errors(&diags).is_empty(), "label on enum variant should be valid");
+    }
+
+    // Callback validation tests
+    // NimbyScript syntax: `self: &Type` (not `&self`), return type uses `:` (not `->`)
+
+    #[test]
+    fn test_valid_callback_signature() {
+        // event_signal_check has 5 params: self, ctx, train, motion, signal
+        let content = r#"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+pub struct Test extend Signal { }
+pub fn Test::event_signal_check(self: &Test, ctx: &EventCtx, train: &Train, motion: &Motion, signal: &Signal): SignalCheck {
+    return SignalCheck::Pass;
+}
+"#;
+        let diags = get_callback_diagnostics(content);
+        assert!(errors(&diags).is_empty(), "Valid callback should have no errors: {diags:?}");
+    }
+
+    #[test]
+    fn test_invalid_callback_name() {
+        let content = r#"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+pub struct Test extend Signal { }
+pub fn Test::not_a_real_callback(self: &Test) { }
+"#;
+        let diags = get_callback_diagnostics(content);
+        let errs = errors(&diags);
+        assert!(!errs.is_empty(), "Invalid callback name should error");
+        assert!(errs.iter().any(|d| d.code.as_deref() == Some("E0100")));
+    }
+
+    #[test]
+    fn test_callback_param_count_mismatch() {
+        // event_signal_check expects 5 params, but we only provide 1
+        let content = r#"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+pub struct Test extend Signal { }
+pub fn Test::event_signal_check(self: &Test): SignalCheck {
+    return SignalCheck::Pass;
+}
+"#;
+        let diags = get_callback_diagnostics(content);
+        let errs = errors(&diags);
+        assert!(!errs.is_empty(), "Wrong param count should error");
+        assert!(errs.iter().any(|d| d.code.as_deref() == Some("E0101")));
+    }
+
+    #[test]
+    fn test_callback_return_type_mismatch() {
+        let content = r#"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+pub struct Test extend Signal { }
+pub fn Test::event_signal_check(self: &Test, ctx: &EventCtx, train: &Train, motion: &Motion, signal: &Signal): i64 {
+    return 0;
+}
+"#;
+        let diags = get_callback_diagnostics(content);
+        let errs = errors(&diags);
+        assert!(!errs.is_empty(), "Wrong return type should error");
+        assert!(errs.iter().any(|d| d.code.as_deref() == Some("E0103")));
+    }
+
+    #[test]
+    fn test_nonpublic_function_ignored() {
+        let content = r#"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+pub struct Test extend Signal { }
+fn Test::not_a_callback(self: &Test) { }
+"#;
+        let diags = get_callback_diagnostics(content);
+        // Non-public functions should not be validated as callbacks
+        assert!(errors(&diags).is_empty(), "Non-public fn should be ignored: {diags:?}");
+    }
+
+    #[test]
+    fn test_callback_param_type_mismatch() {
+        // All params correct except ctx which should be &EventCtx not i64
+        let content = r#"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+pub struct Test extend Signal { }
+pub fn Test::event_signal_check(self: &Test, ctx: i64, train: &Train, motion: &Motion, signal: &Signal): SignalCheck {
+    return SignalCheck::Pass;
+}
+"#;
+        let diags = get_callback_diagnostics(content);
+        let errs = errors(&diags);
+        assert!(!errs.is_empty(), "Wrong param type should error");
+        assert!(errs.iter().any(|d| d.code.as_deref() == Some("E0102")));
+    }
+
+    #[test]
+    fn test_self_param_type_flexible() {
+        // self: &StructName should match &Self in callback definition
+        let content = r#"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+pub struct MyHandler extend Signal { }
+pub fn MyHandler::event_signal_check(self: &MyHandler, ctx: &EventCtx, train: &Train, motion: &Motion, signal: &Signal): SignalCheck {
+    return SignalCheck::Pass;
+}
+"#;
+        let diags = get_callback_diagnostics(content);
+        // Should not error on self: &StructName type
+        let type_errs: Vec<_> = errors(&diags).into_iter()
+            .filter(|d| d.code.as_deref() == Some("E0102") && d.message.contains("self"))
+            .collect();
+        assert!(type_errs.is_empty(), "self: &StructName should be accepted: {type_errs:?}");
+    }
+
+    #[test]
+    fn test_callback_missing_return_type() {
+        let content = r#"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+pub struct Test extend Signal { }
+pub fn Test::event_signal_check(self: &Test, ctx: &EventCtx, train: &Train, motion: &Motion, signal: &Signal) {
+    // Missing return type
+}
+"#;
+        let diags = get_callback_diagnostics(content);
+        let errs = errors(&diags);
+        assert!(!errs.is_empty(), "Missing return type should error");
+        assert!(errs.iter().any(|d| d.code.as_deref() == Some("E0103")));
+    }
+}

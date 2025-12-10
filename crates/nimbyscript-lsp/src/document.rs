@@ -253,15 +253,12 @@ mod tests {
     use super::*;
     use nimbyscript_analyzer::diagnostics::Severity;
 
+    // Existing tests
+
     #[test]
     fn test_example_file_meta_validation() {
         let content = include_str!("../../../tests/fixtures/valid/example.nimbyscript");
         let doc = Document::new(content.to_string(), None);
-
-        println!("\nMeta validation diagnostics ({}):", doc.diagnostics().len());
-        for d in doc.diagnostics() {
-            println!("  {:?}: {}", d.severity, d.message);
-        }
 
         // The example file should have no errors
         let errors: Vec<_> = doc.diagnostics().iter()
@@ -301,5 +298,258 @@ pub fn Test::
 
         // Should still track struct extends even with the incomplete function
         assert_eq!(doc.struct_extends("Test"), Some("Signal"));
+    }
+
+    // Line offset computation tests
+
+    #[test]
+    fn test_line_offsets_empty() {
+        let offsets = compute_line_offsets("");
+        assert_eq!(offsets, vec![0]);
+    }
+
+    #[test]
+    fn test_line_offsets_single_line() {
+        let offsets = compute_line_offsets("hello world");
+        assert_eq!(offsets, vec![0]);
+    }
+
+    #[test]
+    fn test_line_offsets_multiple_lines() {
+        let offsets = compute_line_offsets("line1\nline2\nline3");
+        // line1 at 0, line2 at 6, line3 at 12
+        assert_eq!(offsets, vec![0, 6, 12]);
+    }
+
+    #[test]
+    fn test_line_offsets_trailing_newline() {
+        let offsets = compute_line_offsets("line1\n");
+        assert_eq!(offsets, vec![0, 6]);
+    }
+
+    #[test]
+    fn test_line_offsets_empty_lines() {
+        let offsets = compute_line_offsets("a\n\nb");
+        // a at 0, empty at 2, b at 3
+        assert_eq!(offsets, vec![0, 2, 3]);
+    }
+
+    // Position conversion tests
+
+    #[test]
+    fn test_offset_to_position_start() {
+        let doc = Document::new("hello\nworld".to_string(), None);
+        let pos = doc.offset_to_position(0);
+        assert_eq!(pos.line, 0);
+        assert_eq!(pos.character, 0);
+    }
+
+    #[test]
+    fn test_offset_to_position_middle_first_line() {
+        let doc = Document::new("hello\nworld".to_string(), None);
+        let pos = doc.offset_to_position(3);
+        assert_eq!(pos.line, 0);
+        assert_eq!(pos.character, 3);
+    }
+
+    #[test]
+    fn test_offset_to_position_second_line() {
+        let doc = Document::new("hello\nworld".to_string(), None);
+        // "world" starts at offset 6
+        let pos = doc.offset_to_position(6);
+        assert_eq!(pos.line, 1);
+        assert_eq!(pos.character, 0);
+    }
+
+    #[test]
+    fn test_offset_to_position_middle_second_line() {
+        let doc = Document::new("hello\nworld".to_string(), None);
+        // 'r' in "world" is at offset 8
+        let pos = doc.offset_to_position(8);
+        assert_eq!(pos.line, 1);
+        assert_eq!(pos.character, 2);
+    }
+
+    #[test]
+    fn test_offset_to_position_end() {
+        let doc = Document::new("hello\nworld".to_string(), None);
+        let pos = doc.offset_to_position(11); // end of "world"
+        assert_eq!(pos.line, 1);
+        assert_eq!(pos.character, 5);
+    }
+
+    #[test]
+    fn test_position_to_offset_start() {
+        let doc = Document::new("hello\nworld".to_string(), None);
+        let offset = doc.position_to_offset(Position::new(0, 0));
+        assert_eq!(offset, 0);
+    }
+
+    #[test]
+    fn test_position_to_offset_second_line() {
+        let doc = Document::new("hello\nworld".to_string(), None);
+        let offset = doc.position_to_offset(Position::new(1, 0));
+        assert_eq!(offset, 6);
+    }
+
+    #[test]
+    fn test_position_to_offset_roundtrip() {
+        let doc = Document::new("line1\nline2\nline3".to_string(), None);
+        for offset in [0, 3, 5, 6, 10, 12, 15] {
+            let pos = doc.offset_to_position(offset);
+            let back = doc.position_to_offset(pos);
+            assert_eq!(offset, back, "roundtrip failed for offset {offset}");
+        }
+    }
+
+    #[test]
+    fn test_position_to_offset_beyond_lines() {
+        let doc = Document::new("hello".to_string(), None);
+        // Position beyond available lines should return content length
+        let offset = doc.position_to_offset(Position::new(10, 0));
+        assert_eq!(offset, 5); // content length
+    }
+
+    // Symbol extraction tests
+
+    #[test]
+    fn test_extract_struct_symbol() {
+        let content = r#"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+pub struct MyStruct { }
+"#;
+        let doc = Document::new(content.to_string(), None);
+        let symbols = doc.document_symbols();
+        let struct_sym = symbols.iter().find(|s| s.name == "MyStruct");
+        assert!(struct_sym.is_some(), "Should find MyStruct symbol");
+        assert_eq!(struct_sym.expect("checked").kind, SymbolKind::STRUCT);
+    }
+
+    #[test]
+    fn test_extract_enum_symbol() {
+        let content = r#"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+pub enum MyEnum { A, B, }
+"#;
+        let doc = Document::new(content.to_string(), None);
+        let symbols = doc.document_symbols();
+        let enum_sym = symbols.iter().find(|s| s.name == "MyEnum");
+        assert!(enum_sym.is_some(), "Should find MyEnum symbol");
+        assert_eq!(enum_sym.expect("checked").kind, SymbolKind::ENUM);
+    }
+
+    #[test]
+    fn test_extract_function_symbol() {
+        let content = r#"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+fn my_func() { }
+"#;
+        let doc = Document::new(content.to_string(), None);
+        let symbols = doc.document_symbols();
+        let fn_sym = symbols.iter().find(|s| s.name == "my_func");
+        assert!(fn_sym.is_some(), "Should find my_func symbol");
+        assert_eq!(fn_sym.expect("checked").kind, SymbolKind::FUNCTION);
+    }
+
+    #[test]
+    fn test_extract_method_symbol() {
+        let content = r#"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+pub struct Foo { }
+fn Foo::bar(&self) { }
+"#;
+        let doc = Document::new(content.to_string(), None);
+        let symbols = doc.document_symbols();
+        let method_sym = symbols.iter().find(|s| s.name == "Foo::bar");
+        assert!(method_sym.is_some(), "Should find Foo::bar method");
+        assert_eq!(method_sym.expect("checked").kind, SymbolKind::METHOD);
+    }
+
+    #[test]
+    fn test_extract_const_symbol() {
+        let content = r#"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+const MY_CONST: i64 = 42;
+"#;
+        let doc = Document::new(content.to_string(), None);
+        let symbols = doc.document_symbols();
+        let const_sym = symbols.iter().find(|s| s.name == "MY_CONST");
+        assert!(const_sym.is_some(), "Should find MY_CONST symbol");
+        assert_eq!(const_sym.expect("checked").kind, SymbolKind::CONSTANT);
+    }
+
+    #[test]
+    fn test_extract_field_symbol() {
+        let content = r#"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+pub struct Foo {
+    my_field: i64,
+}
+"#;
+        let doc = Document::new(content.to_string(), None);
+        let symbols = doc.document_symbols();
+        let field_sym = symbols.iter().find(|s| s.name == "my_field");
+        assert!(field_sym.is_some(), "Should find my_field symbol");
+        assert_eq!(field_sym.expect("checked").kind, SymbolKind::FIELD);
+    }
+
+    #[test]
+    fn test_extract_enum_variant_symbol() {
+        let content = r#"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+pub enum Color { Red, Green, Blue, }
+"#;
+        let doc = Document::new(content.to_string(), None);
+        let symbols = doc.document_symbols();
+        let variant = symbols.iter().find(|s| s.name == "Red");
+        assert!(variant.is_some(), "Should find Red enum variant");
+        assert_eq!(variant.expect("checked").kind, SymbolKind::ENUM_MEMBER);
+    }
+
+    #[test]
+    fn test_symbol_at_position() {
+        let content = r#"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+pub struct Foo { }
+"#;
+        let doc = Document::new(content.to_string(), None);
+
+        // Find offset where "Foo" is defined
+        let foo_offset = content.find("Foo").expect("Foo should be in content");
+        let sym = doc.symbol_at(foo_offset);
+        // Should find the struct since Foo is part of the struct definition span
+        assert!(sym.is_some());
+    }
+
+    // Parse error detection tests
+
+    #[test]
+    fn test_parse_error_detected() {
+        let content = r#"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+pub struct Foo {
+"#; // Missing closing brace
+        let doc = Document::new(content.to_string(), None);
+        let errors: Vec<_> = doc.diagnostics().iter()
+            .filter(|d| matches!(d.severity, Severity::Error))
+            .collect();
+        assert!(!errors.is_empty(), "Should detect parse error");
+    }
+
+    #[test]
+    fn test_empty_document() {
+        let doc = Document::new(String::new(), None);
+        // Empty document should have some diagnostics (missing script meta)
+        assert!(!doc.diagnostics().is_empty());
+    }
+
+    #[test]
+    fn test_minimal_valid_document() {
+        let content = include_str!("../../../tests/fixtures/valid/minimal.nimbyscript");
+        let doc = Document::new(content.to_string(), None);
+        let errors: Vec<_> = doc.diagnostics().iter()
+            .filter(|d| matches!(d.severity, Severity::Error))
+            .collect();
+        assert!(errors.is_empty(), "Minimal file should have no errors");
     }
 }
