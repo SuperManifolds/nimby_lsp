@@ -455,13 +455,11 @@ fn resolve_call(node: Node, ctx: &mut SemanticContext, diagnostics: &mut Vec<Dia
 }
 
 fn resolve_field_access(node: Node, ctx: &mut SemanticContext, diagnostics: &mut Vec<Diagnostic>) {
-    // Resolve the object
+    // Resolve the object expression for name resolution
     if let Some(object) = node.child_by_field("object") {
         resolve_names(object, ctx, diagnostics);
     }
-
-    // Note: Full field checking would require type inference to know the type of the object.
-    // For now, we just recurse into children.
+    // Field validation is handled by type_checking pass (E0303)
 }
 
 fn is_builtin_function(name: &str) -> bool {

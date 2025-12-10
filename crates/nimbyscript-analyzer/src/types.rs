@@ -158,6 +158,16 @@ impl TypeInfo {
         }
     }
 
+    /// Unwrap references and pointers recursively to get the underlying type.
+    /// Handles chained references like `&&Signal` -> `Signal`.
+    pub fn unwrap_ref(&self) -> TypeInfo {
+        match self {
+            TypeInfo::Reference { inner, .. } => inner.unwrap_ref(),
+            TypeInfo::Pointer { inner, .. } => inner.unwrap_ref(),
+            other => other.clone(),
+        }
+    }
+
     /// Check if this type can be compared with another (using ==, !=, <, >, etc.)
     /// NimbyScript allows comparing i64 and f64, but not most other cross-type comparisons
     pub fn can_compare_with(&self, other: &TypeInfo) -> bool {

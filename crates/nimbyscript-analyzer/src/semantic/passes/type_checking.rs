@@ -143,13 +143,14 @@ fn check_expression(
 ) {
     match node.kind() {
         kind::BINARY_EXPRESSION => check_binary_expr(node, ctx, diagnostics, local_types),
-        kind::CALL_EXPRESSION | kind::FIELD_ACCESS => {
+        kind::CALL_EXPRESSION => {
             // Recurse into arguments
             let mut cursor = node.walk();
             for child in node.children(&mut cursor) {
                 check_expression(child, ctx, diagnostics, local_types);
             }
         }
+        kind::FIELD_ACCESS => check_field_access(node, ctx, diagnostics, local_types),
         _ => {
             // Recurse into children
             let mut cursor = node.walk();
@@ -157,6 +158,80 @@ fn check_expression(
                 check_expression(child, ctx, diagnostics, local_types);
             }
         }
+    }
+}
+
+fn check_field_access(
+    node: Node,
+    ctx: &SemanticContext,
+    diagnostics: &mut Vec<Diagnostic>,
+    local_types: &HashMap<String, TypeInfo>,
+) {
+    // 1. Get and check the object
+    let Some(object) = node.child_by_field("object") else {
+        return;
+    };
+    check_expression(object, ctx, diagnostics, local_types);
+
+    // 2. Infer the object's type
+    let object_type = infer_expr_type(Some(object), ctx, local_types);
+    let base_type = object_type.unwrap_ref();
+
+    // 3. Get the field node
+    let Some(field_node) = node.child_by_field("field") else {
+        return;
+    };
+    let field_name = field_node.text(ctx.source);
+
+    // 4. Skip validation if type is unknown (avoid cascading errors)
+    if base_type.is_unknown() {
+        return;
+    }
+
+    // 5. Check field exists
+    if let TypeInfo::Struct { name, .. } = &base_type {
+        if let Some(fields) = ctx.get_struct_fields(name) {
+            if !fields.contains_key(field_name) {
+                let available: Vec<_> = fields.keys().take(5).cloned().collect();
+                let hint = if available.is_empty() {
+                    String::new()
+                } else {
+                    format!(". Available fields: {}", available.join(", "))
+                };
+
+                diagnostics.push(
+                    Diagnostic::error(
+                        format!(
+                            "Undefined field '{}' on type '{}'{}",
+                            field_name, name, hint
+                        ),
+                        Span::new(field_node.start_byte(), field_node.end_byte()),
+                    )
+                    .with_code("E0303"),
+                );
+            }
+        } else {
+            // Type has no known fields
+            diagnostics.push(
+                Diagnostic::error(
+                    format!("Type '{}' has no fields", name),
+                    Span::new(field_node.start_byte(), field_node.end_byte()),
+                )
+                .with_code("E0303"),
+            );
+        }
+    } else {
+        // Not a struct type
+        diagnostics.push(
+            Diagnostic::error(
+                format!(
+                    "Cannot access field '{}' on non-struct type '{}'",
+                    field_name, base_type
+                ),
+                Span::new(node.start_byte(), node.end_byte()),
+            )
+            .with_code("E0303"),
+        );
     }
 }
 
@@ -430,6 +505,34 @@ fn infer_expr_type(
             }
             TypeInfo::Unknown
         }
+        kind::FIELD_ACCESS => {
+            // 1. Get the object expression
+            let object_type = if let Some(obj) = node.child_by_field("object") {
+                infer_expr_type(Some(obj), ctx, local_types)
+            } else {
+                return TypeInfo::Unknown;
+            };
+
+            // 2. Unwrap references/pointers to get the underlying type
+            let base_type = object_type.unwrap_ref();
+
+            // 3. Get the field name
+            let field_name = node
+                .child_by_field("field")
+                .map(|f| f.text(ctx.source))
+                .unwrap_or("");
+
+            // 4. Look up field type
+            if let TypeInfo::Struct { name, .. } = &base_type {
+                if let Some(fields) = ctx.get_struct_fields(name) {
+                    if let Some(field_type) = fields.get(field_name) {
+                        return field_type.clone();
+                    }
+                }
+            }
+
+            TypeInfo::Unknown
+        }
         _ => TypeInfo::Unknown,
     }
 }
@@ -585,6 +688,82 @@ fn test() {
         assert!(
             errs.iter().all(|d| d.code.as_deref() != Some("E0409")),
             "Bool condition should be ok: {:?}",
+            errs
+        );
+    }
+
+    // E0303 - Undefined field
+
+    #[test]
+    fn test_undefined_field_on_user_struct() {
+        let source = r#"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+pub struct MyHandler extend Signal {
+    count: i64,
+}
+fn MyHandler::test(self: &MyHandler) {
+    let x = self.nonexistent;
+}
+"#;
+        let diags = check(source);
+        let errs = errors(&diags);
+        assert!(
+            errs.iter().any(|d| d.code.as_deref() == Some("E0303")),
+            "Should error on undefined field: {:?}",
+            errs
+        );
+    }
+
+    #[test]
+    fn test_valid_field_access() {
+        let source = r#"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+pub struct MyHandler extend Signal {
+    count: i64,
+}
+fn MyHandler::test(self: &MyHandler) {
+    let x = self.count;
+}
+"#;
+        let diags = check(source);
+        let errs = errors(&diags);
+        assert!(
+            errs.iter().all(|d| d.code.as_deref() != Some("E0303")),
+            "Valid field should not error: {:?}",
+            errs
+        );
+    }
+
+    #[test]
+    fn test_undefined_field_on_game_type() {
+        let source = r#"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+fn test(sig: &Signal) {
+    let x = sig.nonexistent_field;
+}
+"#;
+        let diags = check(source);
+        let errs = errors(&diags);
+        assert!(
+            errs.iter().any(|d| d.code.as_deref() == Some("E0303")),
+            "Should error on undefined game type field: {:?}",
+            errs
+        );
+    }
+
+    #[test]
+    fn test_chained_field_access() {
+        let source = r#"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+fn test(train: &Train) {
+    let x = train.motion.nonexistent;
+}
+"#;
+        let diags = check(source);
+        let errs = errors(&diags);
+        assert!(
+            errs.iter().any(|d| d.code.as_deref() == Some("E0303")),
+            "Should error on undefined field in chain: {:?}",
             errs
         );
     }
