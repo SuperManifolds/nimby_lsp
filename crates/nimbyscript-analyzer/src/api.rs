@@ -315,18 +315,14 @@ mod tests {
     #[test]
     fn test_get_type_db() {
         let api = load_api();
-        let db = api.get_type("DB");
-        assert!(db.is_some(), "DB type should exist");
-        let db = db.unwrap();
+        let db = api.get_type("DB").expect("DB type should exist");
         assert!(!db.methods.is_empty(), "DB should have methods");
     }
 
     #[test]
     fn test_get_type_sim() {
         let api = load_api();
-        let sim = api.get_type("Sim");
-        assert!(sim.is_some(), "Sim type should exist");
-        let sim = sim.unwrap();
+        let sim = api.get_type("Sim").expect("Sim type should exist");
         assert!(!sim.methods.is_empty(), "Sim should have methods");
     }
 
@@ -339,10 +335,8 @@ mod tests {
     #[test]
     fn test_context_type_db() {
         let api = load_api();
-        let ctx_type = api.get_type("ControlCtx");
-        assert!(ctx_type.is_some(), "ControlCtx type should exist");
+        let ctx_type = api.get_type("ControlCtx").expect("ControlCtx type should exist");
         // ControlCtx should have db, sim, extrapolator fields
-        let ctx_type = ctx_type.unwrap();
         assert!(ctx_type.fields.contains_key("db"));
         assert!(ctx_type.fields.contains_key("sim"));
         assert!(ctx_type.fields.contains_key("extrapolator"));

@@ -21,16 +21,20 @@ mod tests {
     #[test]
     fn test_can_load_grammar() {
         let mut parser = tree_sitter::Parser::new();
-        parser.set_language(&language()).expect("Failed to load NimbyScript grammar");
+        parser
+            .set_language(&language())
+            .expect("Failed to load NimbyScript grammar");
     }
 
     #[test]
     fn test_parse_simple() {
         let mut parser = tree_sitter::Parser::new();
-        parser.set_language(&language()).unwrap();
+        parser
+            .set_language(&language())
+            .expect("Failed to load grammar");
 
-        let source = r#"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }"#;
-        let tree = parser.parse(source, None).unwrap();
+        let source = r"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }";
+        let tree = parser.parse(source, None).expect("Failed to parse");
 
         assert_eq!(tree.root_node().kind(), "source_file");
         assert!(!tree.root_node().has_error());
@@ -39,15 +43,17 @@ mod tests {
     #[test]
     fn test_error_recovery() {
         let mut parser = tree_sitter::Parser::new();
-        parser.set_language(&language()).unwrap();
+        parser
+            .set_language(&language())
+            .expect("Failed to load grammar");
 
         // Incomplete code - struct should still parse
-        let source = r#"
+        let source = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub struct Test extend Signal { }
 pub fn Test::
-"#;
-        let tree = parser.parse(source, None).unwrap();
+";
+        let tree = parser.parse(source, None).expect("Failed to parse");
         let root = tree.root_node();
 
         // Should have parsed the struct despite the incomplete function

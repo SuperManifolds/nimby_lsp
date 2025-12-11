@@ -15,6 +15,43 @@ use nimbyscript_parser::{kind, Node, NodeExt};
 
 use crate::document::Document;
 
+/// Type alias for (name, type) pairs used for params and bindings
+type NameTypePairs = Vec<(String, TypeInfo)>;
+
+/// Extract parameter (name, type) as strings from a PARAMETER node.
+fn extract_param_strings(param_node: Node, content: &str) -> Option<(String, String)> {
+    let name = param_node.child_by_field("name")?;
+    let ty = param_node.child_by_field("type")?;
+    Some((name.text(content).to_string(), ty.text(content).to_string()))
+}
+
+/// Extract all parameters from a PARAMETERS node as (name, type) string pairs.
+fn extract_params_from_node(params_node: Node, content: &str) -> Vec<(String, String)> {
+    let mut cursor = params_node.walk();
+    params_node
+        .children(&mut cursor)
+        .filter(|c| c.kind() == kind::PARAMETER)
+        .filter_map(|c| extract_param_strings(c, content))
+        .collect()
+}
+
+/// Extract parameter (name, TypeInfo) from a PARAMETER node.
+fn extract_param_type_info(param_node: Node, content: &str) -> Option<(String, TypeInfo)> {
+    let name = param_node.child_by_field("name")?;
+    let ty = param_node.child_by_field("type")?;
+    Some((name.text(content).to_string(), parse_type_string(ty.text(content))))
+}
+
+/// Extract all parameters from a PARAMETERS node as (name, TypeInfo) pairs.
+fn extract_params_with_types(params_node: Node, content: &str) -> Vec<(String, TypeInfo)> {
+    let mut cursor = params_node.walk();
+    params_node
+        .children(&mut cursor)
+        .filter(|c| c.kind() == kind::PARAMETER)
+        .filter_map(|c| extract_param_type_info(c, content))
+        .collect()
+}
+
 // ============================================================================
 // Public API
 // ============================================================================
@@ -180,7 +217,7 @@ impl<'a> HoverEngine<'a> {
     /// Detect if hovering over a struct definition.
     fn detect_struct_definition(&self, node: Node) -> Option<HoverContext> {
         // Walk up to find struct_definition
-        let struct_node = self.find_ancestor_of_kind(node, kind::STRUCT_DEFINITION)?;
+        let struct_node = Self::find_ancestor_of_kind(node, kind::STRUCT_DEFINITION)?;
         let name_node = struct_node.child_by_field("name")?;
 
         // Only trigger if cursor is on the struct name
@@ -217,7 +254,7 @@ impl<'a> HoverEngine<'a> {
 
     /// Detect if hovering over a function definition.
     fn detect_function_definition(&self, node: Node) -> Option<HoverContext> {
-        let func_node = self.find_ancestor_of_kind(node, kind::FUNCTION_DEFINITION)?;
+        let func_node = Self::find_ancestor_of_kind(node, kind::FUNCTION_DEFINITION)?;
         let name_node = func_node.child_by_field("name")?;
 
         // Only trigger if cursor is on the function name
@@ -228,43 +265,15 @@ impl<'a> HoverEngine<'a> {
         let name = name_node.text(self.content).to_string();
 
         // Check if this is a callback (method on a struct that extends a game type)
-        if name.contains("::") {
-            let parts: Vec<&str> = name.split("::").collect();
-            if parts.len() == 2 {
-                let struct_name = parts[0];
-                let method_name = parts[1];
-
-                // Check if this is a callback
-                if let Some(extends_type) = self.doc.struct_extends(struct_name) {
-                    if self.api.is_valid_callback(method_name) {
-                        return Some(HoverContext::Callback {
-                            struct_name: struct_name.to_string(),
-                            callback_name: method_name.to_string(),
-                            extends_type: extends_type.to_string(),
-                        });
-                    }
-                }
-            }
+        if let Some(hover_ctx) = self.try_detect_callback(&name) {
+            return Some(hover_ctx);
         }
 
         // Collect parameters
-        let mut params = Vec::new();
-        if let Some(params_node) = func_node.child_by_kind(kind::PARAMETERS) {
-            let mut cursor = params_node.walk();
-            for child in params_node.children(&mut cursor) {
-                if child.kind() == kind::PARAMETER {
-                    if let (Some(param_name), Some(param_type)) = (
-                        child.child_by_field("name"),
-                        child.child_by_field("type"),
-                    ) {
-                        params.push((
-                            param_name.text(self.content).to_string(),
-                            param_type.text(self.content).to_string(),
-                        ));
-                    }
-                }
-            }
-        }
+        let params = func_node
+            .child_by_kind(kind::PARAMETERS)
+            .map(|pn| extract_params_from_node(pn, self.content))
+            .unwrap_or_default();
 
         let return_type = func_node
             .child_by_field("return_type")
@@ -278,9 +287,31 @@ impl<'a> HoverEngine<'a> {
         })
     }
 
+    /// Try to detect if a function name is a callback (e.g., MyStruct::on_tick).
+    fn try_detect_callback(&self, name: &str) -> Option<HoverContext> {
+        if !name.contains("::") {
+            return None;
+        }
+        let parts: Vec<&str> = name.split("::").collect();
+        if parts.len() != 2 {
+            return None;
+        }
+        let struct_name = parts[0];
+        let method_name = parts[1];
+        let extends_type = self.doc.struct_extends(struct_name)?;
+        if !self.api.is_valid_callback(method_name) {
+            return None;
+        }
+        Some(HoverContext::Callback {
+            struct_name: struct_name.to_string(),
+            callback_name: method_name.to_string(),
+            extends_type: extends_type.to_string(),
+        })
+    }
+
     /// Detect if hovering over an enum definition.
     fn detect_enum_definition(&self, node: Node) -> Option<HoverContext> {
-        let enum_node = self.find_ancestor_of_kind(node, kind::ENUM_DEFINITION)?;
+        let enum_node = Self::find_ancestor_of_kind(node, kind::ENUM_DEFINITION)?;
         let name_node = enum_node.child_by_field("name")?;
 
         // Only trigger if cursor is on the enum name
@@ -307,7 +338,7 @@ impl<'a> HoverEngine<'a> {
     /// Detect if hovering over a field access (e.g., ctx.db).
     fn detect_field_access(&self, node: Node) -> Option<HoverContext> {
         // Look for field_access node
-        let field_node = self.find_ancestor_of_kind(node, kind::FIELD_ACCESS)?;
+        let field_node = Self::find_ancestor_of_kind(node, kind::FIELD_ACCESS)?;
 
         // Get the field name being accessed
         let field_name_node = field_node.child_by_field("field")?;
@@ -322,7 +353,7 @@ impl<'a> HoverEngine<'a> {
         // Get the object being accessed
         let object_node = field_node.child_by_field("object")?;
         let object_type = self.infer_node_type(object_node)?;
-        let type_name = self.unwrap_to_type_name(&object_type)?;
+        let type_name = Self::unwrap_to_type_name(&object_type)?;
 
         // Check if this is an API field
         if let Some(type_def) = self.api.get_type(&type_name) {
@@ -351,7 +382,7 @@ impl<'a> HoverEngine<'a> {
     /// Detect if hovering over a method call (e.g., db.view()).
     fn detect_method_call(&self, node: Node) -> Option<HoverContext> {
         // Look for call_expression with a field_access as callee
-        let call_node = self.find_ancestor_of_kind(node, kind::CALL_EXPRESSION)?;
+        let call_node = Self::find_ancestor_of_kind(node, kind::CALL_EXPRESSION)?;
         let callee = call_node.child_by_field("function")?;
 
         if callee.kind() != kind::FIELD_ACCESS {
@@ -368,10 +399,10 @@ impl<'a> HoverEngine<'a> {
         let method_name = method_name_node.text(self.content).to_string();
         let object_node = callee.child_by_field("object")?;
         let object_type = self.infer_node_type(object_node)?;
-        let type_name = self.unwrap_to_type_name(&object_type)?;
+        let type_name = Self::unwrap_to_type_name(&object_type)?;
 
         // Get the base type name (strip generic parameters)
-        let base_type_name = self.base_type_name(&type_name);
+        let base_type_name = Self::base_type_name(&type_name);
 
         // Verify this is an API method
         if let Some(type_def) = self.api.get_type(&base_type_name) {
@@ -388,7 +419,7 @@ impl<'a> HoverEngine<'a> {
 
     /// Extract the base type name from a potentially generic type.
     /// e.g., "Option<Presence>" -> "Option"
-    fn base_type_name(&self, type_name: &str) -> String {
+    fn base_type_name(type_name: &str) -> String {
         if let Some(idx) = type_name.find('<') {
             type_name[..idx].to_string()
         } else {
@@ -399,7 +430,7 @@ impl<'a> HoverEngine<'a> {
     /// Detect if hovering over a type reference in a type annotation (e.g., ID<Train>).
     fn detect_type_reference(&self, node: Node) -> Option<HoverContext> {
         // Check if we're in a type_identifier context
-        let type_id_node = self.find_ancestor_of_kind(node, kind::TYPE_IDENTIFIER)?;
+        let type_id_node = Self::find_ancestor_of_kind(node, kind::TYPE_IDENTIFIER)?;
 
         // Get the full type text (e.g., "ID<Train>") for API lookup
         let full_type = type_id_node.text(self.content);
@@ -474,7 +505,7 @@ impl<'a> HoverEngine<'a> {
 
     /// Detect if hovering over a path expression (e.g., SignalCheck::Pass).
     fn detect_path_expression(&self, node: Node) -> Option<HoverContext> {
-        let path_node = self.find_ancestor_of_kind(node, kind::PATH_EXPRESSION)?;
+        let path_node = Self::find_ancestor_of_kind(node, kind::PATH_EXPRESSION)?;
         let text = path_node.text(self.content);
 
         if !text.contains("::") {
@@ -582,7 +613,7 @@ impl<'a> HoverEngine<'a> {
         self.offset >= node.start_byte() && self.offset <= node.end_byte()
     }
 
-    fn find_ancestor_of_kind<'b>(&self, node: Node<'b>, target_kind: &str) -> Option<Node<'b>> {
+    fn find_ancestor_of_kind<'b>(node: Node<'b>, target_kind: &str) -> Option<Node<'b>> {
         let mut current = Some(node);
         while let Some(n) = current {
             if n.kind() == target_kind {
@@ -604,19 +635,19 @@ impl<'a> HoverEngine<'a> {
                 // Path expressions can be simple identifiers like "motion"
                 // or paths like "Foo::bar"
                 let text = node.text(self.content);
-                if !text.contains("::") {
-                    // Simple identifier - look up in local types
-                    self.local_types.get(text).cloned()
-                } else {
+                if text.contains("::") {
                     // Path like Foo::bar - not supported for type inference yet
                     None
+                } else {
+                    // Simple identifier - look up in local types
+                    self.local_types.get(text).cloned()
                 }
             }
             kind::FIELD_ACCESS => {
                 let object = node.child_by_field("object")?;
                 let field = node.child_by_field("field")?;
                 let object_type = self.infer_node_type(object)?;
-                let type_name = self.unwrap_to_type_name(&object_type)?;
+                let type_name = Self::unwrap_to_type_name(&object_type)?;
                 let field_name = field.text(self.content);
 
                 // Check user struct fields
@@ -636,47 +667,44 @@ impl<'a> HoverEngine<'a> {
                 None
             }
             kind::CALL_EXPRESSION => {
-                let callee = node.child_by_field("function")?;
-                if callee.kind() == kind::FIELD_ACCESS {
-                    let object = callee.child_by_field("object")?;
-                    let method = callee.child_by_field("field")?;
-                    let object_type = self.infer_node_type(object)?;
-                    let type_name = self.unwrap_to_type_name(&object_type)?;
-                    let method_name = method.text(self.content);
-
-                    if let Some(type_def) = self.api.get_type(&type_name) {
-                        if let Some(method_def) =
-                            type_def.methods.iter().find(|m| m.name == method_name)
-                        {
-                            return method_def
-                                .return_type
-                                .as_ref()
-                                .map(|t| parse_type_string(t));
-                        }
-                    }
-                }
-                None
+                self.infer_call_expression_type(node)
             }
             _ => None,
         }
     }
 
-    fn unwrap_to_type_name(&self, ty: &TypeInfo) -> Option<String> {
+    /// Infer the return type of a call expression.
+    fn infer_call_expression_type(&self, node: Node) -> Option<TypeInfo> {
+        let callee = node.child_by_field("function")?;
+        if callee.kind() != kind::FIELD_ACCESS {
+            return None;
+        }
+        let object = callee.child_by_field("object")?;
+        let method = callee.child_by_field("field")?;
+        let object_type = self.infer_node_type(object)?;
+        let type_name = Self::unwrap_to_type_name(&object_type)?;
+        let method_name = method.text(self.content);
+
+        let type_def = self.api.get_type(&type_name)?;
+        let method_def = type_def.methods.iter().find(|m| m.name == method_name)?;
+        method_def.return_type.as_ref().map(|t| parse_type_string(t))
+    }
+
+    fn unwrap_to_type_name(ty: &TypeInfo) -> Option<String> {
         match ty {
-            TypeInfo::Struct { name, .. } => Some(name.clone()),
-            TypeInfo::Enum { name } => Some(name.clone()),
+            TypeInfo::Struct { name, .. } | TypeInfo::Enum { name } => Some(name.clone()),
             TypeInfo::Reference { inner, .. } | TypeInfo::Pointer { inner, .. } => {
-                self.unwrap_to_type_name(inner)
+                Self::unwrap_to_type_name(inner)
             }
             TypeInfo::Generic { name, args } => {
-                if !args.is_empty() {
+                if args.is_empty() {
+                    Some(name.clone())
+                } else {
                     let arg_names: Vec<_> = args
                         .iter()
-                        .filter_map(|a| self.unwrap_to_type_name(a))
+                        .filter_map(Self::unwrap_to_type_name)
                         .collect();
                     Some(format!("{}<{}>", name, arg_names.join(", ")))
-                } else {
-                    Some(name.clone())
                 }
             }
             _ => None,
@@ -699,7 +727,7 @@ impl<'a> HoverEngine<'a> {
     fn find_function_locals(
         &self,
         node: Node,
-    ) -> Option<(Vec<(String, TypeInfo)>, Vec<(String, TypeInfo)>)> {
+    ) -> Option<(NameTypePairs, NameTypePairs)> {
         if node.kind() == kind::FUNCTION_DEFINITION {
             let start = node.start_byte();
             let end = node.end_byte();
@@ -709,18 +737,7 @@ impl<'a> HoverEngine<'a> {
 
                 // Extract parameters
                 if let Some(params_node) = node.child_by_kind(kind::PARAMETERS) {
-                    let mut cursor = params_node.walk();
-                    for child in params_node.children(&mut cursor) {
-                        if child.kind() == kind::PARAMETER {
-                            if let (Some(name_node), Some(type_node)) =
-                                (child.child_by_field("name"), child.child_by_field("type"))
-                            {
-                                let name = name_node.text(self.content).to_string();
-                                let type_str = type_node.text(self.content);
-                                params.push((name, parse_type_string(type_str)));
-                            }
-                        }
-                    }
+                    params = extract_params_with_types(params_node, self.content);
                 }
 
                 // Extract let bindings
@@ -754,8 +771,7 @@ impl<'a> HoverEngine<'a> {
                     let name = name_node.text(self.content).to_string();
                     let type_info = child
                         .child_by_field("type")
-                        .map(|t| parse_type_string(t.text(self.content)))
-                        .unwrap_or(TypeInfo::Unknown);
+                        .map_or(TypeInfo::Unknown, |t| parse_type_string(t.text(self.content)));
                     bindings.push((name, type_info));
                 }
             }
@@ -785,9 +801,9 @@ impl<'a> HoverEngine<'a> {
                 params,
                 return_type,
                 doc,
-            } => self.format_user_function(name, params, return_type.as_deref(), doc.as_deref()),
+            } => Self::format_user_function(name, params, return_type.as_deref(), doc.as_deref()),
 
-            HoverContext::UserEnum { name, variants } => self.format_user_enum(name, variants),
+            HoverContext::UserEnum { name, variants } => Self::format_user_enum(name, variants),
 
             HoverContext::ApiType(name) => self.format_api_type(name),
 
@@ -862,7 +878,6 @@ impl<'a> HoverEngine<'a> {
     }
 
     fn format_user_function(
-        &self,
         name: &str,
         params: &[(String, String)],
         return_type: Option<&str>,
@@ -892,7 +907,7 @@ impl<'a> HoverEngine<'a> {
         result
     }
 
-    fn format_user_enum(&self, name: &str, variants: &[String]) -> String {
+    fn format_user_enum(name: &str, variants: &[String]) -> String {
         let mut result = format!("**enum {name}**\n\n**Variants:**\n");
         for variant in variants {
             let _ = writeln!(result, "- `{variant}`");
@@ -965,7 +980,7 @@ impl<'a> HoverEngine<'a> {
             let _ = write!(result, "\n\n{doc}");
         }
 
-        self.append_params_doc(&mut result, func);
+        Self::append_params_doc(&mut result, func);
 
         result
     }
@@ -990,7 +1005,7 @@ impl<'a> HoverEngine<'a> {
             let _ = write!(result, "\n\n{doc}");
         }
 
-        self.append_params_doc(&mut result, method);
+        Self::append_params_doc(&mut result, method);
 
         result
     }
@@ -1056,21 +1071,7 @@ impl<'a> HoverEngine<'a> {
             }
 
             // Parameters with struct name substituted for &Self
-            if !callback.params.is_empty() {
-                result.push_str("\n\n**Parameters:**\n");
-                for p in &callback.params {
-                    let ty = if p.ty == "&Self" {
-                        format!("&{struct_name}")
-                    } else {
-                        p.ty.clone()
-                    };
-                    let _ = write!(result, "- `{}`: `{ty}`", p.name);
-                    if let Some(param_doc) = &p.doc {
-                        let _ = write!(result, " - {param_doc}");
-                    }
-                    result.push('\n');
-                }
-            }
+            Self::append_callback_params(&mut result, callback, struct_name);
 
             if let Some(ret) = &callback.return_type {
                 let _ = write!(result, "\n**Returns:** `{ret}`");
@@ -1080,7 +1081,27 @@ impl<'a> HoverEngine<'a> {
         result
     }
 
-    fn append_params_doc(&self, result: &mut String, func: &FunctionDef) {
+    /// Append callback parameters with &Self replaced by the struct name.
+    fn append_callback_params(result: &mut String, callback: &FunctionDef, struct_name: &str) {
+        if callback.params.is_empty() {
+            return;
+        }
+        result.push_str("\n\n**Parameters:**\n");
+        for p in &callback.params {
+            let ty = if p.ty == "&Self" {
+                format!("&{struct_name}")
+            } else {
+                p.ty.clone()
+            };
+            let _ = write!(result, "- `{}`: `{ty}`", p.name);
+            if let Some(param_doc) = &p.doc {
+                let _ = write!(result, " - {param_doc}");
+            }
+            result.push('\n');
+        }
+    }
+
+    fn append_params_doc(result: &mut String, func: &FunctionDef) {
         if !func.params.is_empty() {
             result.push_str("\n\n**Parameters:**\n");
             for p in &func.params {
@@ -1144,9 +1165,9 @@ mod tests {
     fn make_api() -> ApiDefinitions {
         let api_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .parent()
-            .unwrap()
+            .expect("should have parent dir")
             .parent()
-            .unwrap()
+            .expect("should have grandparent dir")
             .join("api-definitions/nimbyrails.v1.toml");
         ApiDefinitions::load_from_file(&api_path).expect("Failed to load API")
     }
@@ -1155,20 +1176,20 @@ mod tests {
     fn test_hover_on_type_annotation() {
         let api = make_api();
 
-        let code = r#"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+        let code = r"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub struct Test extend Signal {
     owner: ID<Train>,
 }
-"#;
+";
         let doc = Document::new(code.to_string(), Some(&api));
 
         // Find position of "ID" in "owner: ID<Train>"
-        let id_offset = code.find("ID<Train>").unwrap();
+        let id_offset = code.find("ID<Train>").expect("ID<Train> should exist in code");
         let id_pos = doc.offset_to_position(id_offset);
 
         let hover = get_hover(&doc, id_pos, &api);
         assert!(hover.is_some(), "Should have hover info for 'ID'");
-        let hover_content = match hover.unwrap().contents {
+        let hover_content = match hover.expect("hover should exist").contents {
             HoverContents::Markup(m) => m.value,
             _ => panic!("Expected markup content"),
         };
@@ -1184,7 +1205,7 @@ pub struct Test extend Signal {
         assert!(api.get_type("std::optional").is_some(), "std::optional type should exist");
 
         // Code where we want to hover on `presence` and `get`
-        let code = r#"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+        let code = r"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub struct Test extend Train {}
 pub fn Test::control_train(
     self: &Test,
@@ -1197,17 +1218,17 @@ pub fn Test::control_train(
         return;
     }
 }
-"#;
+";
         let doc = Document::new(code.to_string(), Some(&api));
 
         // Find position of "presence" in motion.presence.get()
-        let base_offset = code.find("motion.presence").unwrap();
+        let base_offset = code.find("motion.presence").expect("motion.presence should exist in code");
         let presence_offset = base_offset + "motion.".len();
         let presence_pos = doc.offset_to_position(presence_offset);
 
         let hover = get_hover(&doc, presence_pos, &api);
         assert!(hover.is_some(), "Should have hover info for 'presence'");
-        let hover_content = match hover.unwrap().contents {
+        let hover_content = match hover.expect("hover should exist").contents {
             HoverContents::Markup(m) => m.value,
             _ => panic!("Expected markup content"),
         };
@@ -1215,12 +1236,12 @@ pub fn Test::control_train(
         assert!(hover_content.contains("std::optional"), "Hover should mention the type");
 
         // Find position of "get" in motion.presence.get()
-        let get_offset = code.find("motion.presence.get").unwrap() + "motion.presence.".len();
+        let get_offset = code.find("motion.presence.get").expect("motion.presence.get should exist in code") + "motion.presence.".len();
         let get_pos = doc.offset_to_position(get_offset);
 
         let hover = get_hover(&doc, get_pos, &api);
         assert!(hover.is_some(), "Should have hover info for 'get'");
-        let hover_content = match hover.unwrap().contents {
+        let hover_content = match hover.expect("hover should exist").contents {
             HoverContents::Markup(m) => m.value,
             _ => panic!("Expected markup content"),
         };

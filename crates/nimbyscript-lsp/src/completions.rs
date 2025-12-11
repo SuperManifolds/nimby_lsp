@@ -16,6 +16,17 @@ use nimbyscript_parser::{kind, parse, Node, NodeExt, Tree};
 
 use crate::document::Document;
 
+/// Type alias for (name, type) pairs used for params and bindings
+type NameTypePairs = Vec<(String, TypeInfo)>;
+
+/// Create Documentation::MarkupContent from a string.
+fn make_markdown_doc(doc: &str) -> Documentation {
+    Documentation::MarkupContent(MarkupContent {
+        kind: MarkupKind::Markdown,
+        value: doc.to_string(),
+    })
+}
+
 /// NimbyScript keywords
 const KEYWORDS: &[&str] = &[
     "script", "meta", "const", "struct", "enum", "fn", "pub", "extend", "let", "mut", "if", "else",
@@ -26,6 +37,33 @@ const KEYWORDS: &[&str] = &[
 const PRIMITIVE_TYPES: &[&str] = &[
     "i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64", "f32", "f64", "bool",
 ];
+
+/// Extract parameter (name, type) from a PARAMETER node.
+fn extract_param_from_node(param_node: Node, content: &str) -> Option<(String, TypeInfo)> {
+    let name_node = param_node.child_by_field("name")?;
+    let type_node = param_node.child_by_field("type")?;
+    let name = name_node.text(content).to_string();
+    let type_info = parse_type_string_simple(type_node.text(content));
+    Some((name, type_info))
+}
+
+/// Extract all parameters from a PARAMETERS node.
+fn extract_params_from_node(params_node: Node, content: &str) -> Vec<(String, TypeInfo)> {
+    let mut cursor = params_node.walk();
+    params_node
+        .children(&mut cursor)
+        .filter(|child| child.kind() == kind::PARAMETER)
+        .filter_map(|child| extract_param_from_node(child, content))
+        .collect()
+}
+
+/// Collect all blocks from a control flow statement's children.
+fn collect_child_blocks(node: Node) -> Vec<Node> {
+    let mut cursor = node.walk();
+    node.children(&mut cursor)
+        .filter(|child| child.kind() == kind::BLOCK)
+        .collect()
+}
 
 // ============================================================================
 // Completion Engine
@@ -97,7 +135,7 @@ impl<'a> CompletionEngine<'a> {
         match context {
             CompletionContext::Type => {
                 let mut items = Vec::new();
-                self.add_primitive_types(&mut items, &prefix);
+                Self::add_primitive_types(&mut items, &prefix);
                 self.add_api_types(&mut items, &prefix);
                 self.add_user_types(&mut items, &prefix);
                 items
@@ -119,10 +157,10 @@ impl<'a> CompletionEngine<'a> {
             }
             CompletionContext::General => {
                 let mut items = Vec::new();
-                self.add_keywords(&mut items, &prefix);
-                self.add_snippets(&mut items, &prefix);
+                Self::add_keywords(&mut items, &prefix);
+                Self::add_snippets(&mut items, &prefix);
                 self.add_local_variables(&mut items, &prefix);
-                self.add_primitive_types(&mut items, &prefix);
+                Self::add_primitive_types(&mut items, &prefix);
                 self.add_api_completions(&mut items, &prefix);
                 self.add_document_symbols(&mut items, &prefix);
                 items
@@ -169,11 +207,10 @@ impl<'a> CompletionEngine<'a> {
 
         // Check if we're after "return " keyword
         let trimmed = before.trim_end();
-        if trimmed.ends_with("return") || trimmed.ends_with("return ") {
-            if self.current_return_type.is_some() {
+        if (trimmed.ends_with("return") || trimmed.ends_with("return "))
+            && self.current_return_type.is_some() {
                 return CompletionContext::Return;
             }
-        }
 
         CompletionContext::General
     }
@@ -193,7 +230,7 @@ impl<'a> CompletionEngine<'a> {
 
         // Extract the expression before the dot
         // Work backwards from the dot to find the expression
-        let expr_str = self.extract_expression_before(&before[..dot_pos])?;
+        let expr_str = Self::extract_expression_before(&before[..dot_pos])?;
 
         // Parse the expression to infer its type
         let base_type = self.infer_expression_type_from_text(&expr_str)?;
@@ -203,7 +240,7 @@ impl<'a> CompletionEngine<'a> {
 
     /// Extract the expression text immediately before a position.
     /// Handles chained field access like "ctx.db" by working backward.
-    fn extract_expression_before(&self, text: &str) -> Option<String> {
+    fn extract_expression_before(text: &str) -> Option<String> {
         let text = text.trim_end();
         if text.is_empty() {
             return None;
@@ -343,7 +380,7 @@ impl<'a> CompletionEngine<'a> {
 
     /// Get the type of a field on a given type.
     fn get_field_type(&self, base_type: &TypeInfo, field_name: &str) -> Option<TypeInfo> {
-        let type_name = self.unwrap_to_type_name(base_type)?;
+        let type_name = Self::unwrap_to_type_name(base_type)?;
 
         // Check user-defined struct fields
         if let Some(fields) = self.struct_fields.get(&type_name) {
@@ -364,7 +401,7 @@ impl<'a> CompletionEngine<'a> {
 
     /// Get the return type of a method on a given type.
     fn get_method_return_type(&self, base_type: &TypeInfo, method_name: &str) -> Option<TypeInfo> {
-        let type_name = self.unwrap_to_type_name(base_type)?;
+        let type_name = Self::unwrap_to_type_name(base_type)?;
 
         // Check game type methods
         if let Some(type_def) = self.api.get_type(&type_name) {
@@ -380,23 +417,22 @@ impl<'a> CompletionEngine<'a> {
     }
 
     /// Unwrap references/pointers and get the underlying type name.
-    fn unwrap_to_type_name(&self, ty: &TypeInfo) -> Option<String> {
+    fn unwrap_to_type_name(ty: &TypeInfo) -> Option<String> {
         match ty {
-            TypeInfo::Struct { name, .. } => Some(name.clone()),
-            TypeInfo::Enum { name } => Some(name.clone()),
+            TypeInfo::Struct { name, .. } | TypeInfo::Enum { name } => Some(name.clone()),
             TypeInfo::Reference { inner, .. } | TypeInfo::Pointer { inner, .. } => {
-                self.unwrap_to_type_name(inner)
+                Self::unwrap_to_type_name(inner)
             }
             TypeInfo::Generic { name, args } => {
                 // For ID<T>, return the generic form "ID<T>"
-                if !args.is_empty() {
+                if args.is_empty() {
+                    Some(name.clone())
+                } else {
                     let arg_names: Vec<_> = args
                         .iter()
-                        .filter_map(|a| self.unwrap_to_type_name(a))
+                        .filter_map(Self::unwrap_to_type_name)
                         .collect();
                     Some(format!("{}<{}>", name, arg_names.join(", ")))
-                } else {
-                    Some(name.clone())
                 }
             }
             _ => None,
@@ -431,7 +467,7 @@ impl<'a> CompletionEngine<'a> {
     }
 
     /// Find function info at cursor position, extracting parameters, let bindings, and return type.
-    fn find_function_info(&self, node: Node) -> Option<(Vec<(String, TypeInfo)>, Vec<(String, TypeInfo)>, Option<TypeInfo>)> {
+    fn find_function_info(&self, node: Node) -> Option<(NameTypePairs, NameTypePairs, Option<TypeInfo>)> {
         // Check if this is a function containing our position
         if node.kind() == kind::FUNCTION_DEFINITION {
             let start = node.start_byte();
@@ -446,19 +482,7 @@ impl<'a> CompletionEngine<'a> {
 
                 // Extract parameters
                 if let Some(params_node) = node.child_by_kind(kind::PARAMETERS) {
-                    let mut cursor = params_node.walk();
-                    for child in params_node.children(&mut cursor) {
-                        if child.kind() == kind::PARAMETER {
-                            if let (Some(name_node), Some(type_node)) =
-                                (child.child_by_field("name"), child.child_by_field("type"))
-                            {
-                                let name = name_node.text(self.content).to_string();
-                                let type_str = type_node.text(self.content);
-                                let type_info = parse_type_string_simple(type_str);
-                                params.push((name, type_info));
-                            }
-                        }
-                    }
+                    params = extract_params_from_node(params_node, self.content);
                 }
 
                 // Extract let bindings from body
@@ -498,11 +522,8 @@ impl<'a> CompletionEngine<'a> {
                 }
                 kind::IF_STATEMENT | kind::IF_LET_STATEMENT | kind::FOR_STATEMENT => {
                     // Recurse into nested blocks
-                    let mut inner = child.walk();
-                    for inner_child in child.children(&mut inner) {
-                        if inner_child.kind() == kind::BLOCK {
-                            self.collect_bindings_from_block(inner_child, bindings);
-                        }
+                    for block in collect_child_blocks(child) {
+                        self.collect_bindings_from_block(block, bindings);
                     }
                 }
                 _ => {}
@@ -547,7 +568,7 @@ impl<'a> CompletionEngine<'a> {
     fn complete_field_access(&self, base_type: &TypeInfo, prefix: &str) -> Vec<CompletionItem> {
         let mut items = Vec::new();
 
-        let Some(type_name) = self.unwrap_to_type_name(base_type) else {
+        let Some(type_name) = Self::unwrap_to_type_name(base_type) else {
             return items;
         };
 
@@ -585,12 +606,7 @@ impl<'a> CompletionEngine<'a> {
                         label: field_name.clone(),
                         kind: Some(CompletionItemKind::FIELD),
                         detail: Some(field.ty.clone()),
-                        documentation: field.doc.as_ref().map(|d| {
-                            Documentation::MarkupContent(MarkupContent {
-                                kind: MarkupKind::Markdown,
-                                value: d.clone(),
-                            })
-                        }),
+                        documentation: field.doc.as_ref().map(|d| make_markdown_doc(d)),
                         data: make_resolve_data(CompletionResolveData::Field {
                             type_name: base_type_name.to_string(),
                             field_name: field_name.clone(),
@@ -632,12 +648,7 @@ impl<'a> CompletionEngine<'a> {
                         label: field_name.clone(),
                         kind: Some(CompletionItemKind::FIELD),
                         detail: Some(format!("{} (from {})", field.ty, extends_type)),
-                        documentation: field.doc.as_ref().map(|d| {
-                            Documentation::MarkupContent(MarkupContent {
-                                kind: MarkupKind::Markdown,
-                                value: d.clone(),
-                            })
-                        }),
+                        documentation: field.doc.as_ref().map(|d| make_markdown_doc(d)),
                         // Sort inherited fields after user fields
                         sort_text: Some(format!("1_{field_name}")),
                         data: make_resolve_data(CompletionResolveData::Field {
@@ -706,7 +717,7 @@ impl<'a> CompletionEngine<'a> {
     // Completion Providers
     // ========================================================================
 
-    fn add_keywords(&self, items: &mut Vec<CompletionItem>, prefix: &str) {
+    fn add_keywords(items: &mut Vec<CompletionItem>, prefix: &str) {
         for &keyword in KEYWORDS {
             if keyword.starts_with(prefix) {
                 items.push(CompletionItem {
@@ -734,7 +745,7 @@ impl<'a> CompletionEngine<'a> {
         }
     }
 
-    fn add_primitive_types(&self, items: &mut Vec<CompletionItem>, prefix: &str) {
+    fn add_primitive_types(items: &mut Vec<CompletionItem>, prefix: &str) {
         for &ty in PRIMITIVE_TYPES {
             if ty.starts_with(prefix) {
                 items.push(CompletionItem {
@@ -1006,7 +1017,7 @@ impl<'a> CompletionEngine<'a> {
     }
 
     /// Add snippet completions for control flow statements.
-    fn add_snippets(&self, items: &mut Vec<CompletionItem>, prefix: &str) {
+    fn add_snippets(items: &mut Vec<CompletionItem>, prefix: &str) {
         // Control flow snippets
         let snippets = [
             ("if", "if ${1:condition} {\n\t$0\n}", "if statement"),
@@ -1045,8 +1056,7 @@ impl<'a> CompletionEngine<'a> {
         for (name, type_info) in &self.local_types {
             if name.starts_with(prefix) {
                 let matches_return = return_type
-                    .map(|rt| self.types_compatible(type_info, rt))
-                    .unwrap_or(false);
+                    .is_some_and(|rt| Self::types_compatible(type_info, rt));
 
                 items.push(CompletionItem {
                     label: name.clone(),
@@ -1061,39 +1071,7 @@ impl<'a> CompletionEngine<'a> {
 
         // Add enum variants if return type is an enum
         if let Some(TypeInfo::Enum { name: enum_name }) = return_type {
-            // Check game enums
-            if let Some(enum_def) = self.api.get_enum(enum_name) {
-                for variant in &enum_def.variants {
-                    if variant.name.starts_with(prefix) || enum_name.starts_with(prefix) {
-                        items.push(CompletionItem {
-                            label: format!("{enum_name}::{}", variant.name),
-                            kind: Some(CompletionItemKind::ENUM_MEMBER),
-                            detail: Some(format!("matches return type {enum_name}")),
-                            sort_text: Some(format!("0_{}", variant.name)),
-                            data: make_resolve_data(CompletionResolveData::EnumVariant {
-                                enum_name: enum_name.clone(),
-                                variant_name: variant.name.clone(),
-                            }),
-                            ..Default::default()
-                        });
-                    }
-                }
-            }
-
-            // Check user enums
-            if let Some(variants) = self.user_enums.get(enum_name) {
-                for variant in variants {
-                    if variant.starts_with(prefix) || enum_name.starts_with(prefix) {
-                        items.push(CompletionItem {
-                            label: format!("{enum_name}::{variant}"),
-                            kind: Some(CompletionItemKind::ENUM_MEMBER),
-                            detail: Some(format!("matches return type {enum_name}")),
-                            sort_text: Some(format!("0_{variant}")),
-                            ..Default::default()
-                        });
-                    }
-                }
-            }
+            self.add_enum_variant_completions(items, enum_name, prefix);
         }
 
         // Add true/false for bool return types
@@ -1122,8 +1100,52 @@ impl<'a> CompletionEngine<'a> {
         self.add_api_completions(items, prefix);
     }
 
+    /// Add enum variant completions for an enum type.
+    fn add_enum_variant_completions(
+        &self,
+        items: &mut Vec<CompletionItem>,
+        enum_name: &str,
+        prefix: &str,
+    ) {
+        // Check game enums
+        if let Some(enum_def) = self.api.get_enum(enum_name) {
+            for variant in &enum_def.variants {
+                if !variant.name.starts_with(prefix) && !enum_name.starts_with(prefix) {
+                    continue;
+                }
+                items.push(CompletionItem {
+                    label: format!("{enum_name}::{}", variant.name),
+                    kind: Some(CompletionItemKind::ENUM_MEMBER),
+                    detail: Some(format!("matches return type {enum_name}")),
+                    sort_text: Some(format!("0_{}", variant.name)),
+                    data: make_resolve_data(CompletionResolveData::EnumVariant {
+                        enum_name: enum_name.to_string(),
+                        variant_name: variant.name.clone(),
+                    }),
+                    ..Default::default()
+                });
+            }
+        }
+
+        // Check user enums
+        if let Some(variants) = self.user_enums.get(enum_name) {
+            for variant in variants {
+                if !variant.starts_with(prefix) && !enum_name.starts_with(prefix) {
+                    continue;
+                }
+                items.push(CompletionItem {
+                    label: format!("{enum_name}::{variant}"),
+                    kind: Some(CompletionItemKind::ENUM_MEMBER),
+                    detail: Some(format!("matches return type {enum_name}")),
+                    sort_text: Some(format!("0_{variant}")),
+                    ..Default::default()
+                });
+            }
+        }
+    }
+
     /// Check if two types are compatible (basic check).
-    fn types_compatible(&self, actual: &TypeInfo, expected: &TypeInfo) -> bool {
+    fn types_compatible(actual: &TypeInfo, expected: &TypeInfo) -> bool {
         // Unwrap references for comparison
         let actual_unwrapped = match actual {
             TypeInfo::Reference { inner, .. } | TypeInfo::Pointer { inner, .. } => inner.as_ref(),
@@ -1134,16 +1156,19 @@ impl<'a> CompletionEngine<'a> {
             other => other,
         };
 
-        match (actual_unwrapped, expected_unwrapped) {
-            (TypeInfo::Bool, TypeInfo::Bool) => true,
-            (TypeInfo::I64, TypeInfo::I64) => true,
-            (TypeInfo::F64, TypeInfo::F64) => true,
-            (TypeInfo::String, TypeInfo::String) => true,
-            (TypeInfo::Struct { name: a, .. }, TypeInfo::Struct { name: b, .. }) => a == b,
-            (TypeInfo::Enum { name: a }, TypeInfo::Enum { name: b }) => a == b,
-            (TypeInfo::Generic { name: a, .. }, TypeInfo::Generic { name: b, .. }) => a == b,
-            _ => false,
-        }
+        matches!(
+            (actual_unwrapped, expected_unwrapped),
+            (TypeInfo::Bool, TypeInfo::Bool)
+                | (TypeInfo::I64, TypeInfo::I64)
+                | (TypeInfo::F64, TypeInfo::F64)
+                | (TypeInfo::String, TypeInfo::String)
+        ) || matches!(
+            (actual_unwrapped, expected_unwrapped),
+            (TypeInfo::Struct { name: a, .. }, TypeInfo::Struct { name: b, .. })
+            | (TypeInfo::Enum { name: a }, TypeInfo::Enum { name: b })
+            | (TypeInfo::Generic { name: a, .. }, TypeInfo::Generic { name: b, .. })
+            if a == b
+        )
     }
 
     /// Collect documentation comments from the source code.
@@ -1157,33 +1182,43 @@ impl<'a> CompletionEngine<'a> {
 
         for child in root.children(&mut cursor) {
             if child.kind() == kind::COMMENT {
-                let comment_text = child.text(self.content);
-                // Strip the leading "//" and whitespace
-                let doc_line = comment_text.strip_prefix("//").unwrap_or(comment_text).trim();
-
-                if last_comment_end.is_some() && child.start_byte() == last_comment_end.unwrap() + 1 {
-                    // Continuation of previous comment block
-                    if !accumulated_doc.is_empty() {
-                        accumulated_doc.push('\n');
-                    }
-                    accumulated_doc.push_str(doc_line);
-                } else {
-                    // New comment block
-                    accumulated_doc.clear();
-                    accumulated_doc.push_str(doc_line);
-                }
-                last_comment_end = Some(child.end_byte());
-            } else {
-                // Check if this is a documentable item right after a comment
-                if !accumulated_doc.is_empty() {
-                    if let Some(name) = self.get_item_name(child) {
-                        self.user_docs.insert(name, accumulated_doc.clone());
-                    }
-                }
-                accumulated_doc.clear();
-                last_comment_end = None;
+                self.process_comment_node(
+                    child,
+                    &mut accumulated_doc,
+                    &mut last_comment_end,
+                );
+                continue;
             }
+            // Non-comment: try to associate accumulated doc with this item
+            if let Some(name) = self.get_item_name(child) {
+                if !accumulated_doc.is_empty() {
+                    self.user_docs.insert(name, accumulated_doc.clone());
+                }
+            }
+            accumulated_doc.clear();
+            last_comment_end = None;
         }
+    }
+
+    /// Process a comment node, accumulating documentation.
+    fn process_comment_node(
+        &self,
+        child: Node,
+        accumulated_doc: &mut String,
+        last_comment_end: &mut Option<usize>,
+    ) {
+        let comment_text = child.text(self.content);
+        // Strip the leading "//" and whitespace
+        let doc_line = comment_text.strip_prefix("//").unwrap_or(comment_text).trim();
+
+        let is_continuation = last_comment_end.is_some_and(|end| child.start_byte() == end + 1);
+        if is_continuation && !accumulated_doc.is_empty() {
+            accumulated_doc.push('\n');
+        } else if !is_continuation {
+            accumulated_doc.clear();
+        }
+        accumulated_doc.push_str(doc_line);
+        *last_comment_end = Some(child.end_byte());
     }
 
     /// Get the name of a documentable item (struct, enum, function).
@@ -1616,12 +1651,12 @@ mod tests {
     #[test]
     fn test_context_field_after_dot() {
         let api = load_api();
-        let content = r#"
+        let content = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 fn test(ctx: &ControlCtx) {
     ctx.
 }
-"#;
+";
         // Position at the dot
         let engine = CompletionEngine::new(content, &api, Position::new(3, 8));
         let context = engine.determine_context();
@@ -1716,7 +1751,7 @@ fn test(ctx: &ControlCtx) {
         let items = engine.completions();
         let id_item = items.iter().find(|i| i.label == "ID");
         assert!(id_item.is_some());
-        assert!(id_item.unwrap().insert_text.as_ref().is_some_and(|t| t.contains("<")));
+        assert!(id_item.expect("ID item should exist").insert_text.as_ref().is_some_and(|t| t.contains('<')));
     }
 
     // API type completion tests
@@ -1757,12 +1792,12 @@ fn test(ctx: &ControlCtx) {
     #[test]
     fn test_field_access_completions() {
         let api = load_api();
-        let content = r#"
+        let content = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 fn test(ctx: &ControlCtx) {
     ctx.
 }
-"#;
+";
         let engine = CompletionEngine::new(content, &api, Position::new(3, 8));
         let items = engine.completions();
         // ControlCtx should have db and extrapolator fields
@@ -1776,12 +1811,12 @@ fn test(ctx: &ControlCtx) {
     #[test]
     fn test_chained_field_access() {
         let api = load_api();
-        let content = r#"
+        let content = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 fn test(ctx: &ControlCtx) {
     ctx.db.
 }
-"#;
+";
         let engine = CompletionEngine::new(content, &api, Position::new(3, 11));
         let items = engine.completions();
         // DB should have view method
@@ -1793,7 +1828,7 @@ fn test(ctx: &ControlCtx) {
     #[test]
     fn test_user_struct_field_completions() {
         let api = load_api();
-        let content = r#"
+        let content = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub struct MyHandler extend Signal {
     owner: ID<Train>,
@@ -1802,7 +1837,7 @@ pub struct MyHandler extend Signal {
 fn MyHandler::test(self: &MyHandler) {
     self.
 }
-"#;
+";
         let engine = CompletionEngine::new(content, &api, Position::new(7, 9));
         let items = engine.completions();
         assert!(items.iter().any(|i| i.label == "owner"), "should have owner field");
@@ -1814,11 +1849,11 @@ fn MyHandler::test(self: &MyHandler) {
     #[test]
     fn test_struct_callback_completions() {
         let api = load_api();
-        let content = r#"
+        let content = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub struct MySignal extend Signal { }
 MySignal::
-"#;
+";
         let engine = CompletionEngine::new(content, &api, Position::new(3, 10));
         let items = engine.completions();
         assert!(items.iter().any(|i| i.label == "event_signal_check"));
@@ -1829,12 +1864,12 @@ MySignal::
     #[test]
     fn test_local_variable_completions() {
         let api = load_api();
-        let content = r#"
+        let content = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 fn test(ctx: &ControlCtx, train: &Train) {
 
 }
-"#;
+";
         let engine = CompletionEngine::new(content, &api, Position::new(3, 4));
         let items = engine.completions();
         assert!(items.iter().any(|i| i.label == "ctx"), "should have ctx parameter");
@@ -1911,10 +1946,10 @@ fn test(ctx: &ControlCtx, train: &Train) {
     #[test]
     fn test_get_completions_general_context() {
         let api = load_api();
-        let content = r#"
+        let content = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub struct MyStruct { }
-"#;
+";
         let doc = Document::new(content.to_string(), Some(&api));
         let items = get_completions(&doc, Position::new(2, 0), &api);
         assert!(items.iter().any(|i| i.kind == Some(CompletionItemKind::KEYWORD)));
@@ -1926,24 +1961,25 @@ pub struct MyStruct { }
     #[test]
     fn test_callback_completion_has_resolve_data() {
         let api = load_api();
-        let content = r#"
+        let content = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub struct MySignal extend Signal { }
 MySignal::
-"#;
+";
         let engine = CompletionEngine::new(content, &api, Position::new(3, 10));
         let items = engine.completions();
 
         let pass_by = items.iter().find(|i| i.label == "event_signal_pass_by");
         assert!(pass_by.is_some(), "should have event_signal_pass_by callback");
-        let pass_by = pass_by.unwrap();
+        let pass_by = pass_by.expect("event_signal_pass_by should exist");
 
         // Verify data field is set
         assert!(pass_by.data.is_some(), "callback should have resolve data");
 
         // Verify we can deserialize it
-        let data: CompletionResolveData = serde_json::from_value(pass_by.data.clone().unwrap())
-            .expect("should deserialize resolve data");
+        let data: CompletionResolveData = serde_json::from_value(
+            pass_by.data.clone().expect("data should exist")
+        ).expect("should deserialize resolve data");
         assert!(matches!(data, CompletionResolveData::Callback { .. }));
     }
 
@@ -2016,7 +2052,7 @@ MySignal::
 
         let abs_item = items.iter().find(|i| i.label == "abs");
         assert!(abs_item.is_some(), "should have abs function");
-        let abs_item = abs_item.unwrap();
+        let abs_item = abs_item.expect("abs should exist");
 
         // Verify inline documentation is included for immediate display
         assert!(abs_item.documentation.is_some(), "should have inline documentation");

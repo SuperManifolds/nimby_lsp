@@ -61,10 +61,10 @@ fn resolve_function(node: Node, ctx: &mut SemanticContext, diagnostics: &mut Vec
         .unwrap_or_default();
 
     // Enter function scope
-    let body_span = node
-        .child_by_kind(kind::BLOCK)
-        .map(|b| Span::new(b.start_byte(), b.end_byte()))
-        .unwrap_or_else(|| Span::new(node.start_byte(), node.end_byte()));
+    let body_span = node.child_by_kind(kind::BLOCK).map_or_else(
+        || Span::new(node.start_byte(), node.end_byte()),
+        |b| Span::new(b.start_byte(), b.end_byte()),
+    );
 
     ctx.scopes.enter_scope(
         ScopeKind::Function {
@@ -81,18 +81,12 @@ fn resolve_function(node: Node, ctx: &mut SemanticContext, diagnostics: &mut Vec
             if param.kind() == kind::PARAMETER {
                 // Get name and type - type might be a field or a child
                 let name_node = param.child_by_field("name");
-                let type_node = {
-                    let field_type = param.child_by_field("type");
-                    if field_type.is_some() {
-                        field_type
-                    } else {
-                        // Try finding type as a named child
-                        let mut tc = param.walk();
-                        let type_child = param
-                            .named_children(&mut tc)
-                            .find(|c| c.kind() == kind::TYPE);
-                        type_child
-                    }
+                let type_node = if let Some(t) = param.child_by_field("type") {
+                    Some(t)
+                } else {
+                    let mut tc = param.walk();
+                    let found = param.named_children(&mut tc).find(|c| c.kind() == kind::TYPE);
+                    found
                 };
 
                 if let (Some(name_node), Some(type_node)) = (name_node, type_node) {
@@ -176,8 +170,7 @@ fn resolve_let(node: Node, ctx: &mut SemanticContext, diagnostics: &mut Vec<Diag
 
         let var_type = binding
             .and_then(|b| b.child_by_field("type"))
-            .map(|t| ctx.resolve_type(t.text(ctx.source)))
-            .unwrap_or(TypeInfo::Unknown);
+            .map_or(TypeInfo::Unknown, |t| ctx.resolve_type(t.text(ctx.source)));
 
         // Check for 'mut' keyword in binding operator
         let is_mutable = node.text(ctx.source).contains("mut=");
@@ -265,8 +258,7 @@ fn resolve_if(node: Node, ctx: &mut SemanticContext, diagnostics: &mut Vec<Diagn
             let var_name = name_node.text(ctx.source);
             let var_type = binding
                 .and_then(|b| b.child_by_field("type"))
-                .map(|t| ctx.resolve_type(t.text(ctx.source)))
-                .unwrap_or(TypeInfo::Unknown);
+                .map_or(TypeInfo::Unknown, |t| ctx.resolve_type(t.text(ctx.source)));
 
             let _ = ctx.scopes.define(
                 var_name,
@@ -392,7 +384,7 @@ fn check_type_exists(name: &str, node: Node, ctx: &SemanticContext, diagnostics:
     // Type not found
     diagnostics.push(
         Diagnostic::error(
-            format!("Undefined type '{}'", name),
+            format!("Undefined type '{name}'"),
             Span::new(node.start_byte(), node.end_byte()),
         )
         .with_code("E0302"),
@@ -410,7 +402,7 @@ fn resolve_path(node: Node, ctx: &SemanticContext, diagnostics: &mut Vec<Diagnos
             if ctx.get_module_function(first, second).is_none() {
                 diagnostics.push(
                     Diagnostic::error(
-                        format!("Undefined function '{}' in module '{}'", second, first),
+                        format!("Undefined function '{second}' in module '{first}'"),
                         Span::new(node.start_byte(), node.end_byte()),
                     )
                     .with_code("E0301"),
@@ -421,7 +413,7 @@ fn resolve_path(node: Node, ctx: &SemanticContext, diagnostics: &mut Vec<Diagnos
             if !variants.contains(&second.to_string()) {
                 diagnostics.push(
                     Diagnostic::error(
-                        format!("Undefined variant '{}' for enum '{}'", second, first),
+                        format!("Undefined variant '{second}' for enum '{first}'"),
                         Span::new(node.start_byte(), node.end_byte()),
                     )
                     .with_code("E0304"),
@@ -436,9 +428,9 @@ fn resolve_path(node: Node, ctx: &SemanticContext, diagnostics: &mut Vec<Diagnos
 
             if !has_valid_static {
                 let msg = if is_private {
-                    format!("Private struct '{}' only has static methods 'new' and 'clone', not '{}'", first, second)
+                    format!("Private struct '{first}' only has static methods 'new' and 'clone', not '{second}'")
                 } else {
-                    format!("Public struct '{}' has no static method '{}'", first, second)
+                    format!("Public struct '{first}' has no static method '{second}'")
                 };
                 diagnostics.push(
                     Diagnostic::error(msg, Span::new(node.start_byte(), node.end_byte()))
@@ -451,7 +443,7 @@ fn resolve_path(node: Node, ctx: &SemanticContext, diagnostics: &mut Vec<Diagnos
             if !ctx.has_static_method(first, second) {
                 diagnostics.push(
                     Diagnostic::error(
-                        format!("Type '{}' has no static method '{}'", first, second),
+                        format!("Type '{first}' has no static method '{second}'"),
                         Span::new(node.start_byte(), node.end_byte()),
                     )
                     .with_code("E0307"),
@@ -463,7 +455,7 @@ fn resolve_path(node: Node, ctx: &SemanticContext, diagnostics: &mut Vec<Diagnos
             if !ctx.is_game_type(first) {
                 diagnostics.push(
                     Diagnostic::error(
-                        format!("Undefined type '{}'", first),
+                        format!("Undefined type '{first}'"),
                         Span::new(node.start_byte(), node.end_byte()),
                     )
                     .with_code("E0302"),
@@ -472,7 +464,7 @@ fn resolve_path(node: Node, ctx: &SemanticContext, diagnostics: &mut Vec<Diagnos
                 // Type exists but static method doesn't
                 diagnostics.push(
                     Diagnostic::error(
-                        format!("Type '{}' has no static method '{}'", first, second),
+                        format!("Type '{first}' has no static method '{second}'"),
                         Span::new(node.start_byte(), node.end_byte()),
                     )
                     .with_code("E0307"),
@@ -482,7 +474,7 @@ fn resolve_path(node: Node, ctx: &SemanticContext, diagnostics: &mut Vec<Diagnos
             // Unknown path prefix
             diagnostics.push(
                 Diagnostic::error(
-                    format!("Undefined module or enum '{}'", first),
+                    format!("Undefined module or enum '{first}'"),
                     Span::new(node.start_byte(), node.end_byte()),
                 )
                 .with_code("E0306"),
@@ -531,7 +523,7 @@ fn resolve_path(node: Node, ctx: &SemanticContext, diagnostics: &mut Vec<Diagnos
         // Unknown identifier
         diagnostics.push(
             Diagnostic::error(
-                format!("Undefined variable '{}'", name),
+                format!("Undefined variable '{name}'"),
                 Span::new(node.start_byte(), node.end_byte()),
             )
             .with_code("E0302"),
@@ -559,7 +551,7 @@ fn resolve_call(node: Node, ctx: &mut SemanticContext, diagnostics: &mut Vec<Dia
                 if ctx.scopes.lookup(func_name).is_none() {
                     diagnostics.push(
                         Diagnostic::error(
-                            format!("Undefined function '{}'", func_name),
+                            format!("Undefined function '{func_name}'"),
                             Span::new(callee.start_byte(), callee.end_byte()),
                         )
                         .with_code("E0301"),
@@ -658,7 +650,7 @@ fn resolve_identifier(node: Node, ctx: &SemanticContext, diagnostics: &mut Vec<D
     // Unknown identifier
     diagnostics.push(
         Diagnostic::error(
-            format!("Undefined variable '{}'", name),
+            format!("Undefined variable '{name}'"),
             Span::new(node.start_byte(), node.end_byte()),
         )
         .with_code("E0302"),
@@ -707,10 +699,10 @@ mod tests {
 
     #[test]
     fn test_undefined_type() {
-        let source = r#"
+        let source = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 fn test(x: NonExistentType) { }
-"#;
+";
         let diags = check(source);
         let errs = errors(&diags);
         assert!(errs.iter().any(|d| d.code.as_deref() == Some("E0302")));
@@ -718,32 +710,30 @@ fn test(x: NonExistentType) { }
 
     #[test]
     fn test_valid_game_type() {
-        let source = r#"
+        let source = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 fn test(x: &Signal) { }
-"#;
+";
         let diags = check(source);
         let errs = errors(&diags);
         assert!(
             errs.iter().all(|d| d.code.as_deref() != Some("E0302")),
-            "Game type should be valid: {:?}",
-            errs
+            "Game type should be valid: {errs:?}"
         );
     }
 
     #[test]
     fn test_valid_user_struct() {
-        let source = r#"
+        let source = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub struct MyStruct extend Signal { }
 fn test(x: &MyStruct) { }
-"#;
+";
         let diags = check(source);
         let errs = errors(&diags);
         assert!(
             errs.iter().all(|d| d.code.as_deref() != Some("E0302")),
-            "User struct should be valid: {:?}",
-            errs
+            "User struct should be valid: {errs:?}"
         );
     }
 
@@ -751,12 +741,12 @@ fn test(x: &MyStruct) { }
 
     #[test]
     fn test_undefined_enum_variant() {
-        let source = r#"
+        let source = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 fn test(): SignalCheck {
     return SignalCheck::NotAVariant;
 }
-"#;
+";
         let diags = check(source);
         let errs = errors(&diags);
         assert!(errs.iter().any(|d| d.code.as_deref() == Some("E0304")));
@@ -764,18 +754,17 @@ fn test(): SignalCheck {
 
     #[test]
     fn test_valid_enum_variant() {
-        let source = r#"
+        let source = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 fn test(): SignalCheck {
     return SignalCheck::Pass;
 }
-"#;
+";
         let diags = check(source);
         let errs = errors(&diags);
         assert!(
             errs.iter().all(|d| d.code.as_deref() != Some("E0304")),
-            "Valid variant should not error: {:?}",
-            errs
+            "Valid variant should not error: {errs:?}"
         );
     }
 
@@ -783,18 +772,17 @@ fn test(): SignalCheck {
 
     #[test]
     fn test_valid_module() {
-        let source = r#"
+        let source = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 fn test() {
     let t = Sim::time();
 }
-"#;
+";
         let diags = check(source);
         let errs = errors(&diags);
         assert!(
             errs.iter().all(|d| d.code.as_deref() != Some("E0306")),
-            "Valid module should not error: {:?}",
-            errs
+            "Valid module should not error: {errs:?}"
         );
     }
 
@@ -802,41 +790,39 @@ fn test() {
 
     #[test]
     fn test_undefined_function() {
-        let source = r#"
+        let source = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 fn test() {
     is_vali();
 }
-"#;
+";
         let diags = check(source);
         let errs = errors(&diags);
         assert!(
             errs.iter().any(|d| d.code.as_deref() == Some("E0301")),
-            "Undefined function should error: {:?}",
-            errs
+            "Undefined function should error: {errs:?}"
         );
     }
 
     #[test]
     fn test_valid_api_function() {
-        let source = r#"
+        let source = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 fn test() {
     let x = abs(-5);
 }
-"#;
+";
         let diags = check(source);
         let errs = errors(&diags);
         assert!(
             errs.iter().all(|d| d.code.as_deref() != Some("E0301")),
-            "Valid API function should not error: {:?}",
-            errs
+            "Valid API function should not error: {errs:?}"
         );
     }
 
     #[test]
     fn test_undefined_function_in_method() {
-        let source = r#"
+        let source = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub struct MyHandler extend Signal {
     owner: ID<Train>,
@@ -846,13 +832,12 @@ fn MyHandler::test(self: &MyHandler) {
         return;
     }
 }
-"#;
+";
         let diags = check(source);
         let errs = errors(&diags);
         assert!(
             errs.iter().any(|d| d.code.as_deref() == Some("E0301")),
-            "Undefined function in method should error: {:?}",
-            errs
+            "Undefined function in method should error: {errs:?}"
         );
     }
 
@@ -860,7 +845,7 @@ fn MyHandler::test(self: &MyHandler) {
 
     #[test]
     fn test_undefined_static_method_on_private_struct() {
-        let source = r#"
+        let source = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 struct Task {
     tid: ID<Train>,
@@ -868,19 +853,18 @@ struct Task {
 fn test() {
     let t = Task::blorp();
 }
-"#;
+";
         let diags = check(source);
         let errs = errors(&diags);
         assert!(
             errs.iter().any(|d| d.code.as_deref() == Some("E0307")),
-            "Private struct invalid static method should error: {:?}",
-            errs
+            "Private struct invalid static method should error: {errs:?}"
         );
     }
 
     #[test]
     fn test_valid_private_struct_new() {
-        let source = r#"
+        let source = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 struct Task {
     tid: ID<Train>,
@@ -888,19 +872,18 @@ struct Task {
 fn test() {
     let t = Task::new();
 }
-"#;
+";
         let diags = check(source);
         let errs = errors(&diags);
         assert!(
             errs.iter().all(|d| d.code.as_deref() != Some("E0307")),
-            "Private struct new() should be valid: {:?}",
-            errs
+            "Private struct new() should be valid: {errs:?}"
         );
     }
 
     #[test]
     fn test_valid_private_struct_clone() {
-        let source = r#"
+        let source = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 struct Task {
     tid: ID<Train>,
@@ -908,19 +891,18 @@ struct Task {
 fn test(t: &Task) {
     let copy = Task::clone(t);
 }
-"#;
+";
         let diags = check(source);
         let errs = errors(&diags);
         assert!(
             errs.iter().all(|d| d.code.as_deref() != Some("E0307")),
-            "Private struct clone() should be valid: {:?}",
-            errs
+            "Private struct clone() should be valid: {errs:?}"
         );
     }
 
     #[test]
     fn test_public_struct_no_static_methods() {
-        let source = r#"
+        let source = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub struct MyHandler extend Signal {
     count: i64,
@@ -928,64 +910,60 @@ pub struct MyHandler extend Signal {
 fn test() {
     let h = MyHandler::new();
 }
-"#;
+";
         let diags = check(source);
         let errs = errors(&diags);
         assert!(
             errs.iter().any(|d| d.code.as_deref() == Some("E0307")),
-            "Public struct should not have new(): {:?}",
-            errs
+            "Public struct should not have new(): {errs:?}"
         );
     }
 
     #[test]
     fn test_valid_id_empty_static_method() {
-        let source = r#"
+        let source = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 fn test(): ID<Train> {
     return ID<Train>::empty();
 }
-"#;
+";
         let diags = check(source);
         let errs = errors(&diags);
         assert!(
             errs.iter().all(|d| d.code.as_deref() != Some("E0307")),
-            "ID<T>::empty() should be valid: {:?}",
-            errs
+            "ID<T>::empty() should be valid: {errs:?}"
         );
     }
 
     #[test]
     fn test_invalid_id_static_method() {
-        let source = r#"
+        let source = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 fn test() {
     let x = ID<Train>::blorp();
 }
-"#;
+";
         let diags = check(source);
         let errs = errors(&diags);
         assert!(
             errs.iter().any(|d| d.code.as_deref() == Some("E0307")),
-            "Invalid static method on ID<T> should error: {:?}",
-            errs
+            "Invalid static method on ID<T> should error: {errs:?}"
         );
     }
 
     #[test]
     fn test_game_type_instance_method_as_static() {
-        let source = r#"
+        let source = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 fn test() {
     let x = Signal::forward();
 }
-"#;
+";
         let diags = check(source);
         let errs = errors(&diags);
         assert!(
             errs.iter().any(|d| d.code.as_deref() == Some("E0307")),
-            "Instance method called as static should error: {:?}",
-            errs
+            "Instance method called as static should error: {errs:?}"
         );
     }
 }

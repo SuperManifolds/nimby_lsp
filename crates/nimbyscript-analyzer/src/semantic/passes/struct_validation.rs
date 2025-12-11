@@ -63,9 +63,8 @@ fn validate_struct(node: Node, ctx: &SemanticContext, diagnostics: &mut Vec<Diag
                     diagnostics.push(
                         Diagnostic::error(
                             format!(
-                                "Struct '{}' extends '{}', which is not a valid extendable game type. \
-                                Valid types: Signal, Train, Script, Station, Line, Schedule, Tag",
-                                name, extends_type
+                                "Struct '{name}' extends '{extends_type}', which is not a valid extendable game type. \
+                                Valid types: Signal, Train, Script, Station, Line, Schedule, Tag"
                             ),
                             Span::new(type_node.start_byte(), type_node.end_byte()),
                         )
@@ -78,8 +77,7 @@ fn validate_struct(node: Node, ctx: &SemanticContext, diagnostics: &mut Vec<Diag
             diagnostics.push(
                 Diagnostic::error(
                     format!(
-                        "Public struct '{}' must extend a game type (Signal, Train, Script, etc.)",
-                        name
+                        "Public struct '{name}' must extend a game type (Signal, Train, Script, etc.)"
                     ),
                     Span::new(name_node.start_byte(), name_node.end_byte()),
                 )
@@ -98,7 +96,7 @@ fn validate_struct(node: Node, ctx: &SemanticContext, diagnostics: &mut Vec<Diag
                 if !seen_fields.insert(field_name.to_string()) {
                     diagnostics.push(
                         Diagnostic::error(
-                            format!("Duplicate field '{}' in struct '{}'", field_name, name),
+                            format!("Duplicate field '{field_name}' in struct '{name}'"),
                             Span::new(field_name_node.start_byte(), field_name_node.end_byte()),
                         )
                         .with_code("E0504"),
@@ -107,27 +105,35 @@ fn validate_struct(node: Node, ctx: &SemanticContext, diagnostics: &mut Vec<Diag
 
                 // E0501: Validate field type for pub structs
                 if is_pub {
-                    if let Some(type_node) = child.child_by_field("type") {
-                        let type_str = type_node.text(ctx.source);
-                        let type_info = parse_type_string(type_str);
-
-                        if !ctx.is_valid_pub_struct_field_type(&type_info) {
-                            diagnostics.push(
-                                Diagnostic::error(
-                                    format!(
-                                        "Invalid field type '{}' for pub struct. \
-                                        Allowed types: bool, i64, f64, script enums, ID<Line/Train/Schedule/Signal/Tag>",
-                                        type_str
-                                    ),
-                                    Span::new(type_node.start_byte(), type_node.end_byte()),
-                                )
-                                .with_code("E0501"),
-                            );
-                        }
-                    }
+                    validate_pub_field_type(child, ctx, diagnostics);
                 }
             }
         }
+    }
+}
+
+fn validate_pub_field_type(
+    field: Node,
+    ctx: &SemanticContext,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    let Some(type_node) = field.child_by_field("type") else {
+        return;
+    };
+    let type_str = type_node.text(ctx.source);
+    let type_info = parse_type_string(type_str);
+
+    if !ctx.is_valid_pub_struct_field_type(&type_info) {
+        diagnostics.push(
+            Diagnostic::error(
+                format!(
+                    "Invalid field type '{type_str}' for pub struct. \
+                    Allowed types: bool, i64, f64, script enums, ID<Line/Train/Schedule/Signal/Tag>"
+                ),
+                Span::new(type_node.start_byte(), type_node.end_byte()),
+            )
+            .with_code("E0501"),
+        );
     }
 }
 
@@ -147,7 +153,7 @@ fn validate_enum(node: Node, ctx: &SemanticContext, diagnostics: &mut Vec<Diagno
                 if !seen_variants.insert(variant_name.to_string()) {
                     diagnostics.push(
                         Diagnostic::error(
-                            format!("Duplicate variant '{}' in enum '{}'", variant_name, name),
+                            format!("Duplicate variant '{variant_name}' in enum '{name}'"),
                             Span::new(variant_name_node.start_byte(), variant_name_node.end_byte()),
                         )
                         .with_code("E0505"),
@@ -192,40 +198,38 @@ mod tests {
 
     #[test]
     fn test_valid_extends_signal() {
-        let source = r#"
+        let source = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub struct Test extend Signal { }
-"#;
+";
         let diags = check(source);
         let errs = errors(&diags);
         assert!(
             errs.iter().all(|d| d.code.as_deref() != Some("E0500")),
-            "Valid extends should not error: {:?}",
-            errs
+            "Valid extends should not error: {errs:?}"
         );
     }
 
     #[test]
     fn test_valid_extends_train() {
-        let source = r#"
+        let source = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub struct Test extend Train { }
-"#;
+";
         let diags = check(source);
         let errs = errors(&diags);
         assert!(
             errs.iter().all(|d| d.code.as_deref() != Some("E0500")),
-            "Valid extends should not error: {:?}",
-            errs
+            "Valid extends should not error: {errs:?}"
         );
     }
 
     #[test]
     fn test_invalid_extends_type() {
-        let source = r#"
+        let source = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub struct Test extend Motion { }
-"#;
+";
         let diags = check(source);
         let errs = errors(&diags);
         assert!(errs.iter().any(|d| d.code.as_deref() == Some("E0500")));
@@ -233,10 +237,10 @@ pub struct Test extend Motion { }
 
     #[test]
     fn test_pub_struct_without_extends() {
-        let source = r#"
+        let source = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub struct Test { }
-"#;
+";
         let diags = check(source);
         let errs = errors(&diags);
         assert!(errs.iter().any(|d| d.code.as_deref() == Some("E0500")));
@@ -244,16 +248,15 @@ pub struct Test { }
 
     #[test]
     fn test_private_struct_without_extends_ok() {
-        let source = r#"
+        let source = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 struct PrivateData { x: i64, }
-"#;
+";
         let diags = check(source);
         let errs = errors(&diags);
         assert!(
             errs.iter().all(|d| d.code.as_deref() != Some("E0500")),
-            "Private struct without extends should be ok: {:?}",
-            errs
+            "Private struct without extends should be ok: {errs:?}"
         );
     }
 
@@ -261,31 +264,30 @@ struct PrivateData { x: i64, }
 
     #[test]
     fn test_valid_field_types() {
-        let source = r#"
+        let source = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub struct Test extend Signal {
     a: bool,
     b: i64,
     c: f64,
 }
-"#;
+";
         let diags = check(source);
         let errs = errors(&diags);
         assert!(
             errs.iter().all(|d| d.code.as_deref() != Some("E0501")),
-            "Valid field types should not error: {:?}",
-            errs
+            "Valid field types should not error: {errs:?}"
         );
     }
 
     #[test]
     fn test_invalid_string_field() {
-        let source = r#"
+        let source = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub struct Test extend Signal {
     name: String,
 }
-"#;
+";
         let diags = check(source);
         let errs = errors(&diags);
         assert!(errs.iter().any(|d| d.code.as_deref() == Some("E0501")));
@@ -293,18 +295,17 @@ pub struct Test extend Signal {
 
     #[test]
     fn test_valid_id_field() {
-        let source = r#"
+        let source = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub struct Test extend Signal {
     sig: ID<Signal>,
 }
-"#;
+";
         let diags = check(source);
         let errs = errors(&diags);
         assert!(
             errs.iter().all(|d| d.code.as_deref() != Some("E0501")),
-            "ID<Signal> should be valid: {:?}",
-            errs
+            "ID<Signal> should be valid: {errs:?}"
         );
     }
 
@@ -312,13 +313,13 @@ pub struct Test extend Signal {
 
     #[test]
     fn test_duplicate_field() {
-        let source = r#"
+        let source = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub struct Test extend Signal {
     count: i64,
     count: f64,
 }
-"#;
+";
         let diags = check(source);
         let errs = errors(&diags);
         assert!(errs.iter().any(|d| d.code.as_deref() == Some("E0504")));
@@ -326,19 +327,18 @@ pub struct Test extend Signal {
 
     #[test]
     fn test_unique_fields_ok() {
-        let source = r#"
+        let source = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub struct Test extend Signal {
     count: i64,
     value: f64,
 }
-"#;
+";
         let diags = check(source);
         let errs = errors(&diags);
         assert!(
             errs.iter().all(|d| d.code.as_deref() != Some("E0504")),
-            "Unique fields should not error: {:?}",
-            errs
+            "Unique fields should not error: {errs:?}"
         );
     }
 
@@ -346,10 +346,10 @@ pub struct Test extend Signal {
 
     #[test]
     fn test_duplicate_enum_variant() {
-        let source = r#"
+        let source = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub enum Status { Active, Active, }
-"#;
+";
         let diags = check(source);
         let errs = errors(&diags);
         assert!(errs.iter().any(|d| d.code.as_deref() == Some("E0505")));
@@ -357,16 +357,15 @@ pub enum Status { Active, Active, }
 
     #[test]
     fn test_unique_enum_variants_ok() {
-        let source = r#"
+        let source = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub enum Status { Active, Inactive, }
-"#;
+";
         let diags = check(source);
         let errs = errors(&diags);
         assert!(
             errs.iter().all(|d| d.code.as_deref() != Some("E0505")),
-            "Unique variants should not error: {:?}",
-            errs
+            "Unique variants should not error: {errs:?}"
         );
     }
 }

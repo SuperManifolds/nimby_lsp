@@ -156,7 +156,7 @@ mod tests {
 
     #[test]
     fn test_parse_meta_block() {
-        let source = r#"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }"#;
+        let source = r"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }";
         let tree = parse(source);
         assert_eq!(tree.root_node().kind(), "source_file");
         assert!(!has_errors(&tree));
@@ -164,48 +164,48 @@ mod tests {
 
     #[test]
     fn test_parse_struct() {
-        let source = r#"
+        let source = r"
             pub struct TestStruct extend Signal {
                 field1: i64,
                 field2: f64,
             }
-        "#;
+        ";
         let tree = parse(source);
         assert!(!has_errors(&tree));
     }
 
     #[test]
     fn test_parse_enum() {
-        let source = r#"
+        let source = r"
             enum TestEnum {
                 Option1,
                 Option2,
                 Option3,
             }
-        "#;
+        ";
         let tree = parse(source);
         assert!(!has_errors(&tree));
     }
 
     #[test]
     fn test_parse_function() {
-        let source = r#"
+        let source = r"
             fn test_function(x: i64, y: f64): bool {
                 let result = x + y;
                 return result > 0;
             }
-        "#;
+        ";
         let tree = parse(source);
         assert!(!has_errors(&tree));
     }
 
     #[test]
     fn test_parse_method() {
-        let source = r#"
+        let source = r"
             pub fn TestStruct::method_name(self: &TestStruct, ctx: &Context): bool {
                 return true;
             }
-        "#;
+        ";
         let tree = parse(source);
         assert!(!has_errors(&tree));
     }
@@ -213,11 +213,11 @@ mod tests {
     #[test]
     fn test_error_recovery() {
         // Incomplete function should still allow struct to be parsed
-        let source = r#"
+        let source = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub struct Test extend Signal { }
 pub fn Test::
-"#;
+";
         let tree = parse(source);
 
         // Tree should have errors but still parsed the struct
@@ -233,9 +233,8 @@ pub fn Test::
                 }
                 // Verify we can get the extends clause
                 if let Some(extends) = child.child_by_kind(kind::EXTENDS_CLAUSE) {
-                    if let Some(type_node) = extends.child_by_field("type") {
-                        assert_eq!(type_node.text(source), "Signal");
-                    }
+                    let type_node = extends.child_by_field("type");
+                    assert_eq!(type_node.map(|n| n.text(source)), Some("Signal"));
                 }
             }
         }

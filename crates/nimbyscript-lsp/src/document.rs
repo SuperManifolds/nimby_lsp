@@ -18,7 +18,7 @@ pub struct Document {
     /// Maps struct names to the game type they extend (e.g., "ProbeCheck" -> "Signal")
     struct_extends: HashMap<String, String>,
     /// The parsed tree-sitter tree (kept for incremental updates)
-    _tree: Tree,
+    tree: Tree,
 }
 
 impl Document {
@@ -33,7 +33,7 @@ impl Document {
             diagnostics,
             symbols,
             struct_extends,
-            _tree: tree,
+            tree,
         }
     }
 
@@ -45,10 +45,6 @@ impl Document {
         self.symbols.all_globals()
     }
 
-    pub fn symbol_at(&self, offset: usize) -> Option<Symbol> {
-        self.symbols.find_at_position(offset)
-    }
-
     /// Get the game type a struct extends (e.g., "Signal" for a struct that extends Signal)
     pub fn struct_extends(&self, struct_name: &str) -> Option<&str> {
         self.struct_extends.get(struct_name).map(String::as_str)
@@ -56,12 +52,7 @@ impl Document {
 
     /// Get the parsed tree for AST traversal
     pub fn tree(&self) -> &Tree {
-        &self._tree
-    }
-
-    /// Get all struct extends mappings
-    pub fn all_struct_extends(&self) -> &HashMap<String, String> {
-        &self.struct_extends
+        &self.tree
     }
 
     pub fn offset_to_position(&self, offset: usize) -> Position {
@@ -284,7 +275,7 @@ mod tests {
             .filter(|d| matches!(d.severity, Severity::Error))
             .collect();
 
-        assert!(errors.is_empty(), "Example file should have no errors, but found: {:?}", errors);
+        assert!(errors.is_empty(), "Example file should have no errors, but found: {errors:?}");
     }
 
     #[test]
@@ -308,11 +299,11 @@ mod tests {
     #[test]
     fn test_error_recovery_struct_extends() {
         // Test that struct extends work even with incomplete code
-        let content = r#"
+        let content = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub struct Test extend Signal { }
 pub fn Test::
-"#;
+";
         let doc = Document::new(content.to_string(), None);
 
         // Should still track struct extends even with the incomplete function
@@ -433,10 +424,10 @@ pub fn Test::
 
     #[test]
     fn test_extract_struct_symbol() {
-        let content = r#"
+        let content = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub struct MyStruct { }
-"#;
+";
         let doc = Document::new(content.to_string(), None);
         let symbols = doc.document_symbols();
         let struct_sym = symbols.iter().find(|s| s.name == "MyStruct");
@@ -446,10 +437,10 @@ pub struct MyStruct { }
 
     #[test]
     fn test_extract_enum_symbol() {
-        let content = r#"
+        let content = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub enum MyEnum { A, B, }
-"#;
+";
         let doc = Document::new(content.to_string(), None);
         let symbols = doc.document_symbols();
         let enum_sym = symbols.iter().find(|s| s.name == "MyEnum");
@@ -459,10 +450,10 @@ pub enum MyEnum { A, B, }
 
     #[test]
     fn test_extract_function_symbol() {
-        let content = r#"
+        let content = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 fn my_func() { }
-"#;
+";
         let doc = Document::new(content.to_string(), None);
         let symbols = doc.document_symbols();
         let fn_sym = symbols.iter().find(|s| s.name == "my_func");
@@ -472,11 +463,11 @@ fn my_func() { }
 
     #[test]
     fn test_extract_method_symbol() {
-        let content = r#"
+        let content = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub struct Foo { }
 fn Foo::bar(&self) { }
-"#;
+";
         let doc = Document::new(content.to_string(), None);
         let symbols = doc.document_symbols();
         let method_sym = symbols.iter().find(|s| s.name == "Foo::bar");
@@ -486,10 +477,10 @@ fn Foo::bar(&self) { }
 
     #[test]
     fn test_extract_const_symbol() {
-        let content = r#"
+        let content = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 const MY_CONST: i64 = 42;
-"#;
+";
         let doc = Document::new(content.to_string(), None);
         let symbols = doc.document_symbols();
         let const_sym = symbols.iter().find(|s| s.name == "MY_CONST");
@@ -499,12 +490,12 @@ const MY_CONST: i64 = 42;
 
     #[test]
     fn test_extract_field_symbol() {
-        let content = r#"
+        let content = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub struct Foo {
     my_field: i64,
 }
-"#;
+";
         let doc = Document::new(content.to_string(), None);
         let symbols = doc.document_symbols();
         let field_sym = symbols.iter().find(|s| s.name == "my_field");
@@ -514,10 +505,10 @@ pub struct Foo {
 
     #[test]
     fn test_extract_enum_variant_symbol() {
-        let content = r#"
+        let content = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub enum Color { Red, Green, Blue, }
-"#;
+";
         let doc = Document::new(content.to_string(), None);
         let symbols = doc.document_symbols();
         let variant = symbols.iter().find(|s| s.name == "Red");
@@ -525,29 +516,14 @@ pub enum Color { Red, Green, Blue, }
         assert_eq!(variant.expect("checked").kind, SymbolKind::ENUM_MEMBER);
     }
 
-    #[test]
-    fn test_symbol_at_position() {
-        let content = r#"
-script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
-pub struct Foo { }
-"#;
-        let doc = Document::new(content.to_string(), None);
-
-        // Find offset where "Foo" is defined
-        let foo_offset = content.find("Foo").expect("Foo should be in content");
-        let sym = doc.symbol_at(foo_offset);
-        // Should find the struct since Foo is part of the struct definition span
-        assert!(sym.is_some());
-    }
-
     // Parse error detection tests
 
     #[test]
     fn test_parse_error_detected() {
-        let content = r#"
+        let content = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub struct Foo {
-"#; // Missing closing brace
+"; // Missing closing brace
         let doc = Document::new(content.to_string(), None);
         let errors: Vec<_> = doc.diagnostics().iter()
             .filter(|d| matches!(d.severity, Severity::Error))

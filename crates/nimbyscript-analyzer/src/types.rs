@@ -162,8 +162,9 @@ impl TypeInfo {
     /// Handles chained references like `&&Signal` -> `Signal`.
     pub fn unwrap_ref(&self) -> TypeInfo {
         match self {
-            TypeInfo::Reference { inner, .. } => inner.unwrap_ref(),
-            TypeInfo::Pointer { inner, .. } => inner.unwrap_ref(),
+            TypeInfo::Reference { inner, .. } | TypeInfo::Pointer { inner, .. } => {
+                inner.unwrap_ref()
+            }
             other => other.clone(),
         }
     }
@@ -219,11 +220,10 @@ impl TypeInfo {
         }
 
         // Must be the same numeric type
-        match (self, other) {
-            (TypeInfo::I64, TypeInfo::I64) => true,
-            (TypeInfo::F64, TypeInfo::F64) => true,
-            _ => false,
-        }
+        matches!(
+            (self, other),
+            (TypeInfo::I64, TypeInfo::I64) | (TypeInfo::F64, TypeInfo::F64)
+        )
     }
 
     /// Check if this type is assignable to a target type.
@@ -315,8 +315,7 @@ impl TypeInfo {
             TypeInfo::I64 => "i64".to_string(),
             TypeInfo::F64 => "f64".to_string(),
             TypeInfo::String => "String".to_string(),
-            TypeInfo::Struct { name, .. } => name.clone(),
-            TypeInfo::Enum { name } => name.clone(),
+            TypeInfo::Struct { name, .. } | TypeInfo::Enum { name } => name.clone(),
             TypeInfo::Reference { inner, is_mut } => {
                 let mut_str = if *is_mut { "mut " } else { "" };
                 format!("&{}{}", mut_str, inner.type_name())
@@ -329,7 +328,7 @@ impl TypeInfo {
                 if args.is_empty() {
                     name.clone()
                 } else {
-                    let args_str: Vec<_> = args.iter().map(|a| a.type_name()).collect();
+                    let args_str: Vec<_> = args.iter().map(TypeInfo::type_name).collect();
                     format!("{}<{}>", name, args_str.join(", "))
                 }
             }

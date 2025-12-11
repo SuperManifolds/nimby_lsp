@@ -100,8 +100,7 @@ fn check_assignment(node: Node, ctx: &SemanticContext, diagnostics: &mut Vec<Dia
                 diagnostics.push(
                     Diagnostic::error(
                         format!(
-                            "Cannot rebind reference '{}' - references are immutable in NimbyScript",
-                            target_text
+                            "Cannot rebind reference '{target_text}' - references are immutable in NimbyScript"
                         ),
                         Span::new(target.start_byte(), target.end_byte()),
                     )
@@ -146,33 +145,31 @@ mod tests {
 
     #[test]
     fn test_const_literal_ok() {
-        let source = r#"
+        let source = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 const X: i64 = 42;
 const Y: f64 = 3.14;
 const Z: bool = true;
-"#;
+";
         let diags = check(source);
         let errs = errors(&diags);
         assert!(
             errs.iter().all(|d| d.code.as_deref() != Some("E0801")),
-            "Literal const should be ok: {:?}",
-            errs
+            "Literal const should be ok: {errs:?}"
         );
     }
 
     #[test]
     fn test_const_negative_ok() {
-        let source = r#"
+        let source = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 const X: i64 = -42;
-"#;
+";
         let diags = check(source);
         let errs = errors(&diags);
         assert!(
             errs.iter().all(|d| d.code.as_deref() != Some("E0801")),
-            "Negative const should be ok: {:?}",
-            errs
+            "Negative const should be ok: {errs:?}"
         );
     }
 
@@ -181,10 +178,10 @@ const X: i64 = -42;
         // Note: The tree-sitter grammar doesn't support function calls in const declarations,
         // so this produces a parse error (ERROR node) rather than reaching semantic analysis.
         // This test verifies we don't crash on parse errors.
-        let source = r#"
+        let source = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 const X: i64 = get_value();
-"#;
+";
         let diags = check(source);
         // The grammar rejects this at parse time, not semantic analysis time
         // We just ensure the pass doesn't crash
@@ -196,10 +193,10 @@ const X: i64 = get_value();
         // Note: The tree-sitter grammar doesn't support variable references in const declarations,
         // so this produces a parse error (ERROR node) rather than reaching semantic analysis.
         // This test verifies we don't crash on parse errors.
-        let source = r#"
+        let source = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 const X: i64 = Y;
-"#;
+";
         let diags = check(source);
         // The grammar rejects this at parse time, not semantic analysis time
         // We just ensure the pass doesn't crash

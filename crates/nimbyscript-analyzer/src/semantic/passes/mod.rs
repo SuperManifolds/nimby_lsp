@@ -91,10 +91,10 @@ mod tests {
 
     #[test]
     fn test_run_all_on_valid_code() {
-        let source = r#"
+        let source = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub struct Test extend Signal { }
-"#;
+";
         let tree = parse(source);
         let api = load_api();
         let mut ctx = SemanticContext::new(source, &tree, &api);
@@ -109,6 +109,6 @@ pub struct Test extend Signal { }
             .iter()
             .filter(|d| matches!(d.severity, crate::diagnostics::Severity::Error))
             .collect();
-        assert!(errors.is_empty(), "Valid code should have no errors: {:?}", errors);
+        assert!(errors.is_empty(), "Valid code should have no errors: {errors:?}");
     }
 }

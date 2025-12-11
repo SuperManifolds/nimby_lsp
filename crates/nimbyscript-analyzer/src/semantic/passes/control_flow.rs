@@ -94,18 +94,14 @@ fn check_function(node: Node, ctx: &SemanticContext, diagnostics: &mut Vec<Diagn
             if !all_paths_return(body, ctx.source) {
                 let func_name = node
                     .child_by_field("name")
-                    .map(|n| n.text(ctx.source))
-                    .unwrap_or("?");
+                    .map_or("?", |n| n.text(ctx.source));
 
-                let return_type_str = return_type
-                    .map(|rt| rt.text(ctx.source))
-                    .unwrap_or("?");
+                let return_type_str = return_type.map_or("?", |rt| rt.text(ctx.source));
 
                 diagnostics.push(
                     Diagnostic::error(
                         format!(
-                            "Function '{}' with return type '{}' may not return on all code paths",
-                            func_name, return_type_str
+                            "Function '{func_name}' with return type '{return_type_str}' may not return on all code paths"
                         ),
                         Span::new(node.start_byte(), node.end_byte()),
                     )
@@ -143,43 +139,46 @@ fn all_paths_return(block: Node, source: &str) -> bool {
 
                 let else_returns = child
                     .child_by_kind(kind::ELSE_CLAUSE)
-                    .is_some_and(|else_clause| {
-                        let mut else_cursor = else_clause.walk();
-                        for else_child in else_clause.children(&mut else_cursor) {
-                            if else_child.kind() == kind::BLOCK {
-                                return all_paths_return(else_child, source);
-                            }
-                            if else_child.kind() == kind::IF_STATEMENT
-                                || else_child.kind() == kind::IF_LET_STATEMENT
-                            {
-                                // else if - recurse
-                                return all_paths_return_if(else_child, source);
-                            }
-                        }
-                        false
-                    });
+                    .is_some_and(|else_clause| check_else_returns(else_clause, source));
 
                 if then_returns && else_returns {
                     return true;
                 }
-            }
-            kind::FOR_STATEMENT => {
-                // Loop might not execute, so doesn't guarantee return
             }
             kind::BLOCK => {
                 if all_paths_return(*child, source) {
                     return true;
                 }
             }
-            kind::BREAK_STATEMENT | kind::CONTINUE_STATEMENT => {
-                // These exit the current context but don't return
-            }
-            _ => {
-                // Other statements don't return
-            }
+            // FOR_STATEMENT: Loop might not execute, so doesn't guarantee return
+            // BREAK/CONTINUE: Exit the current context but don't return
+            // Other statements: Don't return
+            _ => {}
         }
     }
 
+    false
+}
+
+fn check_unreachable_else(else_clause: Node, source: &str, diagnostics: &mut Vec<Diagnostic>) {
+    let mut cursor = else_clause.walk();
+    for child in else_clause.named_children(&mut cursor) {
+        if child.kind() == kind::BLOCK {
+            check_unreachable(child, source, diagnostics);
+        }
+    }
+}
+
+fn check_else_returns(else_clause: Node, source: &str) -> bool {
+    let mut cursor = else_clause.walk();
+    for child in else_clause.children(&mut cursor) {
+        if child.kind() == kind::BLOCK {
+            return all_paths_return(child, source);
+        }
+        if child.kind() == kind::IF_STATEMENT || child.kind() == kind::IF_LET_STATEMENT {
+            return all_paths_return_if(child, source);
+        }
+    }
     false
 }
 
@@ -190,18 +189,7 @@ fn all_paths_return_if(node: Node, source: &str) -> bool {
 
     let else_returns = node
         .child_by_kind(kind::ELSE_CLAUSE)
-        .is_some_and(|else_clause| {
-            let mut cursor = else_clause.walk();
-            for child in else_clause.children(&mut cursor) {
-                if child.kind() == kind::BLOCK {
-                    return all_paths_return(child, source);
-                }
-                if child.kind() == kind::IF_STATEMENT || child.kind() == kind::IF_LET_STATEMENT {
-                    return all_paths_return_if(child, source);
-                }
-            }
-            false
-        });
+        .is_some_and(|else_clause| check_else_returns(else_clause, source));
 
     then_returns && else_returns
 }
@@ -242,12 +230,7 @@ fn check_unreachable(block: Node, source: &str, diagnostics: &mut Vec<Diagnostic
                     check_unreachable(then_block, source, diagnostics);
                 }
                 if let Some(else_clause) = child.child_by_kind(kind::ELSE_CLAUSE) {
-                    let mut else_cursor = else_clause.walk();
-                    for else_child in else_clause.named_children(&mut else_cursor) {
-                        if else_child.kind() == kind::BLOCK {
-                            check_unreachable(else_child, source, diagnostics);
-                        }
-                    }
+                    check_unreachable_else(else_clause, source, diagnostics);
                 }
             }
             kind::FOR_STATEMENT => {
@@ -304,37 +287,35 @@ mod tests {
 
     #[test]
     fn test_break_outside_loop() {
-        let source = r#"
+        let source = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 fn test() {
     break;
 }
-"#;
+";
         let diags = check(source);
         let errs = errors(&diags);
         assert!(
             errs.iter().any(|d| d.code.as_deref() == Some("E0700")),
-            "break outside loop should error: {:?}",
-            errs
+            "break outside loop should error: {errs:?}"
         );
     }
 
     #[test]
     fn test_break_inside_loop_ok() {
-        let source = r#"
+        let source = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 fn test() {
     for x in items {
         break;
     }
 }
-"#;
+";
         let diags = check(source);
         let errs = errors(&diags);
         assert!(
             errs.iter().all(|d| d.code.as_deref() != Some("E0700")),
-            "break inside loop should be ok: {:?}",
-            errs
+            "break inside loop should be ok: {errs:?}"
         );
     }
 
@@ -342,18 +323,17 @@ fn test() {
 
     #[test]
     fn test_continue_outside_loop() {
-        let source = r#"
+        let source = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 fn test() {
     continue;
 }
-"#;
+";
         let diags = check(source);
         let errs = errors(&diags);
         assert!(
             errs.iter().any(|d| d.code.as_deref() == Some("E0701")),
-            "continue outside loop should error: {:?}",
-            errs
+            "continue outside loop should error: {errs:?}"
         );
     }
 
@@ -361,52 +341,49 @@ fn test() {
 
     #[test]
     fn test_missing_return() {
-        let source = r#"
+        let source = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 fn test(): i64 {
     let x = 5;
 }
-"#;
+";
         let diags = check(source);
         let errs = errors(&diags);
         assert!(
             errs.iter().any(|d| d.code.as_deref() == Some("E0704")),
-            "Missing return should error: {:?}",
-            errs
+            "Missing return should error: {errs:?}"
         );
     }
 
     #[test]
     fn test_has_return_ok() {
-        let source = r#"
+        let source = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 fn test(): i64 {
     return 5;
 }
-"#;
+";
         let diags = check(source);
         let errs = errors(&diags);
         assert!(
             errs.iter().all(|d| d.code.as_deref() != Some("E0704")),
-            "Has return should be ok: {:?}",
-            errs
+            "Has return should be ok: {errs:?}"
         );
     }
 
     #[test]
     fn test_void_function_no_return_ok() {
-        let source = r#"
+        let source = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 fn test() {
     let x = 5;
 }
-"#;
+";
         let diags = check(source);
         let errs = errors(&diags);
         assert!(
             errs.iter().all(|d| d.code.as_deref() != Some("E0704")),
-            "Void function without return should be ok: {:?}",
-            errs
+            "Void function without return should be ok: {errs:?}"
         );
     }
 
@@ -414,19 +391,18 @@ fn test() {
 
     #[test]
     fn test_unreachable_after_return() {
-        let source = r#"
+        let source = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 fn test(): i64 {
     return 5;
     let x = 10;
 }
-"#;
+";
         let diags = check(source);
         let warns = warnings(&diags);
         assert!(
             warns.iter().any(|d| d.code.as_deref() == Some("W0703")),
-            "Unreachable code should warn: {:?}",
-            warns
+            "Unreachable code should warn: {warns:?}"
         );
     }
 }

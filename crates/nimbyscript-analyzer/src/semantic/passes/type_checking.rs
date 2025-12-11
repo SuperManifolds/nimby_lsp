@@ -31,49 +31,51 @@ impl SemanticPass for TypeCheckingPass {
 
     fn run(&self, ctx: &mut SemanticContext, diagnostics: &mut Vec<Diagnostic>) {
         let root = ctx.tree.root_node();
-        let mut local_types: HashMap<String, TypeInfo> = HashMap::new();
-        check_types(root, ctx, diagnostics, &mut local_types);
+        check_types(root, ctx, diagnostics);
     }
 }
 
-fn check_types(
-    node: Node,
+fn check_types(node: Node, ctx: &SemanticContext, diagnostics: &mut Vec<Diagnostic>) {
+    if node.kind() == kind::FUNCTION_DEFINITION {
+        // Enter a new local scope for this function
+        let mut func_local_types: HashMap<String, TypeInfo> = HashMap::new();
+
+        // Add parameters to local scope
+        if let Some(params) = node.child_by_kind(kind::PARAMETERS) {
+            collect_params_types(params, ctx, &mut func_local_types);
+        }
+
+        // Check the function body with the local scope
+        if let Some(body) = node.child_by_kind(kind::BLOCK) {
+            check_block(body, ctx, diagnostics, &mut func_local_types);
+        }
+    } else {
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            check_types(child, ctx, diagnostics);
+        }
+    }
+}
+
+fn collect_params_types(
+    params: Node,
     ctx: &SemanticContext,
-    diagnostics: &mut Vec<Diagnostic>,
     local_types: &mut HashMap<String, TypeInfo>,
 ) {
-    match node.kind() {
-        kind::FUNCTION_DEFINITION => {
-            // Enter a new local scope for this function
-            let mut func_local_types: HashMap<String, TypeInfo> = HashMap::new();
-
-            // Add parameters to local scope
-            if let Some(params) = node.child_by_kind(kind::PARAMETERS) {
-                let mut cursor = params.walk();
-                for param in params.children(&mut cursor) {
-                    if param.kind() == kind::PARAMETER {
-                        if let (Some(name_node), Some(type_node)) =
-                            (param.child_by_field("name"), param.child_by_field("type"))
-                        {
-                            let param_name = name_node.text(ctx.source).to_string();
-                            let param_type = ctx.resolve_type(type_node.text(ctx.source));
-                            func_local_types.insert(param_name, param_type);
-                        }
-                    }
-                }
-            }
-
-            // Check the function body with the local scope
-            if let Some(body) = node.child_by_kind(kind::BLOCK) {
-                check_block(body, ctx, diagnostics, &mut func_local_types);
-            }
+    let mut cursor = params.walk();
+    for param in params.children(&mut cursor) {
+        if param.kind() != kind::PARAMETER {
+            continue;
         }
-        _ => {
-            let mut cursor = node.walk();
-            for child in node.children(&mut cursor) {
-                check_types(child, ctx, diagnostics, local_types);
-            }
-        }
+        let Some(name_node) = param.child_by_field("name") else {
+            continue;
+        };
+        let Some(type_node) = param.child_by_field("type") else {
+            continue;
+        };
+        let param_name = name_node.text(ctx.source).to_string();
+        let param_type = ctx.resolve_type(type_node.text(ctx.source));
+        local_types.insert(param_name, param_type);
     }
 }
 
@@ -100,8 +102,7 @@ fn check_block(
                         // Look for type_pattern child (the type annotation)
                         let var_type = binding
                             .child_by_kind("type_pattern")
-                            .map(|t| ctx.resolve_type(t.text(ctx.source)))
-                            .unwrap_or(TypeInfo::Unknown);
+                            .map_or(TypeInfo::Unknown, |t| ctx.resolve_type(t.text(ctx.source)));
                         local_types.insert(var_name, var_type);
                     }
                 }
@@ -199,9 +200,7 @@ fn check_call_expression(
     if let Some(func_info) = ctx.get_function_params(&func_name) {
         // Check argument count
         if arg_count < func_info.min_params {
-            let span = args_node
-                .map(|a| Span::new(a.start_byte(), a.end_byte()))
-                .unwrap_or_else(|| Span::new(node.start_byte(), node.end_byte()));
+            let span = args_node.map_or_else(|| Span::new(node.start_byte(), node.end_byte()), |a| Span::new(a.start_byte(), a.end_byte()));
 
             diagnostics.push(
                 Diagnostic::error(
@@ -214,9 +213,7 @@ fn check_call_expression(
                 .with_code("E0403"),
             );
         } else if arg_count > func_info.max_params {
-            let span = args_node
-                .map(|a| Span::new(a.start_byte(), a.end_byte()))
-                .unwrap_or_else(|| Span::new(node.start_byte(), node.end_byte()));
+            let span = args_node.map_or_else(|| Span::new(node.start_byte(), node.end_byte()), |a| Span::new(a.start_byte(), a.end_byte()));
 
             diagnostics.push(
                 Diagnostic::error(
@@ -262,8 +259,7 @@ fn check_call_expression(
                     diagnostics.push(
                         Diagnostic::error(
                             format!(
-                                "Type mismatch: expected '{}', found '{}'",
-                                expected_type, actual_type
+                                "Type mismatch: expected '{expected_type}', found '{actual_type}'"
                             ),
                             Span::new(arg_expr.start_byte(), arg_expr.end_byte()),
                         )
@@ -279,8 +275,7 @@ fn check_call_expression(
     // false positives from field validation on method names
     let func_child = node.child_by_field("function");
     let skip_func = func_child
-        .map(|f| f.kind() == kind::FIELD_ACCESS)
-        .unwrap_or(false);
+        .is_some_and(|f| f.kind() == kind::FIELD_ACCESS);
 
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
@@ -360,15 +355,12 @@ fn check_method_call(
 
         if actual_args != expected_params {
             let args_node = call_node.child_by_kind("arguments");
-            let span = args_node
-                .map(|a| Span::new(a.start_byte(), a.end_byte()))
-                .unwrap_or_else(|| Span::new(call_node.start_byte(), call_node.end_byte()));
+            let span = args_node.map_or_else(|| Span::new(call_node.start_byte(), call_node.end_byte()), |a| Span::new(a.start_byte(), a.end_byte()));
 
             diagnostics.push(
                 Diagnostic::error(
                     format!(
-                        "Method '{}' on type '{}' expects {} argument(s), but {} provided",
-                        method_name, effective_type, expected_params, actual_args
+                        "Method '{method_name}' on type '{effective_type}' expects {expected_params} argument(s), but {actual_args} provided"
                     ),
                     span,
                 )
@@ -379,15 +371,13 @@ fn check_method_call(
         // Method doesn't exist - check if it might be a field
         if ctx
             .get_struct_fields(effective_type)
-            .map(|f| f.contains_key(method_name))
-            .unwrap_or(false)
+            .is_some_and(|f| f.contains_key(method_name))
         {
             // It's a field, not a method - different error
             diagnostics.push(
                 Diagnostic::error(
                     format!(
-                        "'{}' is a field, not a method, on type '{}'",
-                        method_name, effective_type
+                        "'{method_name}' is a field, not a method, on type '{effective_type}'"
                     ),
                     Span::new(method_node.start_byte(), method_node.end_byte()),
                 )
@@ -410,8 +400,7 @@ fn check_method_call(
             diagnostics.push(
                 Diagnostic::error(
                     format!(
-                        "Undefined method '{}' on type '{}'{}",
-                        method_name, effective_type, hint
+                        "Undefined method '{method_name}' on type '{effective_type}'{hint}"
                     ),
                     Span::new(method_node.start_byte(), method_node.end_byte()),
                 )
@@ -447,19 +436,9 @@ fn check_expression_statement(
         }
 
         // Check if this expression has side effects
-        let has_side_effects = match child.kind() {
-            // Function calls have side effects
-            kind::CALL_EXPRESSION => true,
-            // Field access might be a method call at the end of a chain
-            kind::FIELD_ACCESS => {
-                // Check if this is really a method call by looking at the parent
-                // For now, assume field access alone has no side effects
-                false
-            }
-            // Everything else (identifiers, literals, binary expressions without assignment)
-            // has no side effects
-            _ => false,
-        };
+        // Only function calls have side effects; field access, identifiers, literals,
+        // and binary expressions without assignment have no side effects
+        let has_side_effects = child.kind() == kind::CALL_EXPRESSION;
 
         if !has_side_effects {
             diagnostics.push(
@@ -518,8 +497,7 @@ fn check_field_access(
                 diagnostics.push(
                     Diagnostic::error(
                         format!(
-                            "Undefined field '{}' on type '{}'{}",
-                            field_name, name, hint
+                            "Undefined field '{field_name}' on type '{name}'{hint}"
                         ),
                         Span::new(field_node.start_byte(), field_node.end_byte()),
                     )
@@ -530,7 +508,7 @@ fn check_field_access(
             // Type has no known fields
             diagnostics.push(
                 Diagnostic::error(
-                    format!("Type '{}' has no fields", name),
+                    format!("Type '{name}' has no fields"),
                     Span::new(field_node.start_byte(), field_node.end_byte()),
                 )
                 .with_code("E0303"),
@@ -541,8 +519,7 @@ fn check_field_access(
         diagnostics.push(
             Diagnostic::error(
                 format!(
-                    "Cannot access field '{}' on non-struct type '{}'",
-                    field_name, base_type
+                    "Cannot access field '{field_name}' on non-struct type '{base_type}'"
                 ),
                 Span::new(node.start_byte(), node.end_byte()),
             )
@@ -645,8 +622,7 @@ fn check_arithmetic_types(
             diagnostics.push(
                 Diagnostic::error(
                     format!(
-                        "Cannot mix i64 and f64 in arithmetic operation '{}'. Use explicit conversion.",
-                        op
+                        "Cannot mix i64 and f64 in arithmetic operation '{op}'. Use explicit conversion."
                     ),
                     Span::new(node.start_byte(), node.end_byte()),
                 )
@@ -672,7 +648,7 @@ fn check_condition(
             if !cond_type.is_bool() && !cond_type.is_unknown() {
                 diagnostics.push(
                     Diagnostic::error(
-                        format!("Condition must be bool, found '{}'", cond_type),
+                        format!("Condition must be bool, found '{cond_type}'"),
                         Span::new(cond.start_byte(), cond.end_byte()),
                     )
                     .with_code("E0409"),
@@ -713,8 +689,7 @@ fn check_return(
     // Get the actual return value type
     let actual_type = node
         .child_by_field("value")
-        .map(|v| infer_expr_type(Some(v), ctx, local_types))
-        .unwrap_or(TypeInfo::Void);
+        .map_or(TypeInfo::Void, |v| infer_expr_type(Some(v), ctx, local_types));
 
     // Check compatibility
     if let Some(expected) = expected_type {
@@ -722,8 +697,7 @@ fn check_return(
             diagnostics.push(
                 Diagnostic::error(
                     format!(
-                        "Return type mismatch: expected '{}', found '{}'",
-                        expected, actual_type
+                        "Return type mismatch: expected '{expected}', found '{actual_type}'"
                     ),
                     Span::new(node.start_byte(), node.end_byte()),
                 )
@@ -838,8 +812,7 @@ fn infer_expr_type(
             // 3. Get the field name
             let field_name = node
                 .child_by_field("field")
-                .map(|f| f.text(ctx.source))
-                .unwrap_or("");
+                .map_or("", |f| f.text(ctx.source));
 
             // 4. Look up field type
             if let TypeInfo::Struct { name, .. } = &base_type {
@@ -890,40 +863,38 @@ mod tests {
 
     #[test]
     fn test_mixed_numeric_types() {
-        let source = r#"
+        let source = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 fn test() {
     let x: i64 = 5;
     let y: f64 = 3.0;
     let z = x + y;
 }
-"#;
+";
         let diags = check(source);
         let errs = errors(&diags);
         // This should produce E0402
         assert!(
             errs.iter().any(|d| d.code.as_deref() == Some("E0402")),
-            "Should error on i64 + f64: {:?}",
-            errs
+            "Should error on i64 + f64: {errs:?}"
         );
     }
 
     #[test]
     fn test_same_numeric_type_ok() {
-        let source = r#"
+        let source = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 fn test() {
     let x: i64 = 5;
     let y: i64 = 3;
     let z = x + y;
 }
-"#;
+";
         let diags = check(source);
         let errs = errors(&diags);
         assert!(
             errs.iter().all(|d| d.code.as_deref() != Some("E0402")),
-            "Same type arithmetic should be ok: {:?}",
-            errs
+            "Same type arithmetic should be ok: {errs:?}"
         );
     }
 
@@ -931,20 +902,19 @@ fn test() {
 
     #[test]
     fn test_integer_division() {
-        let source = r#"
+        let source = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 fn test() {
     let x: i64 = 10;
     let y: i64 = 3;
     let z = x / y;
 }
-"#;
+";
         let diags = check(source);
         let errs = errors(&diags);
         assert!(
             errs.iter().any(|d| d.code.as_deref() == Some("E0405")),
-            "Integer division should error: {:?}",
-            errs
+            "Integer division should error: {errs:?}"
         );
     }
 
@@ -952,20 +922,19 @@ fn test() {
 
     #[test]
     fn test_integer_remainder() {
-        let source = r#"
+        let source = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 fn test() {
     let x: i64 = 10;
     let y: i64 = 3;
     let z = x % y;
 }
-"#;
+";
         let diags = check(source);
         let errs = errors(&diags);
         assert!(
             errs.iter().any(|d| d.code.as_deref() == Some("E0406")),
-            "Integer remainder should error: {:?}",
-            errs
+            "Integer remainder should error: {errs:?}"
         );
     }
 
@@ -973,7 +942,7 @@ fn test() {
 
     #[test]
     fn test_non_bool_condition() {
-        let source = r#"
+        let source = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 fn test() {
     let x: i64 = 5;
@@ -981,19 +950,18 @@ fn test() {
         return;
     }
 }
-"#;
+";
         let diags = check(source);
         let errs = errors(&diags);
         assert!(
             errs.iter().any(|d| d.code.as_deref() == Some("E0409")),
-            "Non-bool condition should error: {:?}",
-            errs
+            "Non-bool condition should error: {errs:?}"
         );
     }
 
     #[test]
     fn test_bool_condition_ok() {
-        let source = r#"
+        let source = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 fn test() {
     let x: bool = true;
@@ -1001,13 +969,12 @@ fn test() {
         return;
     }
 }
-"#;
+";
         let diags = check(source);
         let errs = errors(&diags);
         assert!(
             errs.iter().all(|d| d.code.as_deref() != Some("E0409")),
-            "Bool condition should be ok: {:?}",
-            errs
+            "Bool condition should be ok: {errs:?}"
         );
     }
 
@@ -1015,7 +982,7 @@ fn test() {
 
     #[test]
     fn test_undefined_field_on_user_struct() {
-        let source = r#"
+        let source = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub struct MyHandler extend Signal {
     count: i64,
@@ -1023,19 +990,18 @@ pub struct MyHandler extend Signal {
 fn MyHandler::test(self: &MyHandler) {
     let x = self.nonexistent;
 }
-"#;
+";
         let diags = check(source);
         let errs = errors(&diags);
         assert!(
             errs.iter().any(|d| d.code.as_deref() == Some("E0303")),
-            "Should error on undefined field: {:?}",
-            errs
+            "Should error on undefined field: {errs:?}"
         );
     }
 
     #[test]
     fn test_valid_field_access() {
-        let source = r#"
+        let source = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub struct MyHandler extend Signal {
     count: i64,
@@ -1043,53 +1009,50 @@ pub struct MyHandler extend Signal {
 fn MyHandler::test(self: &MyHandler) {
     let x = self.count;
 }
-"#;
+";
         let diags = check(source);
         let errs = errors(&diags);
         assert!(
             errs.iter().all(|d| d.code.as_deref() != Some("E0303")),
-            "Valid field should not error: {:?}",
-            errs
+            "Valid field should not error: {errs:?}"
         );
     }
 
     #[test]
     fn test_undefined_field_on_game_type() {
-        let source = r#"
+        let source = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 fn test(sig: &Signal) {
     let x = sig.nonexistent_field;
 }
-"#;
+";
         let diags = check(source);
         let errs = errors(&diags);
         assert!(
             errs.iter().any(|d| d.code.as_deref() == Some("E0303")),
-            "Should error on undefined game type field: {:?}",
-            errs
+            "Should error on undefined game type field: {errs:?}"
         );
     }
 
     #[test]
     fn test_chained_field_access() {
-        let source = r#"
+        let source = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 fn test(train: &Train) {
     let x = train.motion.nonexistent;
 }
-"#;
+";
         let diags = check(source);
         let errs = errors(&diags);
         assert!(
             errs.iter().any(|d| d.code.as_deref() == Some("E0303")),
-            "Should error on undefined field in chain: {:?}",
-            errs
+            "Should error on undefined field in chain: {errs:?}"
         );
     }
 
     #[test]
     fn test_undefined_field_in_argument() {
-        let source = r#"
+        let source = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub struct MyHandler extend Signal {
     owner: ID<Train>,
@@ -1097,13 +1060,12 @@ pub struct MyHandler extend Signal {
 fn MyHandler::test(self: &MyHandler) {
     let x = max(1, self.owne);
 }
-"#;
+";
         let diags = check(source);
         let errs = errors(&diags);
         assert!(
             errs.iter().any(|d| d.code.as_deref() == Some("E0303")),
-            "Should error on undefined field in argument: {:?}",
-            errs
+            "Should error on undefined field in argument: {errs:?}"
         );
     }
 
@@ -1111,70 +1073,66 @@ fn MyHandler::test(self: &MyHandler) {
 
     #[test]
     fn test_too_few_arguments() {
-        let source = r#"
+        let source = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 fn test() {
     max(1);
 }
-"#;
+";
         let diags = check(source);
         let errs = errors(&diags);
         assert!(
             errs.iter().any(|d| d.code.as_deref() == Some("E0403")),
-            "Should error on too few arguments: {:?}",
-            errs
+            "Should error on too few arguments: {errs:?}"
         );
     }
 
     #[test]
     fn test_too_many_arguments() {
-        let source = r#"
+        let source = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 fn test() {
     max(1, 2, 3);
 }
-"#;
+";
         let diags = check(source);
         let errs = errors(&diags);
         assert!(
             errs.iter().any(|d| d.code.as_deref() == Some("E0403")),
-            "Should error on too many arguments: {:?}",
-            errs
+            "Should error on too many arguments: {errs:?}"
         );
     }
 
     #[test]
     fn test_correct_argument_count() {
-        let source = r#"
+        let source = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 fn test() {
     let x = max(1, 2);
 }
-"#;
+";
         let diags = check(source);
         let errs = errors(&diags);
         assert!(
             errs.iter().all(|d| d.code.as_deref() != Some("E0403")),
-            "Correct argument count should not error: {:?}",
-            errs
+            "Correct argument count should not error: {errs:?}"
         );
     }
 
     #[test]
     fn test_zero_argument_function() {
         // abs() takes 1 argument
-        let source = r#"
+        let source = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 fn test() {
     abs();
 }
-"#;
+";
         let diags = check(source);
         let errs = errors(&diags);
         assert!(
             errs.iter().any(|d| d.code.as_deref() == Some("E0403")),
-            "Should error on zero arguments when 1 expected: {:?}",
-            errs
+            "Should error on zero arguments when 1 expected: {errs:?}"
         );
     }
 
@@ -1189,52 +1147,49 @@ fn test() {
 
     #[test]
     fn test_identifier_expression_no_effect() {
-        let source = r#"
+        let source = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 fn test() {
     max;
 }
-"#;
+";
         let diags = check(source);
         let warns = warnings(&diags);
         assert!(
             warns.iter().any(|d| d.code.as_deref() == Some("W0400")),
-            "Should warn on identifier with no effect: {:?}",
-            warns
+            "Should warn on identifier with no effect: {warns:?}"
         );
     }
 
     #[test]
     fn test_literal_expression_no_effect() {
-        let source = r#"
+        let source = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 fn test() {
     42;
 }
-"#;
+";
         let diags = check(source);
         let warns = warnings(&diags);
         assert!(
             warns.iter().any(|d| d.code.as_deref() == Some("W0400")),
-            "Should warn on literal with no effect: {:?}",
-            warns
+            "Should warn on literal with no effect: {warns:?}"
         );
     }
 
     #[test]
     fn test_function_call_has_effect() {
-        let source = r#"
+        let source = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 fn test() {
     max(1, 2);
 }
-"#;
+";
         let diags = check(source);
         let warns = warnings(&diags);
         assert!(
             warns.iter().all(|d| d.code.as_deref() != Some("W0400")),
-            "Function call should not warn about no effect: {:?}",
-            warns
+            "Function call should not warn about no effect: {warns:?}"
         );
     }
 
@@ -1243,123 +1198,116 @@ fn test() {
     #[test]
     fn test_undefined_method() {
         // db is a field on ControlCtx, so we need ctx.db.method()
-        let source = r#"
+        let source = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 fn test(ctx: &ControlCtx) {
     ctx.db.vie();
 }
-"#;
+";
         let diags = check(source);
         let errs = errors(&diags);
         assert!(
             errs.iter().any(|d| d.code.as_deref() == Some("E0305")),
-            "Should error on undefined method: {:?}",
-            errs
+            "Should error on undefined method: {errs:?}"
         );
     }
 
     #[test]
     fn test_valid_method_call() {
         // db is a field on ControlCtx, so we need ctx.db.method()
-        let source = r#"
+        let source = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 fn test(ctx: &ControlCtx) {
     let v = ctx.db.view();
 }
-"#;
+";
         let diags = check(source);
         let errs = errors(&diags);
         assert!(
             errs.iter().all(|d| d.code.as_deref() != Some("E0305")),
-            "Valid method should not error: {:?}",
-            errs
+            "Valid method should not error: {errs:?}"
         );
     }
 
     #[test]
     fn test_method_wrong_arg_count_on_db() {
         // db is a field on ControlCtx, so we need ctx.db.method()
-        let source = r#"
+        let source = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 fn test(ctx: &ControlCtx) {
     let v = ctx.db.view(1, 2);
 }
-"#;
+";
         let diags = check(source);
         let errs = errors(&diags);
         assert!(
             errs.iter().any(|d| d.code.as_deref() == Some("E0403")),
-            "Wrong arg count on method should error: {:?}",
-            errs
+            "Wrong arg count on method should error: {errs:?}"
         );
     }
 
     #[test]
     fn test_method_wrong_arg_count() {
-        let source = r#"
+        let source = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 fn test(sig: &Signal) {
     let p = sig.forward(1, 2);
 }
-"#;
+";
         let diags = check(source);
         let errs = errors(&diags);
         assert!(
             errs.iter().any(|d| d.code.as_deref() == Some("E0403")),
-            "Wrong arg count on method should error: {:?}",
-            errs
+            "Wrong arg count on method should error: {errs:?}"
         );
     }
 
     #[test]
     fn test_undefined_method_on_signal() {
-        let source = r#"
+        let source = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 fn test(sig: &Signal) {
     let x = sig.undefined_method();
 }
-"#;
+";
         let diags = check(source);
         let errs = errors(&diags);
         assert!(
             errs.iter().any(|d| d.code.as_deref() == Some("E0305")),
-            "Should error on undefined method: {:?}",
-            errs
+            "Should error on undefined method: {errs:?}"
         );
     }
 
     #[test]
     fn test_method_on_signal() {
-        let source = r#"
+        let source = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 fn test(sig: &Signal) {
     let p = sig.forward();
 }
-"#;
+";
         let diags = check(source);
         let errs = errors(&diags);
         assert!(
             errs.iter().all(|d| d.code.as_deref() != Some("E0305")),
-            "Valid Signal method should not error: {:?}",
-            errs
+            "Valid Signal method should not error: {errs:?}"
         );
     }
 
     #[test]
     fn test_field_called_as_method() {
         // Signal has `id` field which should not be callable as a method
-        let source = r#"
+        let source = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 fn test(sig: &Signal) {
     let x = sig.id();
 }
-"#;
+";
         let diags = check(source);
         let errs = errors(&diags);
         assert!(
             errs.iter().any(|d| d.code.as_deref() == Some("E0305")),
-            "Calling field as method should error: {:?}",
-            errs
+            "Calling field as method should error: {errs:?}"
         );
     }
 
@@ -1378,100 +1326,94 @@ fn test() {
         let errs = errors(&diags);
         assert!(
             errs.iter().any(|d| d.code.as_deref() == Some("E0404")),
-            "Wrong argument type should error: {:?}",
-            errs
+            "Wrong argument type should error: {errs:?}"
         );
     }
 
     #[test]
     fn test_correct_argument_type() {
         // abs() expects f64, we pass an integer literal (compatible)
-        let source = r#"
+        let source = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 fn test() {
     let x = abs(42);
 }
-"#;
+";
         let diags = check(source);
         let errs = errors(&diags);
         assert!(
             errs.iter().all(|d| d.code.as_deref() != Some("E0404")),
-            "Correct argument type should not error: {:?}",
-            errs
+            "Correct argument type should not error: {errs:?}"
         );
     }
 
     #[test]
     fn test_wrong_argument_type_bool_to_f64() {
         // max() expects f64, but we pass bools
-        let source = r#"
+        let source = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 fn test() {
     let x = max(true, false);
 }
-"#;
+";
         let diags = check(source);
         let errs = errors(&diags);
         assert!(
             errs.iter().any(|d| d.code.as_deref() == Some("E0404")),
-            "Bool to f64 type mismatch should error: {:?}",
-            errs
+            "Bool to f64 type mismatch should error: {errs:?}"
         );
     }
 
     #[test]
     fn test_is_valid_accepts_generic() {
         // is_valid() accepts generic type, should not error
-        let source = r#"
+        let source = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 fn test(sig: &Signal) {
     let v = is_valid(sig.id);
 }
-"#;
+";
         let diags = check(source);
         let errs = errors(&diags);
         assert!(
             errs.iter().all(|d| d.code.as_deref() != Some("E0404")),
-            "Generic function should accept any type: {:?}",
-            errs
+            "Generic function should accept any type: {errs:?}"
         );
     }
 
     #[test]
     fn test_undefined_method_with_db_param() {
         // When db is a function parameter with type &DB, calling db.vie() should error
-        let source = r#"
+        let source = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub struct MyHandler extend Signal { }
 fn MyHandler::test(self: &MyHandler, db: &DB) {
     db.vie();
 }
-"#;
+";
         let diags = check(source);
         let errs = errors(&diags);
         assert!(
             errs.iter().any(|d| d.code.as_deref() == Some("E0305")),
-            "Should error on undefined method 'vie' on DB param: {:?}",
-            errs
+            "Should error on undefined method 'vie' on DB param: {errs:?}"
         );
     }
 
     #[test]
     fn test_valid_method_with_db_param() {
         // When db is a function parameter with type &DB, calling db.view() should work
-        let source = r#"
+        let source = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub struct MyHandler extend Signal { }
 fn MyHandler::test(self: &MyHandler, db: &DB) {
     db.view();
 }
-"#;
+";
         let diags = check(source);
         let errs = errors(&diags);
         assert!(
             errs.iter().all(|d| d.code.as_deref() != Some("E0305")),
-            "Valid DB method should not error: {:?}",
-            errs
+            "Valid DB method should not error: {errs:?}"
         );
     }
 }

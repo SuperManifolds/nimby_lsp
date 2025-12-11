@@ -516,7 +516,7 @@ mod tests {
 
     #[test]
     fn test_snapshot_minimal() {
-        let content = r#"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }"#;
+        let content = r"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }";
         let api = test_api();
         let doc = Document::new(content.to_string(), Some(&api));
         let tokens = compute_semantic_tokens(&doc, &api);
@@ -531,11 +531,11 @@ mod tests {
 
     #[test]
     fn test_snapshot_struct_definition() {
-        let content = r#"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+        let content = r"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 
 pub struct Test extend Signal {
     count: i64,
-}"#;
+}";
         let api = test_api();
         let doc = Document::new(content.to_string(), Some(&api));
         let tokens = compute_semantic_tokens(&doc, &api);
@@ -549,11 +549,11 @@ pub struct Test extend Signal {
 
     #[test]
     fn test_snapshot_function_definition() {
-        let content = r#"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+        let content = r"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 
 pub fn test_func(x: i64): i64 {
     return x + 1;
-}"#;
+}";
         let api = test_api();
         let doc = Document::new(content.to_string(), Some(&api));
         let tokens = compute_semantic_tokens(&doc, &api);
@@ -567,13 +567,13 @@ pub fn test_func(x: i64): i64 {
 
     #[test]
     fn test_snapshot_method_definition() {
-        let content = r#"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+        let content = r"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 
 pub struct Test extend Signal { }
 
 pub fn Test::do_something(self: &Test, value: i64): i64 {
     return value * 2;
-}"#;
+}";
         let api = test_api();
         let doc = Document::new(content.to_string(), Some(&api));
         let tokens = compute_semantic_tokens(&doc, &api);
@@ -587,13 +587,13 @@ pub fn Test::do_something(self: &Test, value: i64): i64 {
 
     #[test]
     fn test_snapshot_enum_definition() {
-        let content = r#"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+        let content = r"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 
 pub enum Status {
     Active,
     Inactive,
     Pending = 5,
-}"#;
+}";
         let api = test_api();
         let doc = Document::new(content.to_string(), Some(&api));
         let tokens = compute_semantic_tokens(&doc, &api);
@@ -626,11 +626,11 @@ pub fn test() {
 
     #[test]
     fn test_snapshot_path_expression() {
-        let content = r#"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+        let content = r"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 
 pub fn test(): SignalCheck {
     return SignalCheck::Pass;
-}"#;
+}";
         let api = test_api();
         let doc = Document::new(content.to_string(), Some(&api));
         let tokens = compute_semantic_tokens(&doc, &api);
@@ -644,12 +644,12 @@ pub fn test(): SignalCheck {
 
     #[test]
     fn test_snapshot_function_call() {
-        let content = r#"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+        let content = r"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 
 pub fn test() {
     let x: f64 = abs(-5.0);
     let y: f64 = sqrt(16.0);
-}"#;
+}";
         let api = test_api();
         let doc = Document::new(content.to_string(), Some(&api));
         let tokens = compute_semantic_tokens(&doc, &api);
@@ -663,13 +663,13 @@ pub fn test() {
 
     #[test]
     fn test_snapshot_comments() {
-        let content = r#"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+        let content = r"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 
 // This is a comment
 pub fn test() {
     // Another comment
     let x: i64 = 1;
-}"#;
+}";
         let api = test_api();
         let doc = Document::new(content.to_string(), Some(&api));
         let tokens = compute_semantic_tokens(&doc, &api);
@@ -685,9 +685,9 @@ pub fn test() {
 
     #[test]
     fn test_game_type_has_library_modifier() {
-        let content = r#"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+        let content = r"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 
-pub struct Test extend Signal { }"#;
+pub struct Test extend Signal { }";
         let api = test_api();
         let doc = Document::new(content.to_string(), Some(&api));
         let tokens = compute_semantic_tokens(&doc, &api);
@@ -702,11 +702,11 @@ pub struct Test extend Signal { }"#;
 
     #[test]
     fn test_user_type_no_library_modifier() {
-        let content = r#"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+        let content = r"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 
 pub struct UserType { }
 
-pub fn test(x: UserType) { }"#;
+pub fn test(x: UserType) { }";
         let api = test_api();
         let doc = Document::new(content.to_string(), Some(&api));
         let tokens = compute_semantic_tokens(&doc, &api);
@@ -718,7 +718,7 @@ pub fn test(x: UserType) { }"#;
             t.token_type == token_type_index(&SemanticTokenType::STRUCT)
         });
         assert!(struct_def_token.is_some(), "Should find struct definition");
-        let token = struct_def_token.unwrap();
+        let token = struct_def_token.expect("struct definition token should exist");
         assert_eq!(token.token_modifiers_bitset & 16, 0, "User type should not have DEFAULT_LIBRARY modifier");
     }
 
@@ -726,7 +726,7 @@ pub fn test(x: UserType) { }"#;
 
     #[test]
     fn test_delta_encoding_same_line() {
-        let content = r#"let x: i64 = 42;"#;
+        let content = r"let x: i64 = 42;";
         let api = test_api();
         let doc = Document::new(content.to_string(), Some(&api));
         let tokens = compute_semantic_tokens(&doc, &api);
@@ -734,15 +734,15 @@ pub fn test(x: UserType) { }"#;
         // All tokens on same line should have delta_line = 0 (except first)
         for (i, token) in tokens.iter().enumerate() {
             if i > 0 {
-                assert_eq!(token.delta_line, 0, "Token {} should be on same line", i);
+                assert_eq!(token.delta_line, 0, "Token {i} should be on same line");
             }
         }
     }
 
     #[test]
     fn test_delta_encoding_different_lines() {
-        let content = r#"let x: i64 = 1;
-let y: i64 = 2;"#;
+        let content = r"let x: i64 = 1;
+let y: i64 = 2;";
         let api = test_api();
         let doc = Document::new(content.to_string(), Some(&api));
         let tokens = compute_semantic_tokens(&doc, &api);

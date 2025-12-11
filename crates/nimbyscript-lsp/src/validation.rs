@@ -542,8 +542,7 @@ fn validate_default_value(
                 diagnostics.push(
                     Diagnostic::error(
                         format!(
-                            "'default' for bool must be 'true' or 'false', got '{}'",
-                            value_text
+                            "'default' for bool must be 'true' or 'false', got '{value_text}'"
                         ),
                         span,
                     )
@@ -557,8 +556,7 @@ fn validate_default_value(
                 diagnostics.push(
                     Diagnostic::error(
                         format!(
-                            "'default' for {} must be a number, got '{}'",
-                            field_type, value_text
+                            "'default' for {field_type} must be a number, got '{value_text}'"
                         ),
                         span,
                     )
@@ -572,8 +570,7 @@ fn validate_default_value(
                 diagnostics.push(
                     Diagnostic::error(
                         format!(
-                            "'default' for enum '{}' must be a variant name, got '{}'",
-                            field_type, value_text
+                            "'default' for enum '{field_type}' must be a variant name, got '{value_text}'"
                         ),
                         span,
                     )
@@ -750,24 +747,24 @@ pub struct Foo {
 
     #[test]
     fn test_field_meta_min_max_numeric() {
-        let content = r#"
+        let content = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub struct Foo {
     value: i64 meta { min: 0, max: 100, },
 }
-"#;
+";
         let diags = get_diagnostics(content);
         assert!(errors(&diags).is_empty(), "min/max on i64 should be valid");
     }
 
     #[test]
     fn test_field_meta_min_on_string_error() {
-        let content = r#"
+        let content = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub struct Foo {
     name: string meta { min: 0, },
 }
-"#;
+";
         let diags = get_diagnostics(content);
         let errs = errors(&diags);
         assert!(!errs.is_empty(), "min on string should error");
@@ -793,24 +790,24 @@ pub enum Color {
     #[test]
     fn test_valid_callback_signature() {
         // event_signal_check has 5 params: self, ctx, train, motion, signal
-        let content = r#"
+        let content = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub struct Test extend Signal { }
 pub fn Test::event_signal_check(self: &Test, ctx: &EventCtx, train: &Train, motion: &Motion, signal: &Signal): SignalCheck {
     return SignalCheck::Pass;
 }
-"#;
+";
         let diags = get_callback_diagnostics(content);
         assert!(errors(&diags).is_empty(), "Valid callback should have no errors: {diags:?}");
     }
 
     #[test]
     fn test_invalid_callback_name() {
-        let content = r#"
+        let content = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub struct Test extend Signal { }
 pub fn Test::not_a_real_callback(self: &Test) { }
-"#;
+";
         let diags = get_callback_diagnostics(content);
         let errs = errors(&diags);
         assert!(!errs.is_empty(), "Invalid callback name should error");
@@ -820,13 +817,13 @@ pub fn Test::not_a_real_callback(self: &Test) { }
     #[test]
     fn test_callback_param_count_mismatch() {
         // event_signal_check expects 5 params, but we only provide 1
-        let content = r#"
+        let content = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub struct Test extend Signal { }
 pub fn Test::event_signal_check(self: &Test): SignalCheck {
     return SignalCheck::Pass;
 }
-"#;
+";
         let diags = get_callback_diagnostics(content);
         let errs = errors(&diags);
         assert!(!errs.is_empty(), "Wrong param count should error");
@@ -835,13 +832,13 @@ pub fn Test::event_signal_check(self: &Test): SignalCheck {
 
     #[test]
     fn test_callback_return_type_mismatch() {
-        let content = r#"
+        let content = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub struct Test extend Signal { }
 pub fn Test::event_signal_check(self: &Test, ctx: &EventCtx, train: &Train, motion: &Motion, signal: &Signal): i64 {
     return 0;
 }
-"#;
+";
         let diags = get_callback_diagnostics(content);
         let errs = errors(&diags);
         assert!(!errs.is_empty(), "Wrong return type should error");
@@ -850,11 +847,11 @@ pub fn Test::event_signal_check(self: &Test, ctx: &EventCtx, train: &Train, moti
 
     #[test]
     fn test_nonpublic_function_ignored() {
-        let content = r#"
+        let content = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub struct Test extend Signal { }
 fn Test::not_a_callback(self: &Test) { }
-"#;
+";
         let diags = get_callback_diagnostics(content);
         // Non-public functions should not be validated as callbacks
         assert!(errors(&diags).is_empty(), "Non-public fn should be ignored: {diags:?}");
@@ -863,13 +860,13 @@ fn Test::not_a_callback(self: &Test) { }
     #[test]
     fn test_callback_param_type_mismatch() {
         // All params correct except ctx which should be &EventCtx not i64
-        let content = r#"
+        let content = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub struct Test extend Signal { }
 pub fn Test::event_signal_check(self: &Test, ctx: i64, train: &Train, motion: &Motion, signal: &Signal): SignalCheck {
     return SignalCheck::Pass;
 }
-"#;
+";
         let diags = get_callback_diagnostics(content);
         let errs = errors(&diags);
         assert!(!errs.is_empty(), "Wrong param type should error");
@@ -879,13 +876,13 @@ pub fn Test::event_signal_check(self: &Test, ctx: i64, train: &Train, motion: &M
     #[test]
     fn test_self_param_type_flexible() {
         // self: &StructName should match &Self in callback definition
-        let content = r#"
+        let content = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub struct MyHandler extend Signal { }
 pub fn MyHandler::event_signal_check(self: &MyHandler, ctx: &EventCtx, train: &Train, motion: &Motion, signal: &Signal): SignalCheck {
     return SignalCheck::Pass;
 }
-"#;
+";
         let diags = get_callback_diagnostics(content);
         // Should not error on self: &StructName type
         let type_errs: Vec<_> = errors(&diags).into_iter()
@@ -896,13 +893,13 @@ pub fn MyHandler::event_signal_check(self: &MyHandler, ctx: &EventCtx, train: &T
 
     #[test]
     fn test_callback_missing_return_type() {
-        let content = r#"
+        let content = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub struct Test extend Signal { }
 pub fn Test::event_signal_check(self: &Test, ctx: &EventCtx, train: &Train, motion: &Motion, signal: &Signal) {
     // Missing return type
 }
-"#;
+";
         let diags = get_callback_diagnostics(content);
         let errs = errors(&diags);
         assert!(!errs.is_empty(), "Missing return type should error");
@@ -1003,12 +1000,12 @@ pub fn Test::event_signal_check(self: &Test, ctx: &EventCtx, train: &Train, moti
 
     #[test]
     fn test_label_must_be_string() {
-        let content = r#"
+        let content = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub struct Test extend Signal {
     count: i64 meta { label: 123, },
 }
-"#;
+";
         let diags = get_diagnostics(content);
         let errs = errors(&diags);
         assert!(
@@ -1035,12 +1032,12 @@ pub struct Test extend Signal {
 
     #[test]
     fn test_max_must_be_number() {
-        let content = r#"
+        let content = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub struct Test extend Signal {
     count: f64 meta { max: true, },
 }
-"#;
+";
         let diags = get_diagnostics(content);
         let errs = errors(&diags);
         assert!(
@@ -1051,12 +1048,12 @@ pub struct Test extend Signal {
 
     #[test]
     fn test_default_bool_must_be_bool() {
-        let content = r#"
+        let content = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub struct Test extend Signal {
     flag: bool meta { default: 42, },
 }
-"#;
+";
         let diags = get_diagnostics(content);
         let errs = errors(&diags);
         assert!(
@@ -1083,13 +1080,13 @@ pub struct Test extend Signal {
 
     #[test]
     fn test_default_enum_must_be_name() {
-        let content = r#"
+        let content = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 enum Mode { Fast, Slow, }
 pub struct Test extend Signal {
     mode: Mode meta { default: 123, },
 }
-"#;
+";
         let diags = get_diagnostics(content);
         let errs = errors(&diags);
         assert!(

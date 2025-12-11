@@ -56,9 +56,7 @@ fn track_usage(node: Node, ctx: &mut SemanticContext) {
                 .unwrap_or_default();
 
             let body_span = node
-                .child_by_kind(kind::BLOCK)
-                .map(|b| Span::new(b.start_byte(), b.end_byte()))
-                .unwrap_or_else(|| Span::new(node.start_byte(), node.end_byte()));
+                .child_by_kind(kind::BLOCK).map_or_else(|| Span::new(node.start_byte(), node.end_byte()), |b| Span::new(b.start_byte(), b.end_byte()));
 
             ctx.scopes.enter_scope(
                 ScopeKind::Function {
@@ -70,26 +68,7 @@ fn track_usage(node: Node, ctx: &mut SemanticContext) {
 
             // Add parameters
             if let Some(params) = node.child_by_kind(kind::PARAMETERS) {
-                let mut cursor = params.walk();
-                for param in params.children(&mut cursor) {
-                    if param.kind() == kind::PARAMETER {
-                        if let (Some(name_node), Some(type_node)) =
-                            (param.child_by_field("name"), param.child_by_field("type"))
-                        {
-                            let param_name = name_node.text(ctx.source);
-                            let param_type = ctx.resolve_type(type_node.text(ctx.source));
-
-                            let _ = ctx.scopes.define(
-                                param_name,
-                                SymbolKind::Parameter,
-                                param_type,
-                                Span::new(param.start_byte(), param.end_byte()),
-                                Span::new(name_node.start_byte(), name_node.end_byte()),
-                                false,
-                            );
-                        }
-                    }
-                }
+                add_function_params(params, ctx);
             }
 
             // Track body
@@ -108,6 +87,73 @@ fn track_usage(node: Node, ctx: &mut SemanticContext) {
     }
 }
 
+fn check_params_shadowing(
+    params: Node,
+    ctx: &mut SemanticContext,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    let mut cursor = params.walk();
+    for param in params.children(&mut cursor) {
+        if param.kind() != kind::PARAMETER {
+            continue;
+        }
+        let Some(name_node) = param.child_by_field("name") else {
+            continue;
+        };
+        let Some(type_node) = param.child_by_field("type") else {
+            continue;
+        };
+        let param_name = name_node.text(ctx.source);
+
+        // Check for shadowing
+        if ctx.scopes.shadows_existing(param_name).is_some() {
+            diagnostics.push(
+                Diagnostic::warning(
+                    format!("Parameter '{param_name}' shadows an existing binding"),
+                    Span::new(name_node.start_byte(), name_node.end_byte()),
+                )
+                .with_code("W0600"),
+            );
+        }
+
+        let param_type = ctx.resolve_type(type_node.text(ctx.source));
+        let _ = ctx.scopes.define(
+            param_name,
+            SymbolKind::Parameter,
+            param_type,
+            Span::new(param.start_byte(), param.end_byte()),
+            Span::new(name_node.start_byte(), name_node.end_byte()),
+            false,
+        );
+    }
+}
+
+fn add_function_params(params: Node, ctx: &mut SemanticContext) {
+    let mut cursor = params.walk();
+    for param in params.children(&mut cursor) {
+        if param.kind() != kind::PARAMETER {
+            continue;
+        }
+        let Some(name_node) = param.child_by_field("name") else {
+            continue;
+        };
+        let Some(type_node) = param.child_by_field("type") else {
+            continue;
+        };
+        let param_name = name_node.text(ctx.source);
+        let param_type = ctx.resolve_type(type_node.text(ctx.source));
+
+        let _ = ctx.scopes.define(
+            param_name,
+            SymbolKind::Parameter,
+            param_type,
+            Span::new(param.start_byte(), param.end_byte()),
+            Span::new(name_node.start_byte(), name_node.end_byte()),
+            false,
+        );
+    }
+}
+
 fn track_block(node: Node, ctx: &mut SemanticContext) {
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
@@ -123,8 +169,7 @@ fn track_block(node: Node, ctx: &mut SemanticContext) {
                     let var_name = name_node.text(ctx.source);
                     let var_type = child
                         .child_by_field("type")
-                        .map(|t| ctx.resolve_type(t.text(ctx.source)))
-                        .unwrap_or(TypeInfo::Unknown);
+                        .map_or(TypeInfo::Unknown, |t| ctx.resolve_type(t.text(ctx.source)));
 
                     let _ = ctx.scopes.define(
                         var_name,
@@ -205,80 +250,44 @@ fn track_block(node: Node, ctx: &mut SemanticContext) {
 }
 
 fn check_shadowing(node: Node, ctx: &mut SemanticContext, diagnostics: &mut Vec<Diagnostic>) {
-    match node.kind() {
-        kind::FUNCTION_DEFINITION => {
-            // Enter function scope
-            let return_type = node
-                .child_by_field("return_type")
-                .map(|rt| ctx.resolve_type(rt.text(ctx.source)));
+    if node.kind() == kind::FUNCTION_DEFINITION {
+        // Enter function scope
+        let return_type = node
+            .child_by_field("return_type")
+            .map(|rt| ctx.resolve_type(rt.text(ctx.source)));
 
-            let func_name = node
-                .child_by_field("name")
-                .map(|n| n.text(ctx.source).to_string())
-                .unwrap_or_default();
+        let func_name = node
+            .child_by_field("name")
+            .map(|n| n.text(ctx.source).to_string())
+            .unwrap_or_default();
 
-            let body_span = node
-                .child_by_kind(kind::BLOCK)
-                .map(|b| Span::new(b.start_byte(), b.end_byte()))
-                .unwrap_or_else(|| Span::new(node.start_byte(), node.end_byte()));
+        let body_span = node.child_by_kind(kind::BLOCK).map_or_else(
+            || Span::new(node.start_byte(), node.end_byte()),
+            |b| Span::new(b.start_byte(), b.end_byte()),
+        );
 
-            ctx.scopes.enter_scope(
-                ScopeKind::Function {
-                    name: func_name,
-                    return_type,
-                },
-                body_span,
-            );
+        ctx.scopes.enter_scope(
+            ScopeKind::Function {
+                name: func_name,
+                return_type,
+            },
+            body_span,
+        );
 
-            // Add parameters (they can shadow globals)
-            if let Some(params) = node.child_by_kind(kind::PARAMETERS) {
-                let mut cursor = params.walk();
-                for param in params.children(&mut cursor) {
-                    if param.kind() == kind::PARAMETER {
-                        if let (Some(name_node), Some(type_node)) =
-                            (param.child_by_field("name"), param.child_by_field("type"))
-                        {
-                            let param_name = name_node.text(ctx.source);
-
-                            // Check for shadowing
-                            if ctx.scopes.shadows_existing(param_name).is_some() {
-                                diagnostics.push(
-                                    Diagnostic::warning(
-                                        format!(
-                                            "Parameter '{}' shadows an existing binding",
-                                            param_name
-                                        ),
-                                        Span::new(name_node.start_byte(), name_node.end_byte()),
-                                    )
-                                    .with_code("W0600"),
-                                );
-                            }
-
-                            let param_type = ctx.resolve_type(type_node.text(ctx.source));
-                            let _ = ctx.scopes.define(
-                                param_name,
-                                SymbolKind::Parameter,
-                                param_type,
-                                Span::new(param.start_byte(), param.end_byte()),
-                                Span::new(name_node.start_byte(), name_node.end_byte()),
-                                false,
-                            );
-                        }
-                    }
-                }
-            }
-
-            if let Some(body) = node.child_by_kind(kind::BLOCK) {
-                check_block_shadowing(body, ctx, diagnostics);
-            }
-
-            ctx.scopes.exit_scope();
+        // Add parameters (they can shadow globals)
+        if let Some(params) = node.child_by_kind(kind::PARAMETERS) {
+            check_params_shadowing(params, ctx, diagnostics);
         }
-        _ => {
-            let mut cursor = node.walk();
-            for child in node.children(&mut cursor) {
-                check_shadowing(child, ctx, diagnostics);
-            }
+
+        if let Some(body) = node.child_by_kind(kind::BLOCK) {
+            check_block_shadowing(body, ctx, diagnostics);
+        }
+
+        ctx.scopes.exit_scope();
+    } else {
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            check_shadowing(child, ctx, diagnostics);
         }
     }
 }
@@ -301,7 +310,7 @@ fn check_block_shadowing(node: Node, ctx: &mut SemanticContext, diagnostics: &mu
                     if ctx.scopes.shadows_existing(var_name).is_some() {
                         diagnostics.push(
                             Diagnostic::warning(
-                                format!("Variable '{}' shadows an existing binding", var_name),
+                                format!("Variable '{var_name}' shadows an existing binding"),
                                 Span::new(name_node.start_byte(), name_node.end_byte()),
                             )
                             .with_code("W0600"),
@@ -313,8 +322,7 @@ fn check_block_shadowing(node: Node, ctx: &mut SemanticContext, diagnostics: &mu
                         .and_then(|b| b.child_by_kind("type_pattern"))
                         .or_else(|| child.child_by_field("type"));
                     let var_type = type_node
-                        .map(|t| ctx.resolve_type(t.text(ctx.source)))
-                        .unwrap_or(TypeInfo::Unknown);
+                        .map_or(TypeInfo::Unknown, |t| ctx.resolve_type(t.text(ctx.source)));
 
                     let _ = ctx.scopes.define(
                         var_name,
@@ -338,7 +346,7 @@ fn check_block_shadowing(node: Node, ctx: &mut SemanticContext, diagnostics: &mu
                     if ctx.scopes.shadows_existing(var_name).is_some() {
                         diagnostics.push(
                             Diagnostic::warning(
-                                format!("Loop variable '{}' shadows an existing binding", var_name),
+                                format!("Loop variable '{var_name}' shadows an existing binding"),
                                 Span::new(var_node.start_byte(), var_node.end_byte()),
                             )
                             .with_code("W0600"),
@@ -393,11 +401,9 @@ fn report_unused(ctx: &SemanticContext, diagnostics: &mut Vec<Diagnostic>) {
                 }
                 (format!("Unused function '{}'", sym.name), "W0602")
             }
-            SymbolKind::Method => continue, // Methods are typically used via dispatch
-            SymbolKind::Parameter => (
-                format!("Unused parameter '{}'", sym.name),
-                "W0604",
-            ),
+            // Methods, fields, and variants are tracked differently
+            SymbolKind::Method | SymbolKind::Field | SymbolKind::EnumVariant => continue,
+            SymbolKind::Parameter => (format!("Unused parameter '{}'", sym.name), "W0604"),
             SymbolKind::Struct => {
                 // Skip pub structs - they're entry points used by the game
                 if ctx.is_pub_struct(&sym.name) {
@@ -412,11 +418,7 @@ fn report_unused(ctx: &SemanticContext, diagnostics: &mut Vec<Diagnostic>) {
                 }
                 (format!("Unused enum '{}'", sym.name), "W0606")
             }
-            SymbolKind::Constant => (
-                format!("Unused constant '{}'", sym.name),
-                "W0601",
-            ),
-            SymbolKind::Field | SymbolKind::EnumVariant => continue, // Fields/variants tracked differently
+            SymbolKind::Constant => (format!("Unused constant '{}'", sym.name), "W0601")
         };
 
         diagnostics.push(
@@ -473,25 +475,24 @@ mod tests {
 
     #[test]
     fn test_variable_shadowing() {
-        let source = r#"
+        let source = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 const X: i64 = 5;
 fn test() {
     let X = 10;
 }
-"#;
+";
         let diags = check(source);
         let warns = warnings(&diags);
         assert!(
             warns.iter().any(|d| d.code.as_deref() == Some("W0600")),
-            "Shadowing should warn: {:?}",
-            warns
+            "Shadowing should warn: {warns:?}"
         );
     }
 
     #[test]
     fn test_no_shadowing_different_scope() {
-        let source = r#"
+        let source = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 fn test1() {
     let x = 5;
@@ -499,13 +500,12 @@ fn test1() {
 fn test2() {
     let x = 10;
 }
-"#;
+";
         let diags = check(source);
         let warns = warnings(&diags);
         assert!(
             warns.iter().all(|d| d.code.as_deref() != Some("W0600")),
-            "Different scope should not shadow: {:?}",
-            warns
+            "Different scope should not shadow: {warns:?}"
         );
     }
 }

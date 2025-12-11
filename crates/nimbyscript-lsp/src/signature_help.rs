@@ -238,7 +238,7 @@ mod tests {
     #[test]
     fn test_call_context_simple() {
         let content = "foo(bar, ";
-        let ctx = get_call_context(content, content.len()).unwrap();
+        let ctx = get_call_context(content, content.len()).expect("should have call context");
         assert_eq!(ctx.function_name, "foo");
         assert_eq!(ctx.prefix, None);
         assert_eq!(ctx.active_parameter, 1);
@@ -247,7 +247,7 @@ mod tests {
     #[test]
     fn test_call_context_module() {
         let content = "Math::abs(x, ";
-        let ctx = get_call_context(content, content.len()).unwrap();
+        let ctx = get_call_context(content, content.len()).expect("should have call context");
         assert_eq!(ctx.function_name, "abs");
         assert_eq!(ctx.prefix, Some("Math".to_string()));
         assert_eq!(ctx.active_parameter, 1);
@@ -256,14 +256,14 @@ mod tests {
     #[test]
     fn test_call_context_first_param() {
         let content = "foo(";
-        let ctx = get_call_context(content, content.len()).unwrap();
+        let ctx = get_call_context(content, content.len()).expect("should have call context");
         assert_eq!(ctx.active_parameter, 0);
     }
 
     #[test]
     fn test_call_context_nested() {
         let content = "foo(bar(x), ";
-        let ctx = get_call_context(content, content.len()).unwrap();
+        let ctx = get_call_context(content, content.len()).expect("should have call context");
         assert_eq!(ctx.function_name, "foo");
         assert_eq!(ctx.active_parameter, 1); // second param of foo
     }
@@ -271,7 +271,7 @@ mod tests {
     #[test]
     fn test_call_context_method_call() {
         let content = "obj.method(arg1, ";
-        let ctx = get_call_context(content, content.len()).unwrap();
+        let ctx = get_call_context(content, content.len()).expect("should have call context");
         assert_eq!(ctx.function_name, "method");
         assert_eq!(ctx.prefix, None); // method calls don't have prefix without type info
         assert_eq!(ctx.active_parameter, 1);
@@ -289,7 +289,7 @@ mod tests {
         let content = "foo()";
         let ctx = get_call_context(content, content.len() - 1); // before closing paren
         assert!(ctx.is_some());
-        let ctx = ctx.unwrap();
+        let ctx = ctx.expect("should have call context");
         assert_eq!(ctx.function_name, "foo");
         assert_eq!(ctx.active_parameter, 0);
     }
@@ -328,7 +328,7 @@ mod tests {
     fn test_extract_simple_function() {
         let result = extract_function_name("foo");
         assert!(result.is_some());
-        let (name, prefix) = result.unwrap();
+        let (name, prefix) = result.expect("should extract function name");
         assert_eq!(name, "foo");
         assert!(prefix.is_none());
     }
@@ -337,7 +337,7 @@ mod tests {
     fn test_extract_module_function() {
         let result = extract_function_name("Math::abs");
         assert!(result.is_some());
-        let (name, prefix) = result.unwrap();
+        let (name, prefix) = result.expect("should extract function name");
         assert_eq!(name, "abs");
         assert_eq!(prefix, Some("Math".to_string()));
     }
@@ -346,7 +346,7 @@ mod tests {
     fn test_extract_method_call() {
         let result = extract_function_name("obj.method");
         assert!(result.is_some());
-        let (name, _prefix) = result.unwrap();
+        let (name, _prefix) = result.expect("should extract function name");
         assert_eq!(name, "method");
     }
 
@@ -354,7 +354,7 @@ mod tests {
     fn test_extract_with_preceding_code() {
         let result = extract_function_name("let x = foo");
         assert!(result.is_some());
-        let (name, prefix) = result.unwrap();
+        let (name, prefix) = result.expect("should extract function name");
         assert_eq!(name, "foo");
         assert!(prefix.is_none());
     }
@@ -414,7 +414,7 @@ mod tests {
 
         let sig = build_signature_info(&func, 0);
         assert_eq!(sig.label, "test()");
-        assert!(sig.parameters.unwrap().is_empty());
+        assert!(sig.parameters.expect("should have parameters").is_empty());
     }
 
     #[test]
@@ -447,7 +447,7 @@ mod tests {
 
         let sig = build_signature_info(&func, 0);
         assert_eq!(sig.label, "add(a: i64, b: i64) -> i64");
-        assert_eq!(sig.parameters.as_ref().unwrap().len(), 2);
+        assert_eq!(sig.parameters.as_ref().expect("should have parameters").len(), 2);
         assert_eq!(sig.active_parameter, Some(0));
     }
 
@@ -484,7 +484,7 @@ pub fn test() {
 
         let func = find_function_def(&context, &doc, &api);
         assert!(func.is_some());
-        assert_eq!(func.unwrap().name, "abs");
+        assert_eq!(func.expect("should find abs").name, "abs");
     }
 
     #[test]
@@ -501,7 +501,7 @@ pub fn test() {
 
         let func = find_function_def(&context, &doc, &api);
         assert!(func.is_some());
-        assert_eq!(func.unwrap().name, "view");
+        assert_eq!(func.expect("should find view").name, "view");
     }
 
     #[test]
@@ -532,7 +532,7 @@ pub fn test() {
         let help = get_signature_help(&doc, position, &api);
 
         assert!(help.is_some());
-        let help = help.unwrap();
+        let help = help.expect("should have signature help");
         assert_eq!(help.signatures.len(), 1);
         assert!(help.signatures[0].label.starts_with("abs("));
     }

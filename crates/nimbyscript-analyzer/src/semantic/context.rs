@@ -148,11 +148,8 @@ impl<'a> SemanticContext<'a> {
         match type_info {
             TypeInfo::Bool | TypeInfo::I64 | TypeInfo::F64 => true,
 
-            // User-defined enums are allowed (parsed as Enum variant)
-            TypeInfo::Enum { name } => self.is_user_enum(name),
-
-            // User-defined enums may also be parsed as Struct (type parser doesn't distinguish)
-            TypeInfo::Struct { name, .. } => self.is_user_enum(name),
+            // User-defined enums are allowed (parsed as Enum variant or Struct)
+            TypeInfo::Enum { name } | TypeInfo::Struct { name, .. } => self.is_user_enum(name),
 
             // ID<T> is allowed for specific types
             TypeInfo::Generic { name, args } if name == "ID" => {
@@ -281,7 +278,7 @@ impl<'a> SemanticContext<'a> {
                 min_params: 0,
                 max_params: usize::MAX,
                 param_types: vec![],
-                return_type: self.user_functions.get(name).and_then(|t| t.clone()),
+                return_type: self.user_functions.get(name).and_then(Clone::clone),
             });
         }
 
@@ -461,8 +458,7 @@ fn collect_const(node: Node, ctx: &mut SemanticContext) {
     // Get type
     let type_info = node
         .child_by_field("type")
-        .map(|t| ctx.resolve_type(t.text(ctx.source)))
-        .unwrap_or(TypeInfo::Unknown);
+        .map_or(TypeInfo::Unknown, |t| ctx.resolve_type(t.text(ctx.source)));
 
     let _ = ctx.scopes.define_global(
         &name,
@@ -550,12 +546,12 @@ mod tests {
 
     #[test]
     fn test_collect_declarations_struct() {
-        let source = r#"
+        let source = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub struct MyHandler extend Signal {
     count: i64,
 }
-"#;
+";
         let (tree, api) = make_context(source);
         let mut ctx = SemanticContext::new(source, &tree, &api);
         collect_declarations(&mut ctx);
@@ -569,10 +565,10 @@ pub struct MyHandler extend Signal {
 
     #[test]
     fn test_collect_declarations_enum() {
-        let source = r#"
+        let source = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub enum Status { Active, Inactive, }
-"#;
+";
         let (tree, api) = make_context(source);
         let mut ctx = SemanticContext::new(source, &tree, &api);
         collect_declarations(&mut ctx);
@@ -585,10 +581,10 @@ pub enum Status { Active, Inactive, }
 
     #[test]
     fn test_collect_declarations_function() {
-        let source = r#"
+        let source = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 fn my_func(): i64 { return 0; }
-"#;
+";
         let (tree, api) = make_context(source);
         let mut ctx = SemanticContext::new(source, &tree, &api);
         collect_declarations(&mut ctx);
@@ -600,10 +596,10 @@ fn my_func(): i64 { return 0; }
 
     #[test]
     fn test_is_valid_pub_struct_field_type() {
-        let source = r#"
+        let source = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub enum MyEnum { A, }
-"#;
+";
         let (tree, api) = make_context(source);
         let mut ctx = SemanticContext::new(source, &tree, &api);
         collect_declarations(&mut ctx);
@@ -625,10 +621,10 @@ pub enum MyEnum { A, }
 
     #[test]
     fn test_get_enum_variants_user() {
-        let source = r#"
+        let source = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub enum Color { Red, Green, Blue, }
-"#;
+";
         let (tree, api) = make_context(source);
         let mut ctx = SemanticContext::new(source, &tree, &api);
         collect_declarations(&mut ctx);

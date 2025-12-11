@@ -32,7 +32,7 @@ fn run_check(file_path: &str) -> ExitCode {
     let content = match std::fs::read_to_string(file_path) {
         Ok(content) => content,
         Err(e) => {
-            eprintln!("Error reading file '{}': {}", file_path, e);
+            eprintln!("Error reading file '{file_path}': {e}");
             return ExitCode::FAILURE;
         }
     };
