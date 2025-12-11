@@ -6,7 +6,7 @@
 pub mod context;
 pub mod passes;
 
-pub use context::SemanticContext;
+pub use context::{collect_declarations, SemanticContext};
 pub use passes::PassRegistry;
 
 use crate::Diagnostic;

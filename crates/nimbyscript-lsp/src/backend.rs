@@ -1,11 +1,12 @@
 use std::fmt::Write;
 
 use dashmap::DashMap;
+use serde_json::Value;
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer};
 
-use crate::completions::get_completions;
+use crate::completions::{get_completions, resolve_completion};
 use crate::document::Document;
 use crate::semantic_tokens::{semantic_token_legend, compute_semantic_tokens};
 use crate::signature_help::get_signature_help;
@@ -85,6 +86,10 @@ impl Backend {
             Range::new(Position::new(0, 0), Position::new(0, 0))
         }
     }
+
+    fn resolve_completion_doc(&self, data: &Value) -> Option<Documentation> {
+        resolve_completion(data, &self.api_definitions)
+    }
 }
 
 #[tower_lsp::async_trait]
@@ -97,7 +102,7 @@ impl LanguageServer for Backend {
                 )),
                 completion_provider: Some(CompletionOptions {
                     trigger_characters: Some(vec![".".into(), ":".into()]),
-                    resolve_provider: Some(false),
+                    resolve_provider: Some(true),
                     ..Default::default()
                 }),
                 signature_help_provider: Some(SignatureHelpOptions {
@@ -171,6 +176,22 @@ impl LanguageServer for Backend {
         } else {
             Ok(None)
         }
+    }
+
+    async fn completion_resolve(&self, mut item: CompletionItem) -> Result<CompletionItem> {
+        // If item already has documentation, return as-is
+        if item.documentation.is_some() {
+            return Ok(item);
+        }
+
+        // Try to resolve documentation from the data field
+        if let Some(data) = &item.data {
+            if let Some(resolved_doc) = self.resolve_completion_doc(data) {
+                item.documentation = Some(resolved_doc);
+            }
+        }
+
+        Ok(item)
     }
 
     async fn signature_help(&self, params: SignatureHelpParams) -> Result<Option<SignatureHelp>> {

@@ -8,6 +8,6 @@ pub mod types;
 pub use api::{ApiDefinitions, FunctionDef, ParamDef};
 pub use diagnostics::Diagnostic;
 pub use scope::ScopeManager;
-pub use semantic::{SemanticContext, SemanticPass};
+pub use semantic::{collect_declarations, SemanticContext, SemanticPass};
 pub use symbols::SymbolTable;
 pub use types::TypeInfo;
