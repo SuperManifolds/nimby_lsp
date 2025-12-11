@@ -322,14 +322,38 @@ fn check_method_call(
         return;
     }
 
-    // 5. Get the type name
-    let type_name = match &base_type {
-        TypeInfo::Struct { name, .. } => name.as_str(),
+    // 5. Get the type name - handle both Struct and Generic (for std::optional)
+    let (type_name, inner_type) = match &base_type {
+        TypeInfo::Struct { name, .. } => (name.as_str(), None),
+        TypeInfo::Generic { name, args } => {
+            // For std::optional<T>, first check methods on optional itself,
+            // then fall back to methods on T
+            let inner = args.first().and_then(|t| {
+                if let TypeInfo::Struct { name, .. } = t {
+                    Some(name.as_str())
+                } else {
+                    None
+                }
+            });
+            (name.as_str(), inner)
+        }
         _ => return, // Can't call methods on non-struct types
     };
 
-    // 6. Check if method exists on the type
-    if let Some(method_def) = ctx.get_type_method(type_name, method_name) {
+    // 6. Check if method exists on the type (or inner type for optionals)
+    let method_def = ctx.get_type_method(type_name, method_name).or_else(|| {
+        // If not found on the outer type, try the inner type (for optionals)
+        inner_type.and_then(|inner| ctx.get_type_method(inner, method_name))
+    });
+
+    // Determine which type name to use for error messages
+    let effective_type = if ctx.get_type_method(type_name, method_name).is_some() {
+        type_name
+    } else {
+        inner_type.unwrap_or(type_name)
+    };
+
+    if let Some(method_def) = method_def {
         // Method exists - validate argument count
         let expected_params = method_def.params.len();
         let actual_args = count_arguments(call_node);
@@ -344,7 +368,7 @@ fn check_method_call(
                 Diagnostic::error(
                     format!(
                         "Method '{}' on type '{}' expects {} argument(s), but {} provided",
-                        method_name, type_name, expected_params, actual_args
+                        method_name, effective_type, expected_params, actual_args
                     ),
                     span,
                 )
@@ -354,7 +378,7 @@ fn check_method_call(
     } else {
         // Method doesn't exist - check if it might be a field
         if ctx
-            .get_struct_fields(type_name)
+            .get_struct_fields(effective_type)
             .map(|f| f.contains_key(method_name))
             .unwrap_or(false)
         {
@@ -363,7 +387,7 @@ fn check_method_call(
                 Diagnostic::error(
                     format!(
                         "'{}' is a field, not a method, on type '{}'",
-                        method_name, type_name
+                        method_name, effective_type
                     ),
                     Span::new(method_node.start_byte(), method_node.end_byte()),
                 )
@@ -372,7 +396,7 @@ fn check_method_call(
         } else {
             // Get available methods for hint
             let available: Vec<_> = ctx
-                .get_type_methods(type_name)
+                .get_type_methods(effective_type)
                 .iter()
                 .map(|(name, _)| *name)
                 .take(5)
@@ -387,7 +411,7 @@ fn check_method_call(
                 Diagnostic::error(
                     format!(
                         "Undefined method '{}' on type '{}'{}",
-                        method_name, type_name, hint
+                        method_name, effective_type, hint
                     ),
                     Span::new(method_node.start_byte(), method_node.end_byte()),
                 )

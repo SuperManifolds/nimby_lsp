@@ -168,6 +168,21 @@ impl TypeInfo {
         }
     }
 
+    /// Check if this type is an optional (std::optional<T>)
+    pub fn is_optional(&self) -> bool {
+        matches!(self, TypeInfo::Generic { name, .. } if name == "std::optional")
+    }
+
+    /// If this is an optional type, return the inner type. Otherwise return self.
+    pub fn unwrap_optional(&self) -> TypeInfo {
+        match self {
+            TypeInfo::Generic { name, args } if name == "std::optional" && !args.is_empty() => {
+                args[0].clone()
+            }
+            other => other.clone(),
+        }
+    }
+
     /// Check if this type can be compared with another (using ==, !=, <, >, etc.)
     /// NimbyScript allows comparing i64 and f64, but not most other cross-type comparisons
     pub fn can_compare_with(&self, other: &TypeInfo) -> bool {

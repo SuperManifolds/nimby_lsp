@@ -216,6 +216,20 @@ impl<'a> SemanticContext<'a> {
         self.get_type_method(type_name, method_name).is_some()
     }
 
+    /// Check if a static method exists on a game type.
+    /// For ID<T> types, only "empty" is a valid static method.
+    /// For other game types, check API definitions.
+    pub fn has_static_method(&self, type_name: &str, method_name: &str) -> bool {
+        // For ID<T> types, only "empty" is a static method
+        if type_name.starts_with("ID<") {
+            return method_name == "empty";
+        }
+        // Other game types - check API definitions for static methods
+        // Currently, most game type methods are instance methods, not static
+        // This may need to be expanded if more static methods are added
+        false
+    }
+
     /// Get the variants of an enum (user-defined or game enum)
     pub fn get_enum_variants(&self, name: &str) -> Option<Vec<String>> {
         // Check user-defined enums first

@@ -8,6 +8,7 @@
 //! - E0304: Undefined enum variant
 //! - E0305: Undefined method on type
 //! - E0306: Undefined module
+//! - E0307: Undefined static method
 
 use nimbyscript_parser::ast::Span;
 use nimbyscript_parser::{kind, Node, NodeExt};
@@ -426,12 +427,39 @@ fn resolve_path(node: Node, ctx: &SemanticContext, diagnostics: &mut Vec<Diagnos
                     .with_code("E0304"),
                 );
             }
-        } else if ctx.is_game_type(first) || ctx.is_user_struct(first) {
-            // Type::method call (e.g., ID<Train>::empty(), Task::new())
-            // For now, just accept it - method validation can be done separately
+        } else if ctx.is_user_struct(first) {
+            // User-defined structs:
+            // - Private structs have automatic new() and clone() static methods
+            // - Public structs (extend Signal/Train/etc) have NO static methods
+            let is_private = !ctx.is_pub_struct(first);
+            let has_valid_static = is_private && (second == "new" || second == "clone");
+
+            if !has_valid_static {
+                let msg = if is_private {
+                    format!("Private struct '{}' only has static methods 'new' and 'clone', not '{}'", first, second)
+                } else {
+                    format!("Public struct '{}' has no static method '{}'", first, second)
+                };
+                diagnostics.push(
+                    Diagnostic::error(msg, Span::new(node.start_byte(), node.end_byte()))
+                        .with_code("E0307"),
+                );
+            }
+        } else if ctx.is_game_type(first) {
+            // Game types may have static methods like ID<T>::empty()
+            // Validate that the method exists
+            if !ctx.has_static_method(first, second) {
+                diagnostics.push(
+                    Diagnostic::error(
+                        format!("Type '{}' has no static method '{}'", first, second),
+                        Span::new(node.start_byte(), node.end_byte()),
+                    )
+                    .with_code("E0307"),
+                );
+            }
         } else if first.starts_with("ID<") && first.ends_with('>') {
             // Handle generic ID types like ID<Train>::empty()
-            // These are valid if the full type exists
+            // First check if the type exists
             if !ctx.is_game_type(first) {
                 diagnostics.push(
                     Diagnostic::error(
@@ -439,6 +467,15 @@ fn resolve_path(node: Node, ctx: &SemanticContext, diagnostics: &mut Vec<Diagnos
                         Span::new(node.start_byte(), node.end_byte()),
                     )
                     .with_code("E0302"),
+                );
+            } else if !ctx.has_static_method(first, second) {
+                // Type exists but static method doesn't
+                diagnostics.push(
+                    Diagnostic::error(
+                        format!("Type '{}' has no static method '{}'", first, second),
+                        Span::new(node.start_byte(), node.end_byte()),
+                    )
+                    .with_code("E0307"),
                 );
             }
         } else {
@@ -815,6 +852,139 @@ fn MyHandler::test(self: &MyHandler) {
         assert!(
             errs.iter().any(|d| d.code.as_deref() == Some("E0301")),
             "Undefined function in method should error: {:?}",
+            errs
+        );
+    }
+
+    // E0307 - Undefined static method
+
+    #[test]
+    fn test_undefined_static_method_on_private_struct() {
+        let source = r#"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+struct Task {
+    tid: ID<Train>,
+}
+fn test() {
+    let t = Task::blorp();
+}
+"#;
+        let diags = check(source);
+        let errs = errors(&diags);
+        assert!(
+            errs.iter().any(|d| d.code.as_deref() == Some("E0307")),
+            "Private struct invalid static method should error: {:?}",
+            errs
+        );
+    }
+
+    #[test]
+    fn test_valid_private_struct_new() {
+        let source = r#"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+struct Task {
+    tid: ID<Train>,
+}
+fn test() {
+    let t = Task::new();
+}
+"#;
+        let diags = check(source);
+        let errs = errors(&diags);
+        assert!(
+            errs.iter().all(|d| d.code.as_deref() != Some("E0307")),
+            "Private struct new() should be valid: {:?}",
+            errs
+        );
+    }
+
+    #[test]
+    fn test_valid_private_struct_clone() {
+        let source = r#"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+struct Task {
+    tid: ID<Train>,
+}
+fn test(t: &Task) {
+    let copy = Task::clone(t);
+}
+"#;
+        let diags = check(source);
+        let errs = errors(&diags);
+        assert!(
+            errs.iter().all(|d| d.code.as_deref() != Some("E0307")),
+            "Private struct clone() should be valid: {:?}",
+            errs
+        );
+    }
+
+    #[test]
+    fn test_public_struct_no_static_methods() {
+        let source = r#"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+pub struct MyHandler extend Signal {
+    count: i64,
+}
+fn test() {
+    let h = MyHandler::new();
+}
+"#;
+        let diags = check(source);
+        let errs = errors(&diags);
+        assert!(
+            errs.iter().any(|d| d.code.as_deref() == Some("E0307")),
+            "Public struct should not have new(): {:?}",
+            errs
+        );
+    }
+
+    #[test]
+    fn test_valid_id_empty_static_method() {
+        let source = r#"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+fn test(): ID<Train> {
+    return ID<Train>::empty();
+}
+"#;
+        let diags = check(source);
+        let errs = errors(&diags);
+        assert!(
+            errs.iter().all(|d| d.code.as_deref() != Some("E0307")),
+            "ID<T>::empty() should be valid: {:?}",
+            errs
+        );
+    }
+
+    #[test]
+    fn test_invalid_id_static_method() {
+        let source = r#"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+fn test() {
+    let x = ID<Train>::blorp();
+}
+"#;
+        let diags = check(source);
+        let errs = errors(&diags);
+        assert!(
+            errs.iter().any(|d| d.code.as_deref() == Some("E0307")),
+            "Invalid static method on ID<T> should error: {:?}",
+            errs
+        );
+    }
+
+    #[test]
+    fn test_game_type_instance_method_as_static() {
+        let source = r#"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+fn test() {
+    let x = Signal::forward();
+}
+"#;
+        let diags = check(source);
+        let errs = errors(&diags);
+        assert!(
+            errs.iter().any(|d| d.code.as_deref() == Some("E0307")),
+            "Instance method called as static should error: {:?}",
             errs
         );
     }
