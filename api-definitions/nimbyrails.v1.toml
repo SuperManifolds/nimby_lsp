@@ -1,6 +1,6 @@
 # NimbyScript API Definitions for NIMBY Rails v1
 # These definitions provide completions and hover info for game types and functions
-# https://wiki.nimbyrails.com/NimbyScript
+# Refer to https://wiki.nimbyrails.com/NimbyScript
 
 version = "1.0.0"
 api_version = "nimbyrails.v1"

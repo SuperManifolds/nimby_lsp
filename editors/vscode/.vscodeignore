@@ -8,6 +8,12 @@ vsc-extension-quickstart.md
 **/.eslintrc.json
 **/*.map
 **/*.ts
+*.vsix
+.github/**
+tests/**
+**/*.md
+!CHANGELOG.md
+!README.md
 node_modules/**
 !node_modules/vscode-languageclient/**
 !node_modules/vscode-languageserver-protocol/**

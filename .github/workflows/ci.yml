@@ -1,0 +1,160 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-action@stable
+      - run: cargo test --all
+
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-action@stable
+        with:
+          components: clippy
+      - run: cargo clippy --all-targets -- -D warnings
+
+  fmt:
+    name: Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-action@stable
+        with:
+          components: rustfmt
+      - run: cargo fmt --all --check
+
+  extension:
+    name: Extension TypeScript
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: editors/vscode/package-lock.json
+      - name: Install dependencies
+        working-directory: editors/vscode
+        run: npm ci
+      - name: Compile TypeScript
+        working-directory: editors/vscode
+        run: npm run compile
+      - name: Lint
+        working-directory: editors/vscode
+        run: npm run lint
+
+  build:
+    name: Build ${{ matrix.vscode-target }}
+    runs-on: ${{ matrix.os }}
+    # Only build artifacts on push to main, not on PRs
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            target: aarch64-apple-darwin
+            vscode-target: darwin-arm64
+            binary: nimbyscript-lsp
+
+          - os: macos-13
+            target: x86_64-apple-darwin
+            vscode-target: darwin-x64
+            binary: nimbyscript-lsp
+
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            vscode-target: win32-x64
+            binary: nimbyscript-lsp.exe
+
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            vscode-target: linux-x64
+            binary: nimbyscript-lsp
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-action@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Build release binary
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: binary-${{ matrix.vscode-target }}
+          path: target/${{ matrix.target }}/release/${{ matrix.binary }}
+          if-no-files-found: error
+
+  package:
+    name: Package ${{ matrix.vscode-target }}
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    strategy:
+      matrix:
+        include:
+          - vscode-target: darwin-arm64
+            binary: nimbyscript-lsp
+          - vscode-target: darwin-x64
+            binary: nimbyscript-lsp
+          - vscode-target: win32-x64
+            binary: nimbyscript-lsp.exe
+          - vscode-target: linux-x64
+            binary: nimbyscript-lsp
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: editors/vscode/package-lock.json
+
+      - name: Download binary
+        uses: actions/download-artifact@v4
+        with:
+          name: binary-${{ matrix.vscode-target }}
+          path: editors/vscode/server/
+
+      - name: Set executable permission
+        if: matrix.vscode-target != 'win32-x64'
+        run: chmod +x editors/vscode/server/${{ matrix.binary }}
+
+      - name: Install dependencies
+        working-directory: editors/vscode
+        run: npm ci
+
+      - name: Package extension
+        working-directory: editors/vscode
+        run: npx vsce package --target ${{ matrix.vscode-target }}
+
+      - name: Upload VSIX artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vsix-${{ matrix.vscode-target }}
+          path: editors/vscode/*.vsix
+          if-no-files-found: error

@@ -1,26 +1,43 @@
 {
   "name": "nimbyscript",
   "displayName": "NimbyScript",
-  "description": "Language support for NimbyScript - NIMBY Rails modding language",
+  "description": "Unofficial language support for NimbyScript - NIMBY Rails modding language. Provides syntax highlighting, diagnostics, completions, and hover information.",
   "version": "0.1.0",
-  "publisher": "nimbyscript",
+  "publisher": "supermanifolds",
+  "author": {
+    "name": "Alex Sørlie"
+  },
+  "license": "MIT",
+  "icon": "images/icon.png",
+  "galleryBanner": {
+    "color": "#1e1e1e",
+    "theme": "dark"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/supermanifolds/nimby_lsp"
   },
-  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/supermanifolds/nimby_lsp/issues"
+  },
+  "homepage": "https://github.com/supermanifolds/nimby_lsp#readme",
   "engines": {
     "vscode": "^1.75.0"
   },
   "categories": [
-    "Programming Languages"
+    "Programming Languages",
+    "Linters",
+    "Snippets"
   ],
   "keywords": [
     "nimbyscript",
     "nimby rails",
+    "nimby",
     "modding",
     "game mods",
-    "railway"
+    "railway",
+    "lsp",
+    "language server"
   ],
   "activationEvents": [
     "onLanguage:nimbyscript"
@@ -37,7 +54,11 @@
         "extensions": [
           ".nimbyscript"
         ],
-        "configuration": "./language-configuration.json"
+        "configuration": "./language-configuration.json",
+        "icon": {
+          "light": "./images/file-icon.png",
+          "dark": "./images/file-icon-dark.png"
+        }
       }
     ],
     "grammars": [
@@ -53,7 +74,7 @@
         "nimbyscript.server.path": {
           "type": "string",
           "default": "",
-          "description": "Path to the nimbyscript-lsp executable. If empty, searches PATH."
+          "markdownDescription": "Path to the `nimbyscript-lsp` executable. If empty, uses the bundled binary or searches PATH."
         },
         "nimbyscript.api.definitionsPath": {
           "type": "string",
