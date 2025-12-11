@@ -163,7 +163,7 @@ jobs:
           path: editors/vscode/server/
 
       - name: Set executable permission
-        if: matrix.vscode-target != 'win32-x64'
+        if: ${{ !startsWith(matrix.vscode-target, 'win32') }}
         run: chmod +x editors/vscode/server/${{ matrix.binary }}
 
       - name: Install dependencies
