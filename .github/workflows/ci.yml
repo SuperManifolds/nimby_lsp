@@ -59,7 +59,6 @@ jobs:
         run: npm run lint
 
   build:
-    name: Build ${{ matrix.vscode-target }}
     needs: [test, clippy, fmt, extension]
     runs-on: ${{ matrix.os }}
     # Only build artifacts on push to main, not on PRs
@@ -108,7 +107,6 @@ jobs:
           if-no-files-found: error
 
   package:
-    name: Package ${{ matrix.vscode-target }}
     needs: build
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
