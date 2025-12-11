@@ -1,5 +1,3 @@
-use std::fmt::Write;
-
 use dashmap::DashMap;
 use serde_json::Value;
 use tower_lsp::jsonrpc::Result;
@@ -8,7 +6,8 @@ use tower_lsp::{Client, LanguageServer};
 
 use crate::completions::{get_completions, resolve_completion};
 use crate::document::Document;
-use crate::semantic_tokens::{semantic_token_legend, compute_semantic_tokens};
+use crate::hover::get_hover;
+use crate::semantic_tokens::{compute_semantic_tokens, semantic_token_legend};
 use crate::signature_help::get_signature_help;
 
 use nimbyscript_analyzer::ApiDefinitions;
@@ -227,28 +226,7 @@ impl LanguageServer for Backend {
         let position = params.text_document_position_params.position;
 
         if let Some(doc) = self.documents.get(uri) {
-            let offset = doc.position_to_offset(position);
-
-            // Find symbol at position
-            if let Some(symbol) = doc.symbol_at(offset) {
-                let mut contents = format!("**{}**", symbol.name);
-
-                if let Some(type_name) = &symbol.type_name {
-                    let _ = write!(contents, ": `{type_name}`");
-                }
-
-                if let Some(doc_str) = &symbol.doc {
-                    let _ = write!(contents, "\n\n{doc_str}");
-                }
-
-                return Ok(Some(Hover {
-                    contents: HoverContents::Markup(MarkupContent {
-                        kind: MarkupKind::Markdown,
-                        value: contents,
-                    }),
-                    range: None,
-                }));
-            }
+            return Ok(get_hover(&doc, position, &self.api_definitions));
         }
 
         Ok(None)

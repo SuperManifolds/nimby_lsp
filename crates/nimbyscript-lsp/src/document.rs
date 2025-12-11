@@ -54,6 +54,16 @@ impl Document {
         self.struct_extends.get(struct_name).map(String::as_str)
     }
 
+    /// Get the parsed tree for AST traversal
+    pub fn tree(&self) -> &Tree {
+        &self._tree
+    }
+
+    /// Get all struct extends mappings
+    pub fn all_struct_extends(&self) -> &HashMap<String, String> {
+        &self.struct_extends
+    }
+
     pub fn offset_to_position(&self, offset: usize) -> Position {
         let line = self
             .line_offsets

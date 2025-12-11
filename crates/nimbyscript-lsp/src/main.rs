@@ -1,6 +1,7 @@
 mod backend;
 mod completions;
 mod document;
+mod hover;
 mod semantic_tokens;
 mod signature_help;
 mod validation;
