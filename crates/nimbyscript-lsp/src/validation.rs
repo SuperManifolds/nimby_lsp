@@ -439,28 +439,76 @@ fn validate_struct_meta(node: Node, content: &str, diagnostics: &mut Vec<Diagnos
 }
 
 /// Validate a single field meta entry
-fn validate_field_meta_entry(child: Node, key: &str, field_type: &str, diagnostics: &mut Vec<Diagnostic>) {
+fn validate_field_meta_entry(
+    child: Node,
+    key: &str,
+    field_type: &str,
+    content: &str,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
     let is_numeric = field_type == "i64" || field_type == "f64";
     let is_bool = field_type == "bool";
     let span = nimbyscript_parser::ast::Span::new(child.start_byte(), child.end_byte());
+    let value_node = child.child_by_field("value");
 
     match key {
-        "min" | "max" if !is_numeric => {
-            diagnostics.push(
-                Diagnostic::error(
-                    format!("'{key}' is only valid for numeric types (i64, f64), not '{field_type}'"),
-                    span,
-                )
-                .with_code("E0202"),
-            );
+        "label" => {
+            // label must be a string
+            if let Some(val) = value_node {
+                if val.kind() != kind::STRING_LITERAL {
+                    diagnostics.push(
+                        Diagnostic::error(
+                            format!("'label' must be a string, got '{}'", val.text(content)),
+                            span,
+                        )
+                        .with_code("E0205"),
+                    );
+                }
+            }
         }
-        "default" if !is_numeric && !is_bool && !field_type.chars().next().is_some_and(char::is_uppercase) => {
-            diagnostics.push(
-                Diagnostic::warning(format!("'default' may not be valid for type '{field_type}'"), span)
+        "min" | "max" => {
+            if !is_numeric {
+                diagnostics.push(
+                    Diagnostic::error(
+                        format!(
+                            "'{key}' is only valid for numeric types (i64, f64), not '{field_type}'"
+                        ),
+                        span,
+                    )
+                    .with_code("E0202"),
+                );
+            } else if let Some(val) = value_node {
+                // min/max must be a number literal
+                if val.kind() != kind::NUMBER {
+                    diagnostics.push(
+                        Diagnostic::error(
+                            format!("'{}' must be a number, got '{}'", key, val.text(content)),
+                            span,
+                        )
+                        .with_code("E0205"),
+                    );
+                }
+            }
+        }
+        "default" => {
+            if !is_numeric
+                && !is_bool
+                && !field_type
+                    .chars()
+                    .next()
+                    .is_some_and(char::is_uppercase)
+            {
+                diagnostics.push(
+                    Diagnostic::warning(
+                        format!("'default' may not be valid for type '{field_type}'"),
+                        span,
+                    )
                     .with_code("E0203"),
-            );
+                );
+            } else if let Some(val) = value_node {
+                validate_default_value(val, field_type, content, span, diagnostics);
+            }
         }
-        "label" | "min" | "max" | "default" => {} // Valid keys
         other => {
             diagnostics.push(
                 Diagnostic::warning(
@@ -470,6 +518,70 @@ fn validate_field_meta_entry(child: Node, key: &str, field_type: &str, diagnosti
                 .with_code("E0201"),
             );
         }
+    }
+}
+
+/// Validate the value of a 'default' meta key based on field type
+fn validate_default_value(
+    node: Node,
+    field_type: &str,
+    content: &str,
+    span: nimbyscript_parser::ast::Span,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    let value_kind = node.kind();
+    let value_text = node.text(content);
+
+    match field_type {
+        "bool" => {
+            // default for bool must be true/false
+            // In meta context, these are parsed as META_NAME, not BOOLEAN
+            let is_valid_bool = value_kind == kind::BOOLEAN
+                || (value_kind == kind::META_NAME && (value_text == "true" || value_text == "false"));
+            if !is_valid_bool {
+                diagnostics.push(
+                    Diagnostic::error(
+                        format!(
+                            "'default' for bool must be 'true' or 'false', got '{}'",
+                            value_text
+                        ),
+                        span,
+                    )
+                    .with_code("E0205"),
+                );
+            }
+        }
+        "i64" | "f64" => {
+            // default for numeric must be a number
+            if value_kind != kind::NUMBER {
+                diagnostics.push(
+                    Diagnostic::error(
+                        format!(
+                            "'default' for {} must be a number, got '{}'",
+                            field_type, value_text
+                        ),
+                        span,
+                    )
+                    .with_code("E0205"),
+                );
+            }
+        }
+        _ if field_type.chars().next().is_some_and(char::is_uppercase) => {
+            // Enum type - default must be an identifier (enum variant name)
+            if value_kind != kind::META_NAME && value_kind != kind::IDENTIFIER {
+                diagnostics.push(
+                    Diagnostic::error(
+                        format!(
+                            "'default' for enum '{}' must be a variant name, got '{}'",
+                            field_type, value_text
+                        ),
+                        span,
+                    )
+                    .with_code("E0205"),
+                );
+            }
+        }
+        _ => {} // Other types - already warned by E0203
     }
 }
 
@@ -494,7 +606,7 @@ fn validate_field_meta(node: Node, content: &str, diagnostics: &mut Vec<Diagnost
     for child in meta_map.children(&mut cursor) {
         if child.kind() != kind::META_ENTRY { continue; }
         let Some(key_node) = child.child_by_field("key") else { continue; };
-        validate_field_meta_entry(child, key_node.text(content), &field_type, diagnostics);
+        validate_field_meta_entry(child, key_node.text(content), &field_type, content, diagnostics);
     }
 }
 
@@ -884,6 +996,125 @@ pub fn Test::event_signal_check(self: &Test, ctx: &EventCtx, train: &Train, moti
         assert!(
             errs.iter().any(|d| d.code.as_deref() == Some("E0204")),
             "Description array with number should error: {errs:?}"
+        );
+    }
+
+    // E0205 - Field meta value type validation tests
+
+    #[test]
+    fn test_label_must_be_string() {
+        let content = r#"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+pub struct Test extend Signal {
+    count: i64 meta { label: 123, },
+}
+"#;
+        let diags = get_diagnostics(content);
+        let errs = errors(&diags);
+        assert!(
+            errs.iter().any(|d| d.code.as_deref() == Some("E0205")),
+            "Non-string label should error: {errs:?}"
+        );
+    }
+
+    #[test]
+    fn test_min_must_be_number() {
+        let content = r#"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+pub struct Test extend Signal {
+    count: i64 meta { min: "hello", },
+}
+"#;
+        let diags = get_diagnostics(content);
+        let errs = errors(&diags);
+        assert!(
+            errs.iter().any(|d| d.code.as_deref() == Some("E0205")),
+            "Non-number min should error: {errs:?}"
+        );
+    }
+
+    #[test]
+    fn test_max_must_be_number() {
+        let content = r#"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+pub struct Test extend Signal {
+    count: f64 meta { max: true, },
+}
+"#;
+        let diags = get_diagnostics(content);
+        let errs = errors(&diags);
+        assert!(
+            errs.iter().any(|d| d.code.as_deref() == Some("E0205")),
+            "Non-number max should error: {errs:?}"
+        );
+    }
+
+    #[test]
+    fn test_default_bool_must_be_bool() {
+        let content = r#"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+pub struct Test extend Signal {
+    flag: bool meta { default: 42, },
+}
+"#;
+        let diags = get_diagnostics(content);
+        let errs = errors(&diags);
+        assert!(
+            errs.iter().any(|d| d.code.as_deref() == Some("E0205")),
+            "Non-bool default for bool field should error: {errs:?}"
+        );
+    }
+
+    #[test]
+    fn test_default_numeric_must_be_number() {
+        let content = r#"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+pub struct Test extend Signal {
+    count: i64 meta { default: "wrong", },
+}
+"#;
+        let diags = get_diagnostics(content);
+        let errs = errors(&diags);
+        assert!(
+            errs.iter().any(|d| d.code.as_deref() == Some("E0205")),
+            "Non-number default for i64 should error: {errs:?}"
+        );
+    }
+
+    #[test]
+    fn test_default_enum_must_be_name() {
+        let content = r#"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+enum Mode { Fast, Slow, }
+pub struct Test extend Signal {
+    mode: Mode meta { default: 123, },
+}
+"#;
+        let diags = get_diagnostics(content);
+        let errs = errors(&diags);
+        assert!(
+            errs.iter().any(|d| d.code.as_deref() == Some("E0205")),
+            "Non-name default for enum should error: {errs:?}"
+        );
+    }
+
+    #[test]
+    fn test_valid_field_meta_values() {
+        let content = r#"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+enum Mode { Fast, Slow, }
+pub struct Test extend Signal {
+    count: i64 meta { label: "Count", min: 0, max: 100, default: 50, },
+    flag: bool meta { label: "Flag", default: true, },
+    speed: f64 meta { min: 0.0, max: 1.0, default: 0.5, },
+    mode: Mode meta { default: Fast, },
+}
+"#;
+        let diags = get_diagnostics(content);
+        let errs = errors(&diags);
+        assert!(
+            errs.iter().all(|d| d.code.as_deref() != Some("E0205")),
+            "Valid field meta values should not error: {errs:?}"
         );
     }
 }
