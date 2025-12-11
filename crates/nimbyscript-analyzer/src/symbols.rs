@@ -229,7 +229,10 @@ mod tests {
         let table = SymbolTable::new();
         table.add_local("scope1", Symbol::new("a", SymbolKind::VARIABLE, span(0, 1)));
         table.add_local("scope1", Symbol::new("b", SymbolKind::VARIABLE, span(5, 6)));
-        table.add_local("scope2", Symbol::new("c", SymbolKind::VARIABLE, span(10, 11)));
+        table.add_local(
+            "scope2",
+            Symbol::new("c", SymbolKind::VARIABLE, span(10, 11)),
+        );
 
         let scope1 = table.get_locals("scope1");
         assert_eq!(scope1.len(), 2);
@@ -294,7 +297,10 @@ mod tests {
     #[test]
     fn test_find_at_position_in_local() {
         let table = SymbolTable::new();
-        table.add_local("my_fn", Symbol::new("local_var", SymbolKind::VARIABLE, span(100, 110)));
+        table.add_local(
+            "my_fn",
+            Symbol::new("local_var", SymbolKind::VARIABLE, span(100, 110)),
+        );
         let result = table.find_at_position(105);
         assert!(result.is_some());
         assert_eq!(result.expect("should find local").name, "local_var");

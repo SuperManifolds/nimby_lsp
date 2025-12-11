@@ -24,8 +24,8 @@ const API_DEFINITIONS_TOML: &str = include_str!("../../../api-definitions/nimbyr
 impl Backend {
     pub fn new(client: Client) -> Self {
         // Load embedded API definitions
-        let api_definitions = ApiDefinitions::load_from_str(API_DEFINITIONS_TOML)
-            .unwrap_or_else(|e| {
+        let api_definitions =
+            ApiDefinitions::load_from_str(API_DEFINITIONS_TOML).unwrap_or_else(|e| {
                 eprintln!("Failed to load API definitions: {e}");
                 ApiDefinitions::default()
             });

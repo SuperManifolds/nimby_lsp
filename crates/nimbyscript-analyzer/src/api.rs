@@ -195,7 +195,10 @@ mod tests {
     fn test_load_callbacks() {
         let api = load_api();
         assert!(!api.callbacks.is_empty(), "Callbacks should not be empty");
-        assert!(api.is_valid_callback("event_signal_check"), "event_signal_check should be valid");
+        assert!(
+            api.is_valid_callback("event_signal_check"),
+            "event_signal_check should be valid"
+        );
     }
 
     #[test]
@@ -279,7 +282,11 @@ mod tests {
         let api = load_api();
         let signal_check = api.get_enum("SignalCheck").expect("should exist");
         assert!(!signal_check.variants.is_empty());
-        let variant_names: Vec<_> = signal_check.variants.iter().map(|v| v.name.as_str()).collect();
+        let variant_names: Vec<_> = signal_check
+            .variants
+            .iter()
+            .map(|v| v.name.as_str())
+            .collect();
         assert!(variant_names.contains(&"Pass"));
         assert!(variant_names.contains(&"Stop"));
     }
@@ -335,7 +342,9 @@ mod tests {
     #[test]
     fn test_context_type_db() {
         let api = load_api();
-        let ctx_type = api.get_type("ControlCtx").expect("ControlCtx type should exist");
+        let ctx_type = api
+            .get_type("ControlCtx")
+            .expect("ControlCtx type should exist");
         // ControlCtx should have db, sim, extrapolator fields
         assert!(ctx_type.fields.contains_key("db"));
         assert!(ctx_type.fields.contains_key("sim"));
@@ -413,7 +422,9 @@ mod tests {
     #[test]
     fn test_param_def_fields() {
         let api = load_api();
-        let cb = api.get_callback("event_signal_check").expect("should exist");
+        let cb = api
+            .get_callback("event_signal_check")
+            .expect("should exist");
         // Check that params have expected structure
         assert!(!cb.params.is_empty());
         for param in &cb.params {
@@ -425,7 +436,9 @@ mod tests {
     #[test]
     fn test_function_return_type() {
         let api = load_api();
-        let cb = api.get_callback("event_signal_check").expect("should exist");
+        let cb = api
+            .get_callback("event_signal_check")
+            .expect("should exist");
         assert!(cb.return_type.is_some());
         assert_eq!(cb.return_type.as_deref(), Some("SignalCheck"));
     }

@@ -85,7 +85,11 @@ fn compute_line_offsets(content: &str) -> Vec<usize> {
     offsets
 }
 
-fn analyze(content: &str, tree: &Tree, api: Option<&ApiDefinitions>) -> (Vec<Diagnostic>, SymbolTable, HashMap<String, String>) {
+fn analyze(
+    content: &str,
+    tree: &Tree,
+    api: Option<&ApiDefinitions>,
+) -> (Vec<Diagnostic>, SymbolTable, HashMap<String, String>) {
     let mut diagnostics = Vec::new();
     let symbols = SymbolTable::new();
     let mut struct_extends = HashMap::new();
@@ -271,11 +275,16 @@ mod tests {
         let doc = Document::new(content.to_string(), None);
 
         // The example file should have no errors
-        let errors: Vec<_> = doc.diagnostics().iter()
+        let errors: Vec<_> = doc
+            .diagnostics()
+            .iter()
             .filter(|d| matches!(d.severity, Severity::Error))
             .collect();
 
-        assert!(errors.is_empty(), "Example file should have no errors, but found: {errors:?}");
+        assert!(
+            errors.is_empty(),
+            "Example file should have no errors, but found: {errors:?}"
+        );
     }
 
     #[test]
@@ -525,7 +534,9 @@ script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub struct Foo {
 "; // Missing closing brace
         let doc = Document::new(content.to_string(), None);
-        let errors: Vec<_> = doc.diagnostics().iter()
+        let errors: Vec<_> = doc
+            .diagnostics()
+            .iter()
             .filter(|d| matches!(d.severity, Severity::Error))
             .collect();
         assert!(!errors.is_empty(), "Should detect parse error");
@@ -542,7 +553,9 @@ pub struct Foo {
     fn test_minimal_valid_document() {
         let content = include_str!("../../../tests/fixtures/valid/minimal.nimbyscript");
         let doc = Document::new(content.to_string(), None);
-        let errors: Vec<_> = doc.diagnostics().iter()
+        let errors: Vec<_> = doc
+            .diagnostics()
+            .iter()
             .filter(|d| matches!(d.severity, Severity::Error))
             .collect();
         assert!(errors.is_empty(), "Minimal file should have no errors");

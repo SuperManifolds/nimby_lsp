@@ -108,8 +108,7 @@ mod tests {
 
     #[test]
     fn test_with_code_chain() {
-        let d = Diagnostic::warning("warn", span(0, 10))
-            .with_code("W0100");
+        let d = Diagnostic::warning("warn", span(0, 10)).with_code("W0100");
         assert_eq!(d.severity, Severity::Warning);
         assert_eq!(d.code, Some("W0100".to_string()));
     }

@@ -109,6 +109,9 @@ pub struct Test extend Signal { }
             .iter()
             .filter(|d| matches!(d.severity, crate::diagnostics::Severity::Error))
             .collect();
-        assert!(errors.is_empty(), "Valid code should have no errors: {errors:?}");
+        assert!(
+            errors.is_empty(),
+            "Valid code should have no errors: {errors:?}"
+        );
     }
 }

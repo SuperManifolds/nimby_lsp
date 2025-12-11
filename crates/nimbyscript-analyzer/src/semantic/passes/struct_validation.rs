@@ -112,11 +112,7 @@ fn validate_struct(node: Node, ctx: &SemanticContext, diagnostics: &mut Vec<Diag
     }
 }
 
-fn validate_pub_field_type(
-    field: Node,
-    ctx: &SemanticContext,
-    diagnostics: &mut Vec<Diagnostic>,
-) {
+fn validate_pub_field_type(field: Node, ctx: &SemanticContext, diagnostics: &mut Vec<Diagnostic>) {
     let Some(type_node) = field.child_by_field("type") else {
         return;
     };

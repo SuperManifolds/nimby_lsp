@@ -96,13 +96,19 @@ fn validate_fn_decl(
     }
 
     let span = nimbyscript_parser::ast::Span::new(sig.name_start, sig.name_end);
-    let method_name = sig.name_full.find("::").map_or(sig.name_full.as_str(), |pos| &sig.name_full[pos + 2..]);
+    let method_name = sig
+        .name_full
+        .find("::")
+        .map_or(sig.name_full.as_str(), |pos| &sig.name_full[pos + 2..]);
 
     let Some(callback) = api.get_callback(method_name) else {
         let valid_names: Vec<_> = api.callback_names().collect();
         diagnostics.push(
             Diagnostic::error(
-                format!("'{method_name}' is not a valid game callback. Valid callbacks are: {}", valid_names.join(", ")),
+                format!(
+                    "'{method_name}' is not a valid game callback. Valid callbacks are: {}",
+                    valid_names.join(", ")
+                ),
                 span,
             )
             .with_code("E0100"),
@@ -114,7 +120,11 @@ fn validate_fn_decl(
     if sig.params.len() != expected_params.len() {
         diagnostics.push(
             Diagnostic::error(
-                format!("'{method_name}' expects {} parameters, but {} were provided", expected_params.len(), sig.params.len()),
+                format!(
+                    "'{method_name}' expects {} parameters, but {} were provided",
+                    expected_params.len(),
+                    sig.params.len()
+                ),
                 span,
             )
             .with_code("E0101"),
@@ -122,8 +132,20 @@ fn validate_fn_decl(
         return;
     }
 
-    validate_callback_params(&sig.params, &expected_params, method_name, span, diagnostics);
-    validate_callback_return(sig.return_type.as_deref(), callback.return_type.as_deref(), method_name, span, diagnostics);
+    validate_callback_params(
+        &sig.params,
+        &expected_params,
+        method_name,
+        span,
+        diagnostics,
+    );
+    validate_callback_return(
+        sig.return_type.as_deref(),
+        callback.return_type.as_deref(),
+        method_name,
+        span,
+        diagnostics,
+    );
 }
 
 fn validate_callback_params(
@@ -137,7 +159,11 @@ fn validate_callback_params(
         if exp.name != "self" && param_name != &exp.name {
             diagnostics.push(
                 Diagnostic::error(
-                    format!("Parameter {} of '{method_name}' is named '{param_name}', expected '{}'", i + 1, exp.name),
+                    format!(
+                        "Parameter {} of '{method_name}' is named '{param_name}', expected '{}'",
+                        i + 1,
+                        exp.name
+                    ),
                     span,
                 )
                 .with_code("E0104"),
@@ -146,12 +172,21 @@ fn validate_callback_params(
 
         let param_norm = param_type.trim().replace(' ', "");
         let exp_norm = exp.ty.trim().replace(' ', "");
-        let types_match = if exp_norm == "&Self" { param_norm.starts_with('&') } else { param_norm == exp_norm };
+        let types_match = if exp_norm == "&Self" {
+            param_norm.starts_with('&')
+        } else {
+            param_norm == exp_norm
+        };
 
         if !types_match {
             diagnostics.push(
                 Diagnostic::error(
-                    format!("Parameter {} of '{method_name}' has type '{}', expected '{}'", i + 1, param_type.trim(), exp.ty),
+                    format!(
+                        "Parameter {} of '{method_name}' has type '{}', expected '{}'",
+                        i + 1,
+                        param_type.trim(),
+                        exp.ty
+                    ),
                     span,
                 )
                 .with_code("E0102"),
@@ -173,20 +208,31 @@ fn validate_callback_return(
             let expected_norm = expected.trim().replace(' ', "");
             if actual_norm != expected_norm {
                 diagnostics.push(
-                    Diagnostic::error(format!("'{method_name}' should return '{expected}', but returns '{actual}'"), span)
-                        .with_code("E0103"),
+                    Diagnostic::error(
+                        format!(
+                            "'{method_name}' should return '{expected}', but returns '{actual}'"
+                        ),
+                        span,
+                    )
+                    .with_code("E0103"),
                 );
             }
         }
         (None, Some(expected)) => {
             diagnostics.push(
-                Diagnostic::error(format!("'{method_name}' should return '{expected}'"), span).with_code("E0103"),
+                Diagnostic::error(format!("'{method_name}' should return '{expected}'"), span)
+                    .with_code("E0103"),
             );
         }
         (Some(actual), None) => {
             diagnostics.push(
-                Diagnostic::error(format!("'{method_name}' should not have a return type, but returns '{actual}'"), span)
-                    .with_code("E0103"),
+                Diagnostic::error(
+                    format!(
+                        "'{method_name}' should not have a return type, but returns '{actual}'"
+                    ),
+                    span,
+                )
+                .with_code("E0103"),
             );
         }
         (None, None) => {}
@@ -198,11 +244,7 @@ fn validate_callback_return(
 // =============================================================================
 
 /// Validate meta blocks according to wiki specification
-pub fn validate_meta_blocks(
-    node: Node,
-    content: &str,
-    diagnostics: &mut Vec<Diagnostic>,
-) {
+pub fn validate_meta_blocks(node: Node, content: &str, diagnostics: &mut Vec<Diagnostic>) {
     validate_meta_blocks_inner(node, content, diagnostics, true);
 }
 
@@ -251,7 +293,11 @@ fn validate_meta_blocks_inner(
 }
 
 /// Validate a single script meta entry
-fn validate_script_meta_entry(child: Node, content: &str, diagnostics: &mut Vec<Diagnostic>) -> (bool, bool) {
+fn validate_script_meta_entry(
+    child: Node,
+    content: &str,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> (bool, bool) {
     let Some(key_node) = child.child_by_field("key") else {
         return (false, false);
     };
@@ -280,11 +326,8 @@ fn validate_script_meta_entry(child: Node, content: &str, diagnostics: &mut Vec<
         }
         other => {
             diagnostics.push(
-                Diagnostic::warning(
-                    format!("Unknown script meta field '{other}'"),
-                    span,
-                )
-                .with_code("E0201"),
+                Diagnostic::warning(format!("Unknown script meta field '{other}'"), span)
+                    .with_code("E0201"),
             );
             (false, false)
         }
@@ -383,7 +426,8 @@ fn validate_script_meta(node: Node, content: &str, diagnostics: &mut Vec<Diagnos
     if !has_lang {
         diagnostics.push(
             Diagnostic::error(
-                "Script meta missing required 'lang' field (e.g., lang: nimbyscript.v1)".to_string(),
+                "Script meta missing required 'lang' field (e.g., lang: nimbyscript.v1)"
+                    .to_string(),
                 nimbyscript_parser::ast::Span::new(node.start_byte(), node.end_byte()),
             )
             .with_code("E0200"),
@@ -401,9 +445,17 @@ fn validate_script_meta(node: Node, content: &str, diagnostics: &mut Vec<Diagnos
     }
 }
 
-fn collect_script_meta_flags(node: Node, content: &str, diagnostics: &mut Vec<Diagnostic>) -> (bool, bool) {
-    let Some(meta_block) = node.child_by_kind(kind::META_BLOCK) else { return (false, false); };
-    let Some(meta_map) = meta_block.child_by_kind(kind::META_MAP) else { return (false, false); };
+fn collect_script_meta_flags(
+    node: Node,
+    content: &str,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> (bool, bool) {
+    let Some(meta_block) = node.child_by_kind(kind::META_BLOCK) else {
+        return (false, false);
+    };
+    let Some(meta_map) = meta_block.child_by_kind(kind::META_MAP) else {
+        return (false, false);
+    };
 
     let mut has_lang = false;
     let mut has_api = false;
@@ -491,12 +543,7 @@ fn validate_field_meta_entry(
             }
         }
         "default" => {
-            if !is_numeric
-                && !is_bool
-                && !field_type
-                    .chars()
-                    .next()
-                    .is_some_and(char::is_uppercase)
+            if !is_numeric && !is_bool && !field_type.chars().next().is_some_and(char::is_uppercase)
             {
                 diagnostics.push(
                     Diagnostic::warning(
@@ -512,7 +559,9 @@ fn validate_field_meta_entry(
         other => {
             diagnostics.push(
                 Diagnostic::warning(
-                    format!("Unknown field meta key '{other}'. Valid keys: label, min, max, default"),
+                    format!(
+                        "Unknown field meta key '{other}'. Valid keys: label, min, max, default"
+                    ),
                     span,
                 )
                 .with_code("E0201"),
@@ -537,13 +586,12 @@ fn validate_default_value(
             // default for bool must be true/false
             // In meta context, these are parsed as META_NAME, not BOOLEAN
             let is_valid_bool = value_kind == kind::BOOLEAN
-                || (value_kind == kind::META_NAME && (value_text == "true" || value_text == "false"));
+                || (value_kind == kind::META_NAME
+                    && (value_text == "true" || value_text == "false"));
             if !is_valid_bool {
                 diagnostics.push(
                     Diagnostic::error(
-                        format!(
-                            "'default' for bool must be 'true' or 'false', got '{value_text}'"
-                        ),
+                        format!("'default' for bool must be 'true' or 'false', got '{value_text}'"),
                         span,
                     )
                     .with_code("E0205"),
@@ -555,9 +603,7 @@ fn validate_default_value(
             if value_kind != kind::NUMBER {
                 diagnostics.push(
                     Diagnostic::error(
-                        format!(
-                            "'default' for {field_type} must be a number, got '{value_text}'"
-                        ),
+                        format!("'default' for {field_type} must be a number, got '{value_text}'"),
                         span,
                     )
                     .with_code("E0205"),
@@ -596,14 +642,28 @@ fn validate_field_meta(node: Node, content: &str, diagnostics: &mut Vec<Diagnost
         }
     }
 
-    let Some(meta) = meta_node else { return; };
-    let Some(meta_map) = meta.child_by_kind(kind::META_MAP) else { return; };
+    let Some(meta) = meta_node else {
+        return;
+    };
+    let Some(meta_map) = meta.child_by_kind(kind::META_MAP) else {
+        return;
+    };
 
     let mut cursor = meta_map.walk();
     for child in meta_map.children(&mut cursor) {
-        if child.kind() != kind::META_ENTRY { continue; }
-        let Some(key_node) = child.child_by_field("key") else { continue; };
-        validate_field_meta_entry(child, key_node.text(content), &field_type, content, diagnostics);
+        if child.kind() != kind::META_ENTRY {
+            continue;
+        }
+        let Some(key_node) = child.child_by_field("key") else {
+            continue;
+        };
+        validate_field_meta_entry(
+            child,
+            key_node.text(content),
+            &field_type,
+            content,
+            diagnostics,
+        );
     }
 }
 
@@ -628,18 +688,29 @@ fn validate_meta_keys(
     context: &str,
     diagnostics: &mut Vec<Diagnostic>,
 ) {
-    let Some(meta_map) = node.child_by_kind(kind::META_MAP) else { return; };
+    let Some(meta_map) = node.child_by_kind(kind::META_MAP) else {
+        return;
+    };
 
     let mut cursor = meta_map.walk();
     for child in meta_map.children(&mut cursor) {
-        if child.kind() != kind::META_ENTRY { continue; }
-        let Some(key_node) = child.child_by_field("key") else { continue; };
+        if child.kind() != kind::META_ENTRY {
+            continue;
+        }
+        let Some(key_node) = child.child_by_field("key") else {
+            continue;
+        };
         let key = key_node.text(content);
-        if allowed.contains(&key) { continue; }
+        if allowed.contains(&key) {
+            continue;
+        }
 
         diagnostics.push(
             Diagnostic::warning(
-                format!("Unknown {context} meta key '{key}'. Valid keys: {}", allowed.join(", ")),
+                format!(
+                    "Unknown {context} meta key '{key}'. Valid keys: {}",
+                    allowed.join(", ")
+                ),
                 nimbyscript_parser::ast::Span::new(child.start_byte(), child.end_byte()),
             )
             .with_code("E0201"),
@@ -674,11 +745,17 @@ mod tests {
     }
 
     fn errors(diags: &[Diagnostic]) -> Vec<&Diagnostic> {
-        diags.iter().filter(|d| matches!(d.severity, Severity::Error)).collect()
+        diags
+            .iter()
+            .filter(|d| matches!(d.severity, Severity::Error))
+            .collect()
     }
 
     fn warnings(diags: &[Diagnostic]) -> Vec<&Diagnostic> {
-        diags.iter().filter(|d| matches!(d.severity, Severity::Warning)).collect()
+        diags
+            .iter()
+            .filter(|d| matches!(d.severity, Severity::Warning))
+            .collect()
     }
 
     // Meta block validation tests
@@ -687,7 +764,10 @@ mod tests {
     fn test_valid_script_meta() {
         let content = "script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }";
         let diags = get_diagnostics(content);
-        assert!(errors(&diags).is_empty(), "Valid meta should have no errors: {diags:?}");
+        assert!(
+            errors(&diags).is_empty(),
+            "Valid meta should have no errors: {diags:?}"
+        );
     }
 
     #[test]
@@ -726,10 +806,14 @@ mod tests {
 
     #[test]
     fn test_description_meta_allowed() {
-        let content = "script meta { lang: nimbyscript.v1, api: nimbyrails.v1, description: test, }";
+        let content =
+            "script meta { lang: nimbyscript.v1, api: nimbyrails.v1, description: test, }";
         let diags = get_diagnostics(content);
         let warns = warnings(&diags);
-        assert!(warns.iter().all(|d| !d.message.contains("description")), "description should be allowed");
+        assert!(
+            warns.iter().all(|d| !d.message.contains("description")),
+            "description should be allowed"
+        );
     }
 
     #[test]
@@ -781,7 +865,10 @@ pub enum Color {
 }
 "#;
         let diags = get_diagnostics(content);
-        assert!(errors(&diags).is_empty(), "label on enum variant should be valid");
+        assert!(
+            errors(&diags).is_empty(),
+            "label on enum variant should be valid"
+        );
     }
 
     // Callback validation tests
@@ -798,7 +885,10 @@ pub fn Test::event_signal_check(self: &Test, ctx: &EventCtx, train: &Train, moti
 }
 ";
         let diags = get_callback_diagnostics(content);
-        assert!(errors(&diags).is_empty(), "Valid callback should have no errors: {diags:?}");
+        assert!(
+            errors(&diags).is_empty(),
+            "Valid callback should have no errors: {diags:?}"
+        );
     }
 
     #[test]
@@ -854,7 +944,10 @@ fn Test::not_a_callback(self: &Test) { }
 ";
         let diags = get_callback_diagnostics(content);
         // Non-public functions should not be validated as callbacks
-        assert!(errors(&diags).is_empty(), "Non-public fn should be ignored: {diags:?}");
+        assert!(
+            errors(&diags).is_empty(),
+            "Non-public fn should be ignored: {diags:?}"
+        );
     }
 
     #[test]
@@ -885,10 +978,14 @@ pub fn MyHandler::event_signal_check(self: &MyHandler, ctx: &EventCtx, train: &T
 ";
         let diags = get_callback_diagnostics(content);
         // Should not error on self: &StructName type
-        let type_errs: Vec<_> = errors(&diags).into_iter()
+        let type_errs: Vec<_> = errors(&diags)
+            .into_iter()
             .filter(|d| d.code.as_deref() == Some("E0102") && d.message.contains("self"))
             .collect();
-        assert!(type_errs.is_empty(), "self: &StructName should be accepted: {type_errs:?}");
+        assert!(
+            type_errs.is_empty(),
+            "self: &StructName should be accepted: {type_errs:?}"
+        );
     }
 
     #[test]
@@ -965,7 +1062,8 @@ pub fn Test::event_signal_check(self: &Test, ctx: &EventCtx, train: &Train, moti
 
     #[test]
     fn test_description_wrong_type_name() {
-        let content = "script meta { lang: nimbyscript.v1, api: nimbyrails.v1, description: hello, }";
+        let content =
+            "script meta { lang: nimbyscript.v1, api: nimbyrails.v1, description: hello, }";
         let diags = get_diagnostics(content);
         let errs = errors(&diags);
         assert!(

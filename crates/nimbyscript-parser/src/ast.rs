@@ -336,11 +336,30 @@ impl Expr {
 /// Literal values
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Literal {
-    Int { value: i64, suffix: Option<String>, span: Span },
-    Float { value: f64, suffix: Option<String>, span: Span },
-    Bool { value: bool, span: Span },
-    String { value: String, span: Span },
-    Time { hours: u32, minutes: u32, seconds: Option<u32>, span: Span },
+    Int {
+        value: i64,
+        suffix: Option<String>,
+        span: Span,
+    },
+    Float {
+        value: f64,
+        suffix: Option<String>,
+        span: Span,
+    },
+    Bool {
+        value: bool,
+        span: Span,
+    },
+    String {
+        value: String,
+        span: Span,
+    },
+    Time {
+        hours: u32,
+        minutes: u32,
+        seconds: Option<u32>,
+        span: Span,
+    },
 }
 
 impl Literal {

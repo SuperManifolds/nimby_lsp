@@ -200,7 +200,10 @@ fn check_call_expression(
     if let Some(func_info) = ctx.get_function_params(&func_name) {
         // Check argument count
         if arg_count < func_info.min_params {
-            let span = args_node.map_or_else(|| Span::new(node.start_byte(), node.end_byte()), |a| Span::new(a.start_byte(), a.end_byte()));
+            let span = args_node.map_or_else(
+                || Span::new(node.start_byte(), node.end_byte()),
+                |a| Span::new(a.start_byte(), a.end_byte()),
+            );
 
             diagnostics.push(
                 Diagnostic::error(
@@ -213,7 +216,10 @@ fn check_call_expression(
                 .with_code("E0403"),
             );
         } else if arg_count > func_info.max_params {
-            let span = args_node.map_or_else(|| Span::new(node.start_byte(), node.end_byte()), |a| Span::new(a.start_byte(), a.end_byte()));
+            let span = args_node.map_or_else(
+                || Span::new(node.start_byte(), node.end_byte()),
+                |a| Span::new(a.start_byte(), a.end_byte()),
+            );
 
             diagnostics.push(
                 Diagnostic::error(
@@ -274,8 +280,7 @@ fn check_call_expression(
     // Skip the "function" child if it's a field_access (method call) to avoid
     // false positives from field validation on method names
     let func_child = node.child_by_field("function");
-    let skip_func = func_child
-        .is_some_and(|f| f.kind() == kind::FIELD_ACCESS);
+    let skip_func = func_child.is_some_and(|f| f.kind() == kind::FIELD_ACCESS);
 
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
@@ -355,7 +360,10 @@ fn check_method_call(
 
         if actual_args != expected_params {
             let args_node = call_node.child_by_kind("arguments");
-            let span = args_node.map_or_else(|| Span::new(call_node.start_byte(), call_node.end_byte()), |a| Span::new(a.start_byte(), a.end_byte()));
+            let span = args_node.map_or_else(
+                || Span::new(call_node.start_byte(), call_node.end_byte()),
+                |a| Span::new(a.start_byte(), a.end_byte()),
+            );
 
             diagnostics.push(
                 Diagnostic::error(
@@ -376,9 +384,7 @@ fn check_method_call(
             // It's a field, not a method - different error
             diagnostics.push(
                 Diagnostic::error(
-                    format!(
-                        "'{method_name}' is a field, not a method, on type '{effective_type}'"
-                    ),
+                    format!("'{method_name}' is a field, not a method, on type '{effective_type}'"),
                     Span::new(method_node.start_byte(), method_node.end_byte()),
                 )
                 .with_code("E0305"),
@@ -399,9 +405,7 @@ fn check_method_call(
 
             diagnostics.push(
                 Diagnostic::error(
-                    format!(
-                        "Undefined method '{method_name}' on type '{effective_type}'{hint}"
-                    ),
+                    format!("Undefined method '{method_name}' on type '{effective_type}'{hint}"),
                     Span::new(method_node.start_byte(), method_node.end_byte()),
                 )
                 .with_code("E0305"),
@@ -496,9 +500,7 @@ fn check_field_access(
 
                 diagnostics.push(
                     Diagnostic::error(
-                        format!(
-                            "Undefined field '{field_name}' on type '{name}'{hint}"
-                        ),
+                        format!("Undefined field '{field_name}' on type '{name}'{hint}"),
                         Span::new(field_node.start_byte(), field_node.end_byte()),
                     )
                     .with_code("E0303"),
@@ -518,9 +520,7 @@ fn check_field_access(
         // Not a struct type
         diagnostics.push(
             Diagnostic::error(
-                format!(
-                    "Cannot access field '{field_name}' on non-struct type '{base_type}'"
-                ),
+                format!("Cannot access field '{field_name}' on non-struct type '{base_type}'"),
                 Span::new(node.start_byte(), node.end_byte()),
             )
             .with_code("E0303"),
@@ -687,18 +687,19 @@ fn check_return(
     let expected_type = ctx.scopes.enclosing_return_type().cloned();
 
     // Get the actual return value type
-    let actual_type = node
-        .child_by_field("value")
-        .map_or(TypeInfo::Void, |v| infer_expr_type(Some(v), ctx, local_types));
+    let actual_type = node.child_by_field("value").map_or(TypeInfo::Void, |v| {
+        infer_expr_type(Some(v), ctx, local_types)
+    });
 
     // Check compatibility
     if let Some(expected) = expected_type {
-        if !actual_type.is_assignable_to(&expected) && !actual_type.is_unknown() && !expected.is_unknown() {
+        if !actual_type.is_assignable_to(&expected)
+            && !actual_type.is_unknown()
+            && !expected.is_unknown()
+        {
             diagnostics.push(
                 Diagnostic::error(
-                    format!(
-                        "Return type mismatch: expected '{expected}', found '{actual_type}'"
-                    ),
+                    format!("Return type mismatch: expected '{expected}', found '{actual_type}'"),
                     Span::new(node.start_byte(), node.end_byte()),
                 )
                 .with_code("E0408"),

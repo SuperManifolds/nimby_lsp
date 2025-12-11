@@ -202,7 +202,11 @@ impl<'a> SemanticContext<'a> {
     }
 
     /// Get a specific method on a type by name
-    pub fn get_type_method(&self, type_name: &str, method_name: &str) -> Option<&crate::api::FunctionDef> {
+    pub fn get_type_method(
+        &self,
+        type_name: &str,
+        method_name: &str,
+    ) -> Option<&crate::api::FunctionDef> {
         self.api
             .get_type(type_name)
             .and_then(|t| t.methods.iter().find(|m| m.name == method_name))
@@ -248,7 +252,11 @@ impl<'a> SemanticContext<'a> {
     }
 
     /// Get a function from a module
-    pub fn get_module_function(&self, module: &str, func: &str) -> Option<&crate::api::FunctionDef> {
+    pub fn get_module_function(
+        &self,
+        module: &str,
+        func: &str,
+    ) -> Option<&crate::api::FunctionDef> {
         self.api
             .get_module(module)
             .and_then(|m| m.functions.iter().find(|f| f.name == func))
@@ -515,10 +523,7 @@ mod tests {
         let ref_type = ctx.resolve_type("&i64");
         assert!(matches!(
             ref_type,
-            TypeInfo::Reference {
-                is_mut: false,
-                ..
-            }
+            TypeInfo::Reference { is_mut: false, .. }
         ));
     }
 
@@ -557,9 +562,15 @@ pub struct MyHandler extend Signal {
         collect_declarations(&mut ctx);
 
         assert!(ctx.user_structs.contains_key("MyHandler"));
-        assert_eq!(ctx.user_structs.get("MyHandler"), Some(&Some("Signal".to_string())));
+        assert_eq!(
+            ctx.user_structs.get("MyHandler"),
+            Some(&Some("Signal".to_string()))
+        );
 
-        let fields = ctx.struct_fields.get("MyHandler").expect("should have fields");
+        let fields = ctx
+            .struct_fields
+            .get("MyHandler")
+            .expect("should have fields");
         assert!(fields.contains_key("count"));
     }
 
@@ -629,7 +640,9 @@ pub enum Color { Red, Green, Blue, }
         let mut ctx = SemanticContext::new(source, &tree, &api);
         collect_declarations(&mut ctx);
 
-        let variants = ctx.get_enum_variants("Color").expect("should have variants");
+        let variants = ctx
+            .get_enum_variants("Color")
+            .expect("should have variants");
         assert!(variants.contains(&"Red".to_string()));
         assert!(variants.contains(&"Green".to_string()));
         assert!(variants.contains(&"Blue".to_string()));
@@ -641,7 +654,9 @@ pub enum Color { Red, Green, Blue, }
         let (tree, api) = make_context(source);
         let ctx = SemanticContext::new(source, &tree, &api);
 
-        let variants = ctx.get_enum_variants("SignalCheck").expect("should have variants");
+        let variants = ctx
+            .get_enum_variants("SignalCheck")
+            .expect("should have variants");
         assert!(variants.contains(&"Pass".to_string()));
         assert!(variants.contains(&"Stop".to_string()));
     }

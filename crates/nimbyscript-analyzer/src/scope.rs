@@ -81,10 +81,7 @@ pub struct Scope {
 #[derive(Debug, Clone)]
 pub enum DefineError {
     /// Symbol already exists in this scope
-    AlreadyDefined {
-        name: String,
-        existing_span: Span,
-    },
+    AlreadyDefined { name: String, existing_span: Span },
 }
 
 /// Manages hierarchical scopes for semantic analysis
@@ -252,10 +249,7 @@ impl ScopeManager {
     /// Look up a symbol in the current scope only (for shadowing detection)
     pub fn lookup_local(&self, name: &str) -> Option<&ScopedSymbol> {
         let scope = &self.scopes[self.current_scope.0];
-        scope
-            .symbols
-            .get(name)
-            .map(|&id| &self.symbols[id.0])
+        scope.symbols.get(name).map(|&id| &self.symbols[id.0])
     }
 
     /// Look up a symbol in the global scope only
@@ -349,10 +343,7 @@ impl ScopeManager {
 
     /// Get all unused symbols (for warnings)
     pub fn unused_symbols(&self) -> Vec<&ScopedSymbol> {
-        self.symbols
-            .iter()
-            .filter(|s| !s.is_used)
-            .collect()
+        self.symbols.iter().filter(|s| !s.is_used).collect()
     }
 
     /// Get all symbols in the global scope

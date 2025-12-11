@@ -114,7 +114,9 @@ fn extract_function_name(before_paren: &str) -> Option<(String, Option<String>)>
 
 fn is_valid_identifier(s: &str) -> bool {
     !s.is_empty()
-        && s.chars().next().is_some_and(|c| c.is_alphabetic() || c == '_')
+        && s.chars()
+            .next()
+            .is_some_and(|c| c.is_alphabetic() || c == '_')
         && s.chars().all(|c| c.is_alphanumeric() || c == '_')
 }
 
@@ -149,21 +151,30 @@ fn find_function_def<'a>(
         Some(prefix) => {
             // Check if it's a module function: Module::function
             if let Some(module) = api.get_module(prefix) {
-                if let Some(func) = module.functions.iter().find(|f| f.name == context.function_name) {
+                if let Some(func) = module
+                    .functions
+                    .iter()
+                    .find(|f| f.name == context.function_name)
+                {
                     return Some(func);
                 }
             }
 
             // Check if it's a type method: Type::method
             if let Some(type_def) = api.get_type(prefix) {
-                if let Some(method) = type_def.methods.iter().find(|m| m.name == context.function_name) {
+                if let Some(method) = type_def
+                    .methods
+                    .iter()
+                    .find(|m| m.name == context.function_name)
+                {
                     return Some(method);
                 }
             }
 
             // Check if it's a callback on a user-defined struct
             if let Some(extends_type) = doc.struct_extends(prefix) {
-                if let Some(callback) = api.callbacks_for_type(extends_type)
+                if let Some(callback) = api
+                    .callbacks_for_type(extends_type)
                     .into_iter()
                     .find(|c| c.name == context.function_name)
                 {
@@ -183,7 +194,9 @@ fn find_function_def<'a>(
 /// Build the SignatureInformation with parameter highlighting
 fn build_signature_info(func: &FunctionDef, active_param: usize) -> SignatureInformation {
     // Build the signature label
-    let params_str: Vec<String> = func.params.iter()
+    let params_str: Vec<String> = func
+        .params
+        .iter()
         .map(|p| format!("{}: {}", p.name, p.ty))
         .collect();
 
@@ -203,7 +216,9 @@ fn build_signature_info(func: &FunctionDef, active_param: usize) -> SignatureInf
 
         parameters.push(ParameterInformation {
             label: ParameterLabel::LabelOffsets([start as u32, end as u32]),
-            documentation: func.params.get(i)
+            documentation: func
+                .params
+                .get(i)
                 .and_then(|p| p.doc.as_ref())
                 .map(|d| Documentation::String(d.clone())),
         });
@@ -447,7 +462,13 @@ mod tests {
 
         let sig = build_signature_info(&func, 0);
         assert_eq!(sig.label, "add(a: i64, b: i64) -> i64");
-        assert_eq!(sig.parameters.as_ref().expect("should have parameters").len(), 2);
+        assert_eq!(
+            sig.parameters
+                .as_ref()
+                .expect("should have parameters")
+                .len(),
+            2
+        );
         assert_eq!(sig.active_parameter, Some(0));
     }
 
@@ -528,7 +549,10 @@ pub fn test() {
     let x = abs(";
         let doc = Document::new(content.to_string(), Some(&api));
 
-        let position = Position { line: 2, character: 16 }; // inside abs(
+        let position = Position {
+            line: 2,
+            character: 16,
+        }; // inside abs(
         let help = get_signature_help(&doc, position, &api);
 
         assert!(help.is_some());

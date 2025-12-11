@@ -39,7 +39,10 @@ fn extract_params_from_node(params_node: Node, content: &str) -> Vec<(String, St
 fn extract_param_type_info(param_node: Node, content: &str) -> Option<(String, TypeInfo)> {
     let name = param_node.child_by_field("name")?;
     let ty = param_node.child_by_field("type")?;
-    Some((name.text(content).to_string(), parse_type_string(ty.text(content))))
+    Some((
+        name.text(content).to_string(),
+        parse_type_string(ty.text(content)),
+    ))
 }
 
 /// Extract all parameters from a PARAMETERS node as (name, TypeInfo) pairs.
@@ -87,11 +90,20 @@ enum HoverContext {
     /// API function (abs, sqrt, etc.)
     ApiFunction(String),
     /// API method on a type (e.g., signal.forward())
-    ApiMethod { type_name: String, method_name: String },
+    ApiMethod {
+        type_name: String,
+        method_name: String,
+    },
     /// API enum variant (e.g., SignalCheck::Pass)
-    ApiEnumVariant { enum_name: String, variant_name: String },
+    ApiEnumVariant {
+        enum_name: String,
+        variant_name: String,
+    },
     /// API field on a type (e.g., ctx.db)
-    ApiField { type_name: String, field_name: String },
+    ApiField {
+        type_name: String,
+        field_name: String,
+    },
     /// User-defined struct field (e.g., motion.presence)
     UserField {
         struct_name: String,
@@ -233,10 +245,9 @@ impl<'a> HoverEngine<'a> {
         let mut cursor = struct_node.walk();
         for child in struct_node.children(&mut cursor) {
             if child.kind() == kind::STRUCT_FIELD {
-                if let (Some(field_name), Some(field_type)) = (
-                    child.child_by_field("name"),
-                    child.child_by_field("type"),
-                ) {
+                if let (Some(field_name), Some(field_type)) =
+                    (child.child_by_field("name"), child.child_by_field("type"))
+                {
                     fields.push((
                         field_name.text(self.content).to_string(),
                         field_type.text(self.content).to_string(),
@@ -479,11 +490,7 @@ impl<'a> HoverEngine<'a> {
             let fields = self
                 .struct_fields
                 .get(base_type_name)
-                .map(|f| {
-                    f.iter()
-                        .map(|(k, v)| (k.clone(), v.type_name()))
-                        .collect()
-                })
+                .map(|f| f.iter().map(|(k, v)| (k.clone(), v.type_name())).collect())
                 .unwrap_or_default();
             return Some(HoverContext::UserStruct {
                 name: base_type_name.to_string(),
@@ -581,11 +588,7 @@ impl<'a> HoverEngine<'a> {
             let fields = self
                 .struct_fields
                 .get(name)
-                .map(|f| {
-                    f.iter()
-                        .map(|(k, v)| (k.clone(), v.type_name()))
-                        .collect()
-                })
+                .map(|f| f.iter().map(|(k, v)| (k.clone(), v.type_name())).collect())
                 .unwrap_or_default();
             return Some(HoverContext::UserStruct {
                 name: name.to_string(),
@@ -666,9 +669,7 @@ impl<'a> HoverEngine<'a> {
 
                 None
             }
-            kind::CALL_EXPRESSION => {
-                self.infer_call_expression_type(node)
-            }
+            kind::CALL_EXPRESSION => self.infer_call_expression_type(node),
             _ => None,
         }
     }
@@ -687,7 +688,10 @@ impl<'a> HoverEngine<'a> {
 
         let type_def = self.api.get_type(&type_name)?;
         let method_def = type_def.methods.iter().find(|m| m.name == method_name)?;
-        method_def.return_type.as_ref().map(|t| parse_type_string(t))
+        method_def
+            .return_type
+            .as_ref()
+            .map(|t| parse_type_string(t))
     }
 
     fn unwrap_to_type_name(ty: &TypeInfo) -> Option<String> {
@@ -700,10 +704,8 @@ impl<'a> HoverEngine<'a> {
                 if args.is_empty() {
                     Some(name.clone())
                 } else {
-                    let arg_names: Vec<_> = args
-                        .iter()
-                        .filter_map(Self::unwrap_to_type_name)
-                        .collect();
+                    let arg_names: Vec<_> =
+                        args.iter().filter_map(Self::unwrap_to_type_name).collect();
                     Some(format!("{}<{}>", name, arg_names.join(", ")))
                 }
             }
@@ -724,10 +726,7 @@ impl<'a> HoverEngine<'a> {
         }
     }
 
-    fn find_function_locals(
-        &self,
-        node: Node,
-    ) -> Option<(NameTypePairs, NameTypePairs)> {
+    fn find_function_locals(&self, node: Node) -> Option<(NameTypePairs, NameTypePairs)> {
         if node.kind() == kind::FUNCTION_DEFINITION {
             let start = node.start_byte();
             let end = node.end_byte();
@@ -769,9 +768,9 @@ impl<'a> HoverEngine<'a> {
             if child.kind() == kind::LET_STATEMENT || child.kind() == kind::LET_ELSE_STATEMENT {
                 if let Some(name_node) = child.child_by_field("name") {
                     let name = name_node.text(self.content).to_string();
-                    let type_info = child
-                        .child_by_field("type")
-                        .map_or(TypeInfo::Unknown, |t| parse_type_string(t.text(self.content)));
+                    let type_info = child.child_by_field("type").map_or(TypeInfo::Unknown, |t| {
+                        parse_type_string(t.text(self.content))
+                    });
                     bindings.push((name, type_info));
                 }
             }
@@ -1063,7 +1062,11 @@ impl<'a> HoverEngine<'a> {
             // Format signature with struct_name instead of Self
             result.push_str("\n```nimbyscript\n");
             let _ = write!(result, "fn {struct_name}::{callback_name}");
-            let _ = write!(result, "{}", format_callback_signature(callback, struct_name));
+            let _ = write!(
+                result,
+                "{}",
+                format_callback_signature(callback, struct_name)
+            );
             result.push_str("\n```");
 
             if let Some(doc) = &callback.doc {
@@ -1184,7 +1187,9 @@ pub struct Test extend Signal {
         let doc = Document::new(code.to_string(), Some(&api));
 
         // Find position of "ID" in "owner: ID<Train>"
-        let id_offset = code.find("ID<Train>").expect("ID<Train> should exist in code");
+        let id_offset = code
+            .find("ID<Train>")
+            .expect("ID<Train> should exist in code");
         let id_pos = doc.offset_to_position(id_offset);
 
         let hover = get_hover(&doc, id_pos, &api);
@@ -1193,7 +1198,10 @@ pub struct Test extend Signal {
             HoverContents::Markup(m) => m.value,
             _ => panic!("Expected markup content"),
         };
-        assert!(hover_content.contains("ID<Train>"), "Hover should mention ID<Train>");
+        assert!(
+            hover_content.contains("ID<Train>"),
+            "Hover should mention ID<Train>"
+        );
     }
 
     #[test]
@@ -1202,7 +1210,10 @@ pub struct Test extend Signal {
 
         // Verify the API has the types we need
         assert!(api.get_type("Motion").is_some(), "Motion type should exist");
-        assert!(api.get_type("std::optional").is_some(), "std::optional type should exist");
+        assert!(
+            api.get_type("std::optional").is_some(),
+            "std::optional type should exist"
+        );
 
         // Code where we want to hover on `presence` and `get`
         let code = r"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
@@ -1222,7 +1233,9 @@ pub fn Test::control_train(
         let doc = Document::new(code.to_string(), Some(&api));
 
         // Find position of "presence" in motion.presence.get()
-        let base_offset = code.find("motion.presence").expect("motion.presence should exist in code");
+        let base_offset = code
+            .find("motion.presence")
+            .expect("motion.presence should exist in code");
         let presence_offset = base_offset + "motion.".len();
         let presence_pos = doc.offset_to_position(presence_offset);
 
@@ -1232,11 +1245,20 @@ pub fn Test::control_train(
             HoverContents::Markup(m) => m.value,
             _ => panic!("Expected markup content"),
         };
-        assert!(hover_content.contains("Motion.presence"), "Hover should mention Motion.presence");
-        assert!(hover_content.contains("std::optional"), "Hover should mention the type");
+        assert!(
+            hover_content.contains("Motion.presence"),
+            "Hover should mention Motion.presence"
+        );
+        assert!(
+            hover_content.contains("std::optional"),
+            "Hover should mention the type"
+        );
 
         // Find position of "get" in motion.presence.get()
-        let get_offset = code.find("motion.presence.get").expect("motion.presence.get should exist in code") + "motion.presence.".len();
+        let get_offset = code
+            .find("motion.presence.get")
+            .expect("motion.presence.get should exist in code")
+            + "motion.presence.".len();
         let get_pos = doc.offset_to_position(get_offset);
 
         let hover = get_hover(&doc, get_pos, &api);
@@ -1245,6 +1267,9 @@ pub fn Test::control_train(
             HoverContents::Markup(m) => m.value,
             _ => panic!("Expected markup content"),
         };
-        assert!(hover_content.contains("std::optional.get"), "Hover should mention std::optional.get");
+        assert!(
+            hover_content.contains("std::optional.get"),
+            "Hover should mention std::optional.get"
+        );
     }
 }

@@ -55,8 +55,10 @@ fn track_usage(node: Node, ctx: &mut SemanticContext) {
                 .map(|n| n.text(ctx.source).to_string())
                 .unwrap_or_default();
 
-            let body_span = node
-                .child_by_kind(kind::BLOCK).map_or_else(|| Span::new(node.start_byte(), node.end_byte()), |b| Span::new(b.start_byte(), b.end_byte()));
+            let body_span = node.child_by_kind(kind::BLOCK).map_or_else(
+                || Span::new(node.start_byte(), node.end_byte()),
+                |b| Span::new(b.start_byte(), b.end_byte()),
+            );
 
             ctx.scopes.enter_scope(
                 ScopeKind::Function {
@@ -390,10 +392,7 @@ fn report_unused(ctx: &SemanticContext, diagnostics: &mut Vec<Diagnostic>) {
         }
 
         let (message, code) = match sym.kind {
-            SymbolKind::Variable => (
-                format!("Unused variable '{}'", sym.name),
-                "W0601",
-            ),
+            SymbolKind::Variable => (format!("Unused variable '{}'", sym.name), "W0601"),
             SymbolKind::Function => {
                 // Skip pub functions - they might be callbacks used by the game
                 if ctx.is_pub_function(&sym.name) {
@@ -418,12 +417,10 @@ fn report_unused(ctx: &SemanticContext, diagnostics: &mut Vec<Diagnostic>) {
                 }
                 (format!("Unused enum '{}'", sym.name), "W0606")
             }
-            SymbolKind::Constant => (format!("Unused constant '{}'", sym.name), "W0601")
+            SymbolKind::Constant => (format!("Unused constant '{}'", sym.name), "W0601"),
         };
 
-        diagnostics.push(
-            Diagnostic::warning(message, sym.name_span).with_code(code),
-        );
+        diagnostics.push(Diagnostic::warning(message, sym.name_span).with_code(code));
     }
 }
 

@@ -11,7 +11,9 @@ pub use tree_sitter_nimbyscript::{language, HIGHLIGHTS_QUERY};
 /// - Can be incrementally updated
 pub fn parse(source: &str) -> Tree {
     let mut parser = tree_sitter::Parser::new();
-    parser.set_language(&language()).expect("Failed to load NimbyScript grammar");
+    parser
+        .set_language(&language())
+        .expect("Failed to load NimbyScript grammar");
     parser.parse(source, None).expect("Parser returned None")
 }
 
@@ -245,13 +247,19 @@ pub fn Test::
     fn test_parse_minimal_file() {
         let source = include_str!("../../../tests/fixtures/valid/minimal.nimbyscript");
         let tree = parse(source);
-        assert!(!has_errors(&tree), "minimal.nimbyscript should parse without errors");
+        assert!(
+            !has_errors(&tree),
+            "minimal.nimbyscript should parse without errors"
+        );
     }
 
     #[test]
     fn test_parse_example_file() {
         let source = include_str!("../../../tests/fixtures/valid/example.nimbyscript");
         let tree = parse(source);
-        assert!(!has_errors(&tree), "example.nimbyscript should parse without errors");
+        assert!(
+            !has_errors(&tree),
+            "example.nimbyscript should parse without errors"
+        );
     }
 }

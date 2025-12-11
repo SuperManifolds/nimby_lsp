@@ -85,7 +85,9 @@ fn resolve_function(node: Node, ctx: &mut SemanticContext, diagnostics: &mut Vec
                     Some(t)
                 } else {
                     let mut tc = param.walk();
-                    let found = param.named_children(&mut tc).find(|c| c.kind() == kind::TYPE);
+                    let found = param
+                        .named_children(&mut tc)
+                        .find(|c| c.kind() == kind::TYPE);
                     found
                 };
 
@@ -140,8 +142,10 @@ fn resolve_statement(node: Node, ctx: &mut SemanticContext, diagnostics: &mut Ve
         }
         kind::BLOCK => {
             // Enter block scope
-            ctx.scopes
-                .enter_scope(ScopeKind::Block, Span::new(node.start_byte(), node.end_byte()));
+            ctx.scopes.enter_scope(
+                ScopeKind::Block,
+                Span::new(node.start_byte(), node.end_byte()),
+            );
             resolve_block(node, ctx, diagnostics);
             ctx.scopes.exit_scope();
         }
@@ -205,8 +209,10 @@ fn resolve_for(node: Node, ctx: &mut SemanticContext, diagnostics: &mut Vec<Diag
     }
 
     // Enter loop scope
-    ctx.scopes
-        .enter_scope(ScopeKind::Loop, Span::new(node.start_byte(), node.end_byte()));
+    ctx.scopes.enter_scope(
+        ScopeKind::Loop,
+        Span::new(node.start_byte(), node.end_byte()),
+    );
 
     // Add loop variable to scope
     if let Some(var_node) = node.child_by_field("variable") {
@@ -356,12 +362,29 @@ fn check_type_reference(node: Node, ctx: &SemanticContext, diagnostics: &mut Vec
     }
 }
 
-fn check_type_exists(name: &str, node: Node, ctx: &SemanticContext, diagnostics: &mut Vec<Diagnostic>) {
+fn check_type_exists(
+    name: &str,
+    node: Node,
+    ctx: &SemanticContext,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
     // Skip primitive types
     if matches!(
         name,
-        "bool" | "i64" | "i32" | "i16" | "i8" | "u64" | "u32" | "u16" | "u8" | "f64" | "f32"
-            | "String" | "string" | "Self"
+        "bool"
+            | "i64"
+            | "i32"
+            | "i16"
+            | "i8"
+            | "u64"
+            | "u32"
+            | "u16"
+            | "u8"
+            | "f64"
+            | "f32"
+            | "String"
+            | "string"
+            | "Self"
     ) {
         return;
     }
@@ -377,7 +400,11 @@ fn check_type_exists(name: &str, node: Node, ctx: &SemanticContext, diagnostics:
     }
 
     // Check if type exists
-    if ctx.is_game_type(name) || ctx.is_game_enum(name) || ctx.is_user_struct(name) || ctx.is_user_enum(name) {
+    if ctx.is_game_type(name)
+        || ctx.is_game_enum(name)
+        || ctx.is_user_struct(name)
+        || ctx.is_user_enum(name)
+    {
         return;
     }
 
@@ -660,8 +687,20 @@ fn resolve_identifier(node: Node, ctx: &SemanticContext, diagnostics: &mut Vec<D
 fn is_builtin_function(name: &str) -> bool {
     matches!(
         name,
-        "abs" | "sqrt" | "sin" | "cos" | "tan" | "floor" | "ceil" | "round" | "min" | "max"
-            | "zdiv" | "zmod" | "clamp" | "lerp"
+        "abs"
+            | "sqrt"
+            | "sin"
+            | "cos"
+            | "tan"
+            | "floor"
+            | "ceil"
+            | "round"
+            | "min"
+            | "max"
+            | "zdiv"
+            | "zmod"
+            | "clamp"
+            | "lerp"
     )
 }
 
