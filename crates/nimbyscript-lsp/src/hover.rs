@@ -55,6 +55,16 @@ fn extract_params_with_types(params_node: Node, content: &str) -> Vec<(String, T
         .collect()
 }
 
+/// Extract binding (name, type) from a let statement node.
+fn extract_binding_from_let(node: Node, content: &str) -> Option<(String, TypeInfo)> {
+    let name_node = node.child_by_field("name")?;
+    let name = name_node.text(content).to_string();
+    let type_info = node
+        .child_by_field("type")
+        .map_or(TypeInfo::Unknown, |t| parse_type_string(t.text(content)));
+    Some((name, type_info))
+}
+
 // ============================================================================
 // Public API
 // ============================================================================
@@ -765,13 +775,11 @@ impl<'a> HoverEngine<'a> {
                 break;
             }
 
-            if child.kind() == kind::LET_STATEMENT || child.kind() == kind::LET_ELSE_STATEMENT {
-                if let Some(name_node) = child.child_by_field("name") {
-                    let name = name_node.text(self.content).to_string();
-                    let type_info = child.child_by_field("type").map_or(TypeInfo::Unknown, |t| {
-                        parse_type_string(t.text(self.content))
-                    });
-                    bindings.push((name, type_info));
+            let is_let =
+                child.kind() == kind::LET_STATEMENT || child.kind() == kind::LET_ELSE_STATEMENT;
+            if is_let {
+                if let Some(binding) = extract_binding_from_let(child, self.content) {
+                    bindings.push(binding);
                 }
             }
 
