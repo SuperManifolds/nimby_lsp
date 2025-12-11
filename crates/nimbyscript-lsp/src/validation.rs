@@ -256,19 +256,122 @@ fn validate_script_meta_entry(child: Node, content: &str, diagnostics: &mut Vec<
         return (false, false);
     };
     let key = key_node.text(content);
+    let value_node = child.child_by_field("value");
+    let span = nimbyscript_parser::ast::Span::new(child.start_byte(), child.end_byte());
+
     match key {
-        "lang" => (true, false),
-        "api" => (false, true),
-        "description" => (false, false),
+        "lang" => {
+            if let Some(val) = value_node {
+                validate_lang_value(val, content, span, diagnostics);
+            }
+            (true, false)
+        }
+        "api" => {
+            if let Some(val) = value_node {
+                validate_api_value(val, content, span, diagnostics);
+            }
+            (false, true)
+        }
+        "description" => {
+            if let Some(val) = value_node {
+                validate_description_value(val, content, span, diagnostics);
+            }
+            (false, false)
+        }
         other => {
             diagnostics.push(
                 Diagnostic::warning(
                     format!("Unknown script meta field '{other}'"),
-                    nimbyscript_parser::ast::Span::new(child.start_byte(), child.end_byte()),
+                    span,
                 )
                 .with_code("E0201"),
             );
             (false, false)
+        }
+    }
+}
+
+/// Validate lang must be a name equal to "nimbyscript.v1"
+fn validate_lang_value(
+    node: Node,
+    content: &str,
+    span: nimbyscript_parser::ast::Span,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    let value = node.text(content);
+    // lang must be the identifier "nimbyscript.v1" (a meta_name, not a string)
+    if node.kind() != kind::META_NAME || value != "nimbyscript.v1" {
+        diagnostics.push(
+            Diagnostic::error(
+                format!("'lang' must be 'nimbyscript.v1', got '{value}'"),
+                span,
+            )
+            .with_code("E0204"),
+        );
+    }
+}
+
+/// Validate api must be a name equal to "nimbyrails.v1"
+fn validate_api_value(
+    node: Node,
+    content: &str,
+    span: nimbyscript_parser::ast::Span,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    let value = node.text(content);
+    // api must be the identifier "nimbyrails.v1" (a meta_name, not a string)
+    if node.kind() != kind::META_NAME || value != "nimbyrails.v1" {
+        diagnostics.push(
+            Diagnostic::error(
+                format!("'api' must be 'nimbyrails.v1', got '{value}'"),
+                span,
+            )
+            .with_code("E0204"),
+        );
+    }
+}
+
+/// Validate description must be an array of strings
+fn validate_description_value(
+    node: Node,
+    content: &str,
+    span: nimbyscript_parser::ast::Span,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    if node.kind() != kind::META_ARRAY {
+        diagnostics.push(
+            Diagnostic::error(
+                format!(
+                    "'description' must be an array of strings (e.g., [\"line1\", \"line2\"]), got '{}'",
+                    node.text(content)
+                ),
+                span,
+            )
+            .with_code("E0204"),
+        );
+        return;
+    }
+
+    // Validate that all array elements are strings
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        // Skip punctuation and whitespace
+        if child.kind() == "[" || child.kind() == "]" || child.kind() == "," || child.is_extra() {
+            continue;
+        }
+        // Array elements must be strings
+        if child.kind() != kind::STRING_LITERAL {
+            diagnostics.push(
+                Diagnostic::error(
+                    format!(
+                        "'description' array elements must be strings, got '{}' ({})",
+                        child.text(content),
+                        child.kind()
+                    ),
+                    nimbyscript_parser::ast::Span::new(child.start_byte(), child.end_byte()),
+                )
+                .with_code("E0204"),
+            );
         }
     }
 }
@@ -692,5 +795,95 @@ pub fn Test::event_signal_check(self: &Test, ctx: &EventCtx, train: &Train, moti
         let errs = errors(&diags);
         assert!(!errs.is_empty(), "Missing return type should error");
         assert!(errs.iter().any(|d| d.code.as_deref() == Some("E0103")));
+    }
+
+    // E0204 - Script meta value validation tests
+
+    #[test]
+    fn test_lang_wrong_value() {
+        let content = "script meta { lang: wronglang.v1, api: nimbyrails.v1, }";
+        let diags = get_diagnostics(content);
+        let errs = errors(&diags);
+        assert!(
+            errs.iter().any(|d| d.code.as_deref() == Some("E0204")),
+            "Wrong lang value should error: {errs:?}"
+        );
+    }
+
+    #[test]
+    fn test_lang_wrong_type_number() {
+        let content = "script meta { lang: 123, api: nimbyrails.v1, }";
+        let diags = get_diagnostics(content);
+        let errs = errors(&diags);
+        assert!(
+            errs.iter().any(|d| d.code.as_deref() == Some("E0204")),
+            "Numeric lang value should error: {errs:?}"
+        );
+    }
+
+    #[test]
+    fn test_api_wrong_value() {
+        let content = "script meta { lang: nimbyscript.v1, api: wrongapi.v1, }";
+        let diags = get_diagnostics(content);
+        let errs = errors(&diags);
+        assert!(
+            errs.iter().any(|d| d.code.as_deref() == Some("E0204")),
+            "Wrong api value should error: {errs:?}"
+        );
+    }
+
+    #[test]
+    fn test_api_wrong_type_string() {
+        let content = r#"script meta { lang: nimbyscript.v1, api: "nimbyrails.v1", }"#;
+        let diags = get_diagnostics(content);
+        let errs = errors(&diags);
+        assert!(
+            errs.iter().any(|d| d.code.as_deref() == Some("E0204")),
+            "String api value should error (must be name): {errs:?}"
+        );
+    }
+
+    #[test]
+    fn test_description_wrong_type_number() {
+        let content = "script meta { lang: nimbyscript.v1, api: nimbyrails.v1, description: 42, }";
+        let diags = get_diagnostics(content);
+        let errs = errors(&diags);
+        assert!(
+            errs.iter().any(|d| d.code.as_deref() == Some("E0204")),
+            "Numeric description should error: {errs:?}"
+        );
+    }
+
+    #[test]
+    fn test_description_wrong_type_name() {
+        let content = "script meta { lang: nimbyscript.v1, api: nimbyrails.v1, description: hello, }";
+        let diags = get_diagnostics(content);
+        let errs = errors(&diags);
+        assert!(
+            errs.iter().any(|d| d.code.as_deref() == Some("E0204")),
+            "Name description should error (must be array): {errs:?}"
+        );
+    }
+
+    #[test]
+    fn test_description_valid_array() {
+        let content = r#"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, description: ["hello", "world"], }"#;
+        let diags = get_diagnostics(content);
+        let errs = errors(&diags);
+        assert!(
+            errs.iter().all(|d| d.code.as_deref() != Some("E0204")),
+            "Valid description array should not error: {errs:?}"
+        );
+    }
+
+    #[test]
+    fn test_description_array_with_non_string() {
+        let content = r#"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, description: ["hello", 42], }"#;
+        let diags = get_diagnostics(content);
+        let errs = errors(&diags);
+        assert!(
+            errs.iter().any(|d| d.code.as_deref() == Some("E0204")),
+            "Description array with number should error: {errs:?}"
+        );
     }
 }
