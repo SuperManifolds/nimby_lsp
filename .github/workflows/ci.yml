@@ -60,6 +60,7 @@ jobs:
 
   build:
     name: Build ${{ matrix.vscode-target }}
+    needs: [test, clippy, fmt, extension]
     runs-on: ${{ matrix.os }}
     # Only build artifacts on push to main, not on PRs
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
