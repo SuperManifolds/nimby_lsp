@@ -1,99 +1,83 @@
 # NimbyScript LSP
 
-A Language Server Protocol (LSP) implementation for [NimbyScript](https://wiki.nimbyrails.com/NimbyScript), the modding language for NIMBY Rails.
+An unofficial Language Server Protocol (LSP) implementation for [NimbyScript](https://wiki.nimbyrails.com/NimbyScript), the modding language for NIMBY Rails.
 
 ## Features
 
-- **Syntax Highlighting** - Full TextMate grammar for VSCode, semantic tokens for all editors
-- **Diagnostics** - Parse error detection and reporting
-- **Completions** - Keywords, types, standard library functions, and game API
-- **Hover Information** - Documentation for symbols
+- **Syntax Highlighting** - TextMate grammar for VS Code, semantic tokens for all editors
+- **Diagnostics** - Parse errors and semantic validation
+- **Completions** - Context-aware completions with documentation
+- **Hover Information** - Type information and documentation for symbols
+- **Signature Help** - Function parameter hints while typing
 - **Document Symbols** - Outline view of structs, enums, functions
 
-## Project Structure
+## Editor Support
 
-```
-nimby_lsp/
-├── crates/
-│   ├── tree-sitter-nimbyscript/  # Tree-sitter grammar definition
-│   ├── nimbyscript-parser/       # Parser wrapper and utilities
-│   ├── nimbyscript-analyzer/     # Semantic analysis and API definitions
-│   └── nimbyscript-lsp/          # LSP server implementation
-├── api-definitions/              # Game API definitions (TOML)
-├── editors/
-│   ├── vscode/                   # VSCode extension
-│   └── neovim/                   # Neovim plugin
-└── tests/fixtures/               # Test NimbyScript files
-```
+| Editor | LSP | Syntax Highlighting | Installation |
+|--------|-----|---------------------|--------------|
+| VS Code | ✅ | ✅ | See below |
+| Neovim | 🚧 | 🚧 | See [editors/neovim](editors/neovim/README.md) |
+| Other LSP clients | ✅ | ❌ | Point to `nimbyscript-lsp` binary |
+
+## LSP Capabilities
+
+| Capability | Status |
+|------------|--------|
+| `textDocument/completion` | ✅ |
+| `completionItem/resolve` | ✅ |
+| `textDocument/hover` | ✅ |
+| `textDocument/signatureHelp` | ✅ |
+| `textDocument/publishDiagnostics` | ✅ |
+| `textDocument/documentSymbol` | ✅ |
+| `textDocument/semanticTokens/full` | ✅ |
+| `textDocument/declaration` | ❌ |
+| `textDocument/definition` | ❌ |
+| `textDocument/typeDefinition` | ❌ |
+| `textDocument/implementation` | ❌ |
+| `textDocument/references` | ❌ |
+| `textDocument/documentHighlight` | ❌ |
+| `textDocument/codeAction` | ❌ |
+| `textDocument/codeLens` | ❌ |
+| `textDocument/documentLink` | ❌ |
+| `textDocument/colorPresentation` | ❌ |
+| `textDocument/formatting` | ❌ |
+| `textDocument/rangeFormatting` | ❌ |
+| `textDocument/onTypeFormatting` | ❌ |
+| `textDocument/rename` | ❌ |
+| `textDocument/prepareRename` | ❌ |
+| `textDocument/foldingRange` | ❌ |
+| `textDocument/selectionRange` | ❌ |
+| `textDocument/linkedEditingRange` | ❌ |
+| `callHierarchy/incomingCalls` | ❌ |
+| `callHierarchy/outgoingCalls` | ❌ |
+| `typeHierarchy/supertypes` | ❌ |
+| `typeHierarchy/subtypes` | ❌ |
+| `textDocument/inlayHint` | ❌ |
+| `workspace/symbol` | ❌ |
 
 ## Installation
 
-### Building from Source
+### VS Code
 
-```bash
-# Clone the repository
-git clone https://github.com/supermanifolds/nimby_lsp
-cd nimby_lsp
-
-# Build the LSP server
-cargo build --release
-
-# The binary will be at target/release/nimbyscript-lsp
-```
-
-### VSCode Extension
-
-1. Navigate to `editors/vscode`
-2. Run `npm install`
-3. Run `npm run compile`
-4. Package with `npm run package`
-5. Install the generated `.vsix` file
-
-Or for development:
-1. Open `editors/vscode` in VSCode
-2. Press F5 to launch Extension Development Host
+1. Download the `.vsix` file from [Releases](https://github.com/supermanifolds/nimby_lsp/releases)
+2. Install: `code --install-extension nimbyscript-*.vsix`
 
 ### Neovim
 
 See [editors/neovim/README.md](editors/neovim/README.md) for detailed instructions.
 
-Quick setup with lazy.nvim:
-```lua
-{
-    'supermanifolds/nimby_lsp',
-    config = function()
-        require('nimbyscript').setup()
-    end,
-    ft = { 'nimbyscript' },
-}
-```
-
-## Grammar
-
-The parser uses [tree-sitter](https://tree-sitter.github.io/tree-sitter/) based on the [official NimbyScript documentation](https://wiki.nimbyrails.com/NimbyScript). Tree-sitter provides:
-
-- **Error recovery** - Parses incomplete/invalid code for better editor support
-- **Incremental parsing** - Fast re-parsing on edits
-- **Editor integration** - Native support in Neovim, Helix, and others
-
-The grammar is defined in `crates/tree-sitter-nimbyscript/grammar.js` with syntax highlighting queries in `queries/highlights.scm`.
-
-## API Definitions
-
-Game types and functions are defined in `api-definitions/nimbyrails.v1.toml`. This file can be customized to add new types as the game updates.
-
-## Development
+### Building from Source
 
 ```bash
-# Run tests
-cargo test
-
-# Run the LSP server directly
-cargo run --bin nimbyscript-lsp
-
-# Check parser with a test file
-cargo run --example parse tests/fixtures/valid/example.nimbyscript
+git clone https://github.com/supermanifolds/nimby_lsp
+cd nimby_lsp
+cargo build --release
+# Binary at target/release/nimbyscript-lsp
 ```
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines.
 
 ## License
 
