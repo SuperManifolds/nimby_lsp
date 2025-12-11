@@ -2,6 +2,8 @@
 
 <img src="./nimby_script.png" alt="NimbyScript Logo" width="128" />
 
+[![VS Code Marketplace](https://img.shields.io/visual-studio-marketplace/v/supermanifolds.nimbyscript?label=VS%20Code%20Marketplace)](https://marketplace.visualstudio.com/items?itemName=supermanifolds.nimbyscript)
+
 An unofficial Language Server Protocol (LSP) implementation for [NimbyScript](https://wiki.nimbyrails.com/NimbyScript), the modding language for NIMBY Rails.
 
 ## Features
@@ -17,7 +19,7 @@ An unofficial Language Server Protocol (LSP) implementation for [NimbyScript](ht
 
 | Editor | LSP | Syntax Highlighting | Published | Installation |
 |--------|-----|---------------------|-----------|--------------|
-| VS Code | ✅ | ✅ | 🚧 | See below |
+| VS Code | ✅ | ✅ | ✅ | [Marketplace](https://marketplace.visualstudio.com/items?itemName=supermanifolds.nimbyscript) |
 | Neovim | 🚧 | 🚧 | ❌ | See [editors/neovim](editors/neovim/README.md) |
 | Other LSP clients | ✅ | ❌ | - | Point to `nimbyscript-lsp` binary |
 
@@ -61,8 +63,7 @@ An unofficial Language Server Protocol (LSP) implementation for [NimbyScript](ht
 
 ### VS Code
 
-1. Download the `.vsix` file from [Releases](https://github.com/supermanifolds/nimby_lsp/releases)
-2. Install: `code --install-extension nimbyscript-*.vsix`
+Install from the [Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=supermanifolds.nimbyscript), or search for "NimbyScript" in VS Code's Extensions view.
 
 ### Neovim
 
