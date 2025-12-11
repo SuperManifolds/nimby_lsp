@@ -585,7 +585,16 @@ impl<'a> CompletionEngine<'a> {
                         label: field_name.clone(),
                         kind: Some(CompletionItemKind::FIELD),
                         detail: Some(field.ty.clone()),
-                        documentation: field.doc.clone().map(Documentation::String),
+                        documentation: field.doc.as_ref().map(|d| {
+                            Documentation::MarkupContent(MarkupContent {
+                                kind: MarkupKind::Markdown,
+                                value: d.clone(),
+                            })
+                        }),
+                        data: make_resolve_data(CompletionResolveData::Field {
+                            type_name: base_type_name.to_string(),
+                            field_name: field_name.clone(),
+                        }),
                         ..Default::default()
                     });
                 }
@@ -601,6 +610,10 @@ impl<'a> CompletionEngine<'a> {
                         documentation: format_documentation(method),
                         insert_text: Some(format_snippet(&method.name, method)),
                         insert_text_format: Some(InsertTextFormat::SNIPPET),
+                        data: make_resolve_data(CompletionResolveData::Method {
+                            type_name: base_type_name.to_string(),
+                            method_name: method.name.clone(),
+                        }),
                         ..Default::default()
                     });
                 }
@@ -619,9 +632,18 @@ impl<'a> CompletionEngine<'a> {
                         label: field_name.clone(),
                         kind: Some(CompletionItemKind::FIELD),
                         detail: Some(format!("{} (from {})", field.ty, extends_type)),
-                        documentation: field.doc.clone().map(Documentation::String),
+                        documentation: field.doc.as_ref().map(|d| {
+                            Documentation::MarkupContent(MarkupContent {
+                                kind: MarkupKind::Markdown,
+                                value: d.clone(),
+                            })
+                        }),
                         // Sort inherited fields after user fields
                         sort_text: Some(format!("1_{field_name}")),
+                        data: make_resolve_data(CompletionResolveData::Field {
+                            type_name: extends_type.to_string(),
+                            field_name: field_name.clone(),
+                        }),
                         ..Default::default()
                     });
                 }
@@ -638,6 +660,10 @@ impl<'a> CompletionEngine<'a> {
                         insert_text: Some(format_snippet(&method.name, method)),
                         insert_text_format: Some(InsertTextFormat::SNIPPET),
                         sort_text: Some(format!("1_{}", method.name)),
+                        data: make_resolve_data(CompletionResolveData::Method {
+                            type_name: extends_type.to_string(),
+                            method_name: method.name.clone(),
+                        }),
                         ..Default::default()
                     });
                 }
@@ -741,7 +767,15 @@ impl<'a> CompletionEngine<'a> {
                     label: name.to_string(),
                     kind: Some(CompletionItemKind::STRUCT),
                     detail: Some("game type".to_string()),
-                    documentation: type_def.and_then(|t| t.doc.clone()).map(Documentation::String),
+                    documentation: type_def.and_then(|t| t.doc.as_ref()).map(|d| {
+                        Documentation::MarkupContent(MarkupContent {
+                            kind: MarkupKind::Markdown,
+                            value: d.clone(),
+                        })
+                    }),
+                    data: make_resolve_data(CompletionResolveData::Type {
+                        name: name.to_string(),
+                    }),
                     ..Default::default()
                 });
             }
@@ -754,7 +788,15 @@ impl<'a> CompletionEngine<'a> {
                     label: name.to_string(),
                     kind: Some(CompletionItemKind::ENUM),
                     detail: Some("game enum".to_string()),
-                    documentation: enum_def.and_then(|e| e.doc.clone()).map(Documentation::String),
+                    documentation: enum_def.and_then(|e| e.doc.as_ref()).map(|d| {
+                        Documentation::MarkupContent(MarkupContent {
+                            kind: MarkupKind::Markdown,
+                            value: d.clone(),
+                        })
+                    }),
+                    data: make_resolve_data(CompletionResolveData::Enum {
+                        name: name.to_string(),
+                    }),
                     ..Default::default()
                 });
             }
@@ -796,7 +838,15 @@ impl<'a> CompletionEngine<'a> {
                     label: name.to_string(),
                     kind: Some(CompletionItemKind::MODULE),
                     detail: Some("module".to_string()),
-                    documentation: module_def.and_then(|m| m.doc.clone()).map(Documentation::String),
+                    documentation: module_def.and_then(|m| m.doc.as_ref()).map(|d| {
+                        Documentation::MarkupContent(MarkupContent {
+                            kind: MarkupKind::Markdown,
+                            value: d.clone(),
+                        })
+                    }),
+                    data: make_resolve_data(CompletionResolveData::Module {
+                        name: name.to_string(),
+                    }),
                     ..Default::default()
                 });
             }
@@ -813,6 +863,9 @@ impl<'a> CompletionEngine<'a> {
                         documentation: format_documentation(func),
                         insert_text: Some(format_snippet(name, func)),
                         insert_text_format: Some(InsertTextFormat::SNIPPET),
+                        data: make_resolve_data(CompletionResolveData::Function {
+                            name: name.to_string(),
+                        }),
                         ..Default::default()
                     });
                 }
@@ -832,6 +885,10 @@ impl<'a> CompletionEngine<'a> {
                         documentation: format_documentation(func),
                         insert_text: Some(format_snippet(&func.name, func)),
                         insert_text_format: Some(InsertTextFormat::SNIPPET),
+                        data: make_resolve_data(CompletionResolveData::ModuleFunction {
+                            module_name: module.to_string(),
+                            function_name: func.name.clone(),
+                        }),
                         ..Default::default()
                     });
                 }
@@ -849,6 +906,10 @@ impl<'a> CompletionEngine<'a> {
                         documentation: format_documentation(method),
                         insert_text: Some(format_snippet(&method.name, method)),
                         insert_text_format: Some(InsertTextFormat::SNIPPET),
+                        data: make_resolve_data(CompletionResolveData::Method {
+                            type_name: module.to_string(),
+                            method_name: method.name.clone(),
+                        }),
                         ..Default::default()
                     });
                 }
@@ -863,14 +924,18 @@ impl<'a> CompletionEngine<'a> {
                         label: variant.name.clone(),
                         kind: Some(CompletionItemKind::ENUM_MEMBER),
                         detail: Some(format!("{module}::{}", variant.name)),
-                        documentation: variant.doc.clone().map(Documentation::String),
+                        documentation: variant.doc.as_ref().map(|d| Documentation::String(d.clone())),
+                        data: make_resolve_data(CompletionResolveData::EnumVariant {
+                            enum_name: module.to_string(),
+                            variant_name: variant.name.clone(),
+                        }),
                         ..Default::default()
                     });
                 }
             }
         }
 
-        // Check if it's a user-defined enum
+        // Check if it's a user-defined enum (no resolve data - no API docs)
         if let Some(variants) = self.user_enums.get(module) {
             for variant in variants {
                 if variant.starts_with(prefix) {
@@ -902,6 +967,10 @@ impl<'a> CompletionEngine<'a> {
                     documentation: format_callback_documentation(callback, struct_name),
                     insert_text: Some(format_callback_snippet(callback, struct_name)),
                     insert_text_format: Some(InsertTextFormat::SNIPPET),
+                    data: make_resolve_data(CompletionResolveData::Callback {
+                        callback_name: callback.name.clone(),
+                        struct_name: struct_name.to_string(),
+                    }),
                     ..Default::default()
                 });
             }
@@ -1000,8 +1069,11 @@ impl<'a> CompletionEngine<'a> {
                             label: format!("{enum_name}::{}", variant.name),
                             kind: Some(CompletionItemKind::ENUM_MEMBER),
                             detail: Some(format!("matches return type {enum_name}")),
-                            documentation: variant.doc.clone().map(Documentation::String),
                             sort_text: Some(format!("0_{}", variant.name)),
+                            data: make_resolve_data(CompletionResolveData::EnumVariant {
+                                enum_name: enum_name.clone(),
+                                variant_name: variant.name.clone(),
+                            }),
                             ..Default::default()
                         });
                     }
@@ -1421,6 +1493,20 @@ pub enum CompletionResolveData {
     /// Module function - resolve documentation
     #[serde(rename = "module_function")]
     ModuleFunction { module_name: String, function_name: String },
+    /// Type field - resolve documentation
+    #[serde(rename = "field")]
+    Field { type_name: String, field_name: String },
+    /// Enum variant - resolve documentation
+    #[serde(rename = "enum_variant")]
+    EnumVariant { enum_name: String, variant_name: String },
+    /// Callback - resolve documentation with struct name substitution
+    #[serde(rename = "callback")]
+    Callback { callback_name: String, struct_name: String },
+}
+
+/// Helper to create resolve data JSON value.
+fn make_resolve_data(data: CompletionResolveData) -> Option<Value> {
+    serde_json::to_value(data).ok()
 }
 
 /// Resolve documentation for a completion item.
@@ -1462,6 +1548,23 @@ pub fn resolve_completion(data: &Value, api: &ApiDefinitions) -> Option<Document
             let module_def = api.get_module(&module_name)?;
             let func = module_def.functions.iter().find(|f| f.name == function_name)?;
             format_documentation(func)
+        }
+        CompletionResolveData::Field { type_name, field_name } => {
+            let type_def = api.get_type(&type_name)?;
+            let field = type_def.fields.get(&field_name)?;
+            field.doc.clone().map(|d| Documentation::MarkupContent(MarkupContent {
+                kind: MarkupKind::Markdown,
+                value: d,
+            }))
+        }
+        CompletionResolveData::EnumVariant { enum_name, variant_name } => {
+            let enum_def = api.get_enum(&enum_name)?;
+            let variant = enum_def.variants.iter().find(|v| v.name == variant_name)?;
+            variant.doc.clone().map(Documentation::String)
+        }
+        CompletionResolveData::Callback { callback_name, struct_name } => {
+            let callback = api.get_callback(&callback_name)?;
+            format_callback_documentation(callback, &struct_name)
         }
     }
 }
@@ -1816,5 +1919,109 @@ pub struct MyStruct { }
         let items = get_completions(&doc, Position::new(2, 0), &api);
         assert!(items.iter().any(|i| i.kind == Some(CompletionItemKind::KEYWORD)));
         assert!(items.iter().any(|i| i.kind == Some(CompletionItemKind::STRUCT)));
+    }
+
+    // Completion resolve tests
+
+    #[test]
+    fn test_callback_completion_has_resolve_data() {
+        let api = load_api();
+        let content = r#"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+pub struct MySignal extend Signal { }
+MySignal::
+"#;
+        let engine = CompletionEngine::new(content, &api, Position::new(3, 10));
+        let items = engine.completions();
+
+        let pass_by = items.iter().find(|i| i.label == "event_signal_pass_by");
+        assert!(pass_by.is_some(), "should have event_signal_pass_by callback");
+        let pass_by = pass_by.unwrap();
+
+        // Verify data field is set
+        assert!(pass_by.data.is_some(), "callback should have resolve data");
+
+        // Verify we can deserialize it
+        let data: CompletionResolveData = serde_json::from_value(pass_by.data.clone().unwrap())
+            .expect("should deserialize resolve data");
+        assert!(matches!(data, CompletionResolveData::Callback { .. }));
+    }
+
+    #[test]
+    fn test_resolve_callback_documentation() {
+        let api = load_api();
+
+        // Create resolve data for event_signal_pass_by
+        let data = CompletionResolveData::Callback {
+            callback_name: "event_signal_pass_by".to_string(),
+            struct_name: "MySignal".to_string(),
+        };
+        let json_data = serde_json::to_value(data).expect("should serialize");
+
+        // Resolve documentation
+        let doc = resolve_completion(&json_data, &api);
+        assert!(doc.is_some(), "should resolve documentation for callback");
+
+        // Check the documentation contains expected content
+        if let Some(Documentation::MarkupContent(content)) = doc {
+            assert!(content.value.contains("train passes"), "doc should mention 'train passes'");
+        } else {
+            panic!("expected MarkupContent documentation");
+        }
+    }
+
+    #[test]
+    fn test_resolve_function_documentation() {
+        let api = load_api();
+
+        let data = CompletionResolveData::Function { name: "abs".to_string() };
+        let json_data = serde_json::to_value(data).expect("should serialize");
+
+        let doc = resolve_completion(&json_data, &api);
+        assert!(doc.is_some(), "should resolve documentation for function");
+
+        if let Some(Documentation::MarkupContent(content)) = doc {
+            assert!(content.value.contains("absolute value"), "doc should mention 'absolute value'");
+        } else {
+            panic!("expected MarkupContent documentation");
+        }
+    }
+
+    #[test]
+    fn test_resolve_method_documentation() {
+        let api = load_api();
+
+        let data = CompletionResolveData::Method {
+            type_name: "DB".to_string(),
+            method_name: "view".to_string(),
+        };
+        let json_data = serde_json::to_value(data).expect("should serialize");
+
+        let doc = resolve_completion(&json_data, &api);
+        assert!(doc.is_some(), "should resolve documentation for method");
+
+        if let Some(Documentation::MarkupContent(content)) = doc {
+            assert!(content.value.contains("script data"), "doc should mention 'script data'");
+        } else {
+            panic!("expected MarkupContent documentation");
+        }
+    }
+
+    #[test]
+    fn test_function_completion_has_documentation_and_resolve_data() {
+        let api = load_api();
+        let content = "ab";
+        let engine = CompletionEngine::new(content, &api, Position::new(0, 2));
+        let items = engine.completions();
+
+        let abs_item = items.iter().find(|i| i.label == "abs");
+        assert!(abs_item.is_some(), "should have abs function");
+        let abs_item = abs_item.unwrap();
+
+        // Verify inline documentation is included for immediate display
+        assert!(abs_item.documentation.is_some(), "should have inline documentation");
+
+        // Verify data field is also set for resolve fallback
+        assert!(abs_item.data.is_some(), "function should have resolve data");
     }
 }
