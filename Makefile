@@ -29,7 +29,7 @@ VERSION := $(shell grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1
 .PHONY: all clean install-targets build-all package-all \
         build-macos-arm64 build-macos-x64 build-windows-x64 build-linux-x64 \
         package-macos-arm64 package-macos-x64 package-windows-x64 package-linux-x64 \
-        extension-deps dev test check sync-queries
+        extension-deps dev test check clippy fmt lint sync-queries
 
 #===============================================================================
 # Main targets
@@ -159,6 +159,14 @@ clippy:
 # Format code
 fmt:
 	$(CARGO) fmt --all
+
+# Run all linters and checks
+lint:
+	$(CARGO) check --all-targets
+	$(CARGO) fmt --all --check
+	$(CARGO) clippy --all-targets -- -D warnings
+	cd $(EXTENSION_DIR) && npm run lint
+	luacheck --config $(NEOVIM_DIR)/.luacheckrc $(NEOVIM_DIR)
 
 # Install extension locally (after running dev)
 install: dev
