@@ -290,13 +290,29 @@ M.config = {
 
     -- Enable debug logging
     debug = false,
+
+    -- Enable inlay hints (type annotations and parameter names)
+    inlay_hints_enabled = true,
+
+    -- Enable semantic token highlighting
+    semantic_tokens_enabled = true,
 }
+
+-- Build init_options from config
+local function get_init_options()
+    return {
+        inlayHintsEnabled = M.config.inlay_hints_enabled,
+        semanticTokensEnabled = M.config.semantic_tokens_enabled,
+    }
+end
 
 -- Configure and start the LSP with the given command
 local function setup_lsp(cmd)
     if type(cmd) == 'string' then
         cmd = { cmd }
     end
+
+    local init_options = get_init_options()
 
     -- For Neovim 0.11+ (native LSP config)
     if vim.lsp.config then
@@ -305,6 +321,7 @@ local function setup_lsp(cmd)
             filetypes = M.config.filetypes,
             root_markers = M.config.root_markers,
             settings = M.config.settings,
+            init_options = init_options,
         })
         vim.lsp.enable('nimbyscript_lsp')
         return
@@ -326,12 +343,14 @@ local function setup_lsp(cmd)
                             or vim.fn.getcwd()
                     end,
                     settings = M.config.settings,
+                    init_options = init_options,
                     single_file_support = true,
                 },
             }
         end
 
         lspconfig.nimbyscript_lsp.setup({
+            init_options = init_options,
             on_attach = function(_, bufnr)
                 -- Set up keymaps
                 local keymap_opts = { buffer = bufnr, noremap = true, silent = true }

@@ -11,6 +11,14 @@ import {
 let client: LanguageClient | undefined;
 let outputChannel: vscode.OutputChannel;
 
+function getSettings() {
+    const config = vscode.workspace.getConfiguration('nimbyscript');
+    return {
+        inlayHintsEnabled: config.get<boolean>('inlayHints.enabled', true),
+        semanticTokensEnabled: config.get<boolean>('semanticTokens.enabled', true)
+    };
+}
+
 export function activate(context: vscode.ExtensionContext) {
     // Create output channel for logging
     outputChannel = vscode.window.createOutputChannel('NimbyScript');
@@ -71,8 +79,10 @@ export function activate(context: vscode.ExtensionContext) {
 
     const clientOptions: LanguageClientOptions = {
         documentSelector: [{ scheme: 'file', language: 'nimbyscript' }],
+        initializationOptions: getSettings(),
         synchronize: {
-            fileEvents: vscode.workspace.createFileSystemWatcher('**/*.nimbyscript')
+            fileEvents: vscode.workspace.createFileSystemWatcher('**/*.nimbyscript'),
+            configurationSection: 'nimbyscript'
         },
         outputChannel: outputChannel,
         traceOutputChannel: outputChannel,

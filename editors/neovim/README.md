@@ -69,6 +69,12 @@ require('nimbyscript').setup({
 
     -- Enable debug logging
     debug = false,
+
+    -- Enable inlay hints (type annotations and parameter names)
+    inlay_hints_enabled = true,
+
+    -- Enable semantic token highlighting
+    semantic_tokens_enabled = true,
 })
 ```
 
