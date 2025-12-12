@@ -189,7 +189,7 @@ local function ensure_binary(auto_update, callback)
             return
         end
 
-        local asset_url, asset_name = find_asset_url(release, platform)
+        local asset_url = find_asset_url(release, platform)
         if not asset_url then
             if binary_exists() then
                 callback(get_binary_path(), nil)
@@ -332,7 +332,7 @@ local function setup_lsp(cmd)
         end
 
         lspconfig.nimbyscript_lsp.setup({
-            on_attach = function(client, bufnr)
+            on_attach = function(_, bufnr)
                 -- Set up keymaps
                 local keymap_opts = { buffer = bufnr, noremap = true, silent = true }
                 vim.keymap.set('n', 'gd', vim.lsp.buf.definition, keymap_opts)
