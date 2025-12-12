@@ -127,11 +127,22 @@ jobs:
         working-directory: editors/vscode
         run: npx vsce package --target ${{ matrix.vscode-target }}
 
+      - name: Rename binary for release
+        run: |
+          cp editors/vscode/server/${{ matrix.binary }} nimbyscript-lsp-${{ matrix.vscode-target }}${{ matrix.binary == 'nimbyscript-lsp.exe' && '.exe' || '' }}
+
       - name: Upload VSIX artifact
         uses: actions/upload-artifact@v4
         with:
           name: vsix-${{ matrix.vscode-target }}
           path: editors/vscode/*.vsix
+          if-no-files-found: error
+
+      - name: Upload standalone binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: standalone-${{ matrix.vscode-target }}
+          path: nimbyscript-lsp-${{ matrix.vscode-target }}*
           if-no-files-found: error
 
   release:
@@ -148,10 +159,19 @@ jobs:
           merge-multiple: true
           path: vsix/
 
+      - name: Download all standalone binaries
+        uses: actions/download-artifact@v4
+        with:
+          pattern: standalone-*
+          merge-multiple: true
+          path: standalone/
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: vsix/*.vsix
+          files: |
+            vsix/*.vsix
+            standalone/*
           generate_release_notes: true
           draft: true
 
