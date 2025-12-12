@@ -78,6 +78,7 @@ pub mod kind {
     // Expressions
     pub const IDENTIFIER: &str = "identifier";
     pub const PATH_EXPRESSION: &str = "path_expression";
+    pub const PATH_SEGMENT: &str = "path_segment";
     pub const CALL_EXPRESSION: &str = "call_expression";
     pub const FIELD_ACCESS: &str = "field_access";
     pub const BINARY_EXPRESSION: &str = "binary_expression";
@@ -93,6 +94,7 @@ pub mod kind {
     // Statements
     pub const LET_STATEMENT: &str = "let_statement";
     pub const LET_ELSE_STATEMENT: &str = "let_else_statement";
+    pub const BINDING: &str = "binding";
     pub const ASSIGNMENT_STATEMENT: &str = "assignment_statement";
     pub const IF_STATEMENT: &str = "if_statement";
     pub const IF_LET_STATEMENT: &str = "if_let_statement";
