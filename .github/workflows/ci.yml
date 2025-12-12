@@ -39,7 +39,7 @@ jobs:
       - run: cargo fmt --all --check
 
   extension:
-    name: Extension TypeScript
+    name: VS Code Extension
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -58,8 +58,18 @@ jobs:
         working-directory: editors/vscode
         run: npm run lint
 
+  neovim:
+    name: Neovim Extension
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Luacheck
+        uses: lunarmodules/luacheck@v1
+        with:
+          args: editors/neovim
+
   build:
-    needs: [test, clippy, fmt, extension]
+    needs: [test, clippy, fmt, extension, neovim]
     runs-on: ${{ matrix.os }}
     # Only build artifacts on push to main, not on PRs
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
