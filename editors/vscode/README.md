@@ -60,12 +60,12 @@ No additional requirements. The extension bundles the language server for your p
 ## Supported Platforms
 
 - macOS (Apple Silicon and Intel)
-- Windows (x64)
-- Linux (x64)
+- Windows (x64 and ARM64)
+- Linux (x64 and ARM64)
 
 ## Release Notes
 
-See [CHANGELOG.md](CHANGELOG.md) for version history.
+See [GitHub Releases](https://github.com/supermanifolds/nimby_lsp/releases) for version history.
 
 ## Contributing
 
