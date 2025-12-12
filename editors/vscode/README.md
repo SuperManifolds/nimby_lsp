@@ -45,17 +45,27 @@ Navigate your code with the outline view showing all:
 - Enums and variants
 - Functions and methods
 
+### Inlay Hints
+
+See parameter names and type annotations inline in your code.
+
+### Type Hierarchy
+
+Explore type relationships with the type hierarchy view.
+
 ## Requirements
 
 No additional requirements. The extension bundles the language server for your platform.
 
 ## Extension Settings
 
-| Setting | Description |
-|---------|-------------|
-| `nimbyscript.server.path` | Path to custom language server binary |
-| `nimbyscript.api.definitionsPath` | Path to custom API definitions file |
-| `nimbyscript.trace.server` | Enable language server tracing for debugging |
+| Setting | Description | Default |
+|---------|-------------|---------|
+| `nimbyscript.server.path` | Path to custom language server binary | (bundled) |
+| `nimbyscript.api.definitionsPath` | Path to custom API definitions file | |
+| `nimbyscript.trace.server` | Enable language server tracing for debugging | `off` |
+| `nimbyscript.inlayHints.enabled` | Enable inlay hints for type annotations and parameter names | `true` |
+| `nimbyscript.semanticTokens.enabled` | Enable semantic token highlighting | `true` |
 
 ## Supported Platforms
 
