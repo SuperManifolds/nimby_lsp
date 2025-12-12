@@ -5,6 +5,9 @@ target/
 *.dll
 *.vsix
 
+# LSP server binary bundled in VS Code extension
+editors/vscode/server/
+
 # Node
 node_modules/
 
