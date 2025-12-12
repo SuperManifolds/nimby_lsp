@@ -3,8 +3,10 @@
 
 CARGO = cargo
 EXTENSION_DIR = editors/vscode
+NEOVIM_DIR = editors/neovim
 SERVER_DIR = $(EXTENSION_DIR)/server
 RELEASE_DIR = release
+TREESITTER_QUERIES = crates/tree-sitter-nimbyscript/queries
 
 # Rust target triples
 TARGET_MACOS_ARM64 = aarch64-apple-darwin
@@ -27,7 +29,7 @@ VERSION := $(shell grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1
 .PHONY: all clean install-targets build-all package-all \
         build-macos-arm64 build-macos-x64 build-windows-x64 build-linux-x64 \
         package-macos-arm64 package-macos-x64 package-windows-x64 package-linux-x64 \
-        extension-deps dev test check
+        extension-deps dev test check sync-queries
 
 #===============================================================================
 # Main targets
@@ -161,3 +163,12 @@ fmt:
 # Install extension locally (after running dev)
 install: dev
 	code --install-extension $(EXTENSION_DIR)/*.vsix --force
+
+#===============================================================================
+# Neovim support
+#===============================================================================
+
+# Sync tree-sitter queries to neovim plugin
+sync-queries:
+	mkdir -p $(NEOVIM_DIR)/queries/nimbyscript
+	cp $(TREESITTER_QUERIES)/highlights.scm $(NEOVIM_DIR)/queries/nimbyscript/

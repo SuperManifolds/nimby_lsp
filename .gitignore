@@ -20,3 +20,6 @@ Thumbs.db
 
 # Tree-sitter build artifacts (keep generated parser)
 crates/tree-sitter-nimbyscript/build/
+
+# Generated query files (copied from tree-sitter crate)
+editors/neovim/queries/
