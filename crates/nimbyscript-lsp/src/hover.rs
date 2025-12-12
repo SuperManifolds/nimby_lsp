@@ -1233,7 +1233,7 @@ pub fn Test::control_train(
     motion: &Motion,
     sc: &mut SimController
 ) {
-    if is_null(motion.presence.get()) {
+    if !is_valid(motion.presence.get()) {
         return;
     }
 }

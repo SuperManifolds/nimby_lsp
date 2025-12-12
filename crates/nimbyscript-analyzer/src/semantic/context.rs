@@ -143,7 +143,7 @@ impl<'a> SemanticContext<'a> {
     }
 
     /// Check if a type is valid for a pub struct field.
-    /// Per NimbyScript spec: bool, i64, f64, script enums, and ID<>
+    /// Per NimbyScript spec: bool, i64, f64, script enums, ID<T>, and &Vec<ID<T>>
     pub fn is_valid_pub_struct_field_type(&self, type_info: &TypeInfo) -> bool {
         match type_info {
             TypeInfo::Bool | TypeInfo::I64 | TypeInfo::F64 => true,
@@ -152,20 +152,60 @@ impl<'a> SemanticContext<'a> {
             TypeInfo::Enum { name } | TypeInfo::Struct { name, .. } => self.is_user_enum(name),
 
             // ID<T> is allowed for specific types
-            TypeInfo::Generic { name, args } if name == "ID" => {
-                if args.len() == 1 {
-                    if let TypeInfo::Struct { name: inner, .. } = &args[0] {
-                        return matches!(
-                            inner.as_str(),
-                            "Line" | "Train" | "Schedule" | "Signal" | "Tag"
-                        );
-                    }
-                }
-                false
-            }
+            TypeInfo::Generic { name, args } if name == "ID" => Self::is_valid_id_inner_type(args),
+
+            // &Vec<ID<T>> is allowed for specific types (Line, Train, Schedule, Signal)
+            TypeInfo::Reference { inner, .. } => Self::is_valid_vec_ref_type(inner),
 
             _ => false,
         }
+    }
+
+    /// Check if the inner type of a reference is a valid Vec<ID<T>> for pub struct fields
+    fn is_valid_vec_ref_type(inner: &TypeInfo) -> bool {
+        let TypeInfo::Generic { name, args } = inner else {
+            return false;
+        };
+        if name != "Vec" || args.len() != 1 {
+            return false;
+        }
+        let TypeInfo::Generic {
+            name: id_name,
+            args: id_args,
+        } = &args[0]
+        else {
+            return false;
+        };
+        if id_name != "ID" {
+            return false;
+        }
+        Self::is_valid_vec_id_inner_type(id_args)
+    }
+
+    /// Check if the inner type of ID<T> is valid for pub struct fields
+    fn is_valid_id_inner_type(args: &[TypeInfo]) -> bool {
+        if args.len() != 1 {
+            return false;
+        }
+        let TypeInfo::Struct { name: inner, .. } = &args[0] else {
+            return false;
+        };
+        matches!(
+            inner.as_str(),
+            "Line" | "Train" | "Schedule" | "Signal" | "Tag"
+        )
+    }
+
+    /// Check if the inner type of &Vec<ID<T>> is valid for pub struct fields
+    /// Note: Tag is not allowed in Vec, only Line, Train, Schedule, Signal
+    fn is_valid_vec_id_inner_type(args: &[TypeInfo]) -> bool {
+        if args.len() != 1 {
+            return false;
+        }
+        let TypeInfo::Struct { name: inner, .. } = &args[0] else {
+            return false;
+        };
+        matches!(inner.as_str(), "Line" | "Train" | "Schedule" | "Signal")
     }
 
     /// Get the fields of a struct (user-defined or game type)
@@ -625,6 +665,50 @@ pub enum MyEnum { A, }
         // ID<Signal> is valid
         let id_signal = TypeInfo::generic("ID", vec![TypeInfo::struct_type("Signal")]);
         assert!(ctx.is_valid_pub_struct_field_type(&id_signal));
+
+        // ID<Tag> is valid
+        let id_tag = TypeInfo::generic("ID", vec![TypeInfo::struct_type("Tag")]);
+        assert!(ctx.is_valid_pub_struct_field_type(&id_tag));
+
+        // &Vec<ID<Line>> is valid
+        let vec_id_line = TypeInfo::Reference {
+            inner: Box::new(TypeInfo::generic(
+                "Vec",
+                vec![TypeInfo::generic("ID", vec![TypeInfo::struct_type("Line")])],
+            )),
+            is_mut: false,
+        };
+        assert!(ctx.is_valid_pub_struct_field_type(&vec_id_line));
+
+        // &Vec<ID<Train>> is valid
+        let vec_id_train = TypeInfo::Reference {
+            inner: Box::new(TypeInfo::generic(
+                "Vec",
+                vec![TypeInfo::generic(
+                    "ID",
+                    vec![TypeInfo::struct_type("Train")],
+                )],
+            )),
+            is_mut: false,
+        };
+        assert!(ctx.is_valid_pub_struct_field_type(&vec_id_train));
+
+        // &Vec<ID<Tag>> is NOT valid (Tag only allowed for ID<Tag>, not Vec)
+        let vec_id_tag = TypeInfo::Reference {
+            inner: Box::new(TypeInfo::generic(
+                "Vec",
+                vec![TypeInfo::generic("ID", vec![TypeInfo::struct_type("Tag")])],
+            )),
+            is_mut: false,
+        };
+        assert!(!ctx.is_valid_pub_struct_field_type(&vec_id_tag));
+
+        // Vec<ID<Line>> without & is NOT valid
+        let vec_no_ref = TypeInfo::generic(
+            "Vec",
+            vec![TypeInfo::generic("ID", vec![TypeInfo::struct_type("Line")])],
+        );
+        assert!(!ctx.is_valid_pub_struct_field_type(&vec_no_ref));
 
         // String is NOT valid for pub struct
         assert!(!ctx.is_valid_pub_struct_field_type(&TypeInfo::String));

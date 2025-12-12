@@ -161,15 +161,6 @@ name = "value"
 type = "f64"
 
 [[functions]]
-name = "is_null"
-doc = "Returns true if the pointer is null"
-return_type = "bool"
-type_params = ["T"]
-[[functions.params]]
-name = "ptr"
-type = "*T"
-
-[[functions]]
 name = "is_valid"
 doc = "Returns true if the ID references a valid entity"
 return_type = "bool"
@@ -177,6 +168,15 @@ type_params = ["T"]
 [[functions.params]]
 name = "id"
 type = "ID<T>"
+
+[[functions]]
+name = "is_valid"
+doc = "Returns true if the pointer is valid (non-null)"
+return_type = "bool"
+type_params = ["T"]
+[[functions.params]]
+name = "ptr"
+type = "*T"
 
 [[functions]]
 name = "as_i64"
@@ -225,6 +225,17 @@ type_params = ["T"]
 [[types.DB.methods.params]]
 name = "id"
 type = "ID<T>"
+
+[[types.DB.methods]]
+name = "track_pos_project"
+doc = "Returns a track position separated by 'distance' meters from 'pos', in the direction of 'pos'. If distance is negative it will be in the opposite direction. Only follows the main track, ignores signals, may return shorter distance at merges or dead ends."
+return_type = "Pos"
+[[types.DB.methods.params]]
+name = "pos"
+type = "&Pos"
+[[types.DB.methods.params]]
+name = "distance"
+type = "f64"
 
 [types.Sim]
 kind = "struct"
@@ -450,6 +461,7 @@ kind = "struct"
 doc = "A track segment"
 [types.Track.fields]
 id = { type = "ID<Track>", doc = "Unique identifier", readonly = true }
+station_id = { type = "ID<Station>", doc = "Station ID for platform tracks (invalid if not a platform track)", readonly = true }
 
 # Tags type
 [types.Tags]
@@ -865,6 +877,186 @@ doc = "Reservation probe result"
 [types."ScResvProbeIt::Result".fields]
 is_occ = { type = "bool", doc = "Is occupation (vs reservation)", readonly = true }
 train = { type = "&Train", doc = "The train", readonly = true }
+
+# Vec types for reference fields in pub structs
+# Allowed types: &Vec<ID<Line>>, &Vec<ID<Train>>, &Vec<ID<Schedule>>, &Vec<ID<Signal>>
+
+[types."&Vec<ID<Line>>"]
+kind = "struct"
+doc = "Reference to a vector of Line IDs. Can be used as a field in pub structs. The game UI shows a mini listing editor for Vec fields."
+
+[[types."&Vec<ID<Line>>".methods]]
+name = "len"
+doc = "Returns the number of elements"
+return_type = "i64"
+
+[[types."&Vec<ID<Line>>".methods]]
+name = "is_empty"
+doc = "Returns true if the vector contains no elements"
+return_type = "bool"
+
+[[types."&Vec<ID<Line>>".methods]]
+name = "contains"
+doc = "Returns true if the vector contains the given ID"
+return_type = "bool"
+[[types."&Vec<ID<Line>>".methods.params]]
+name = "value"
+type = "ID<Line>"
+
+[[types."&Vec<ID<Line>>".methods]]
+name = "get"
+doc = "Returns a pointer to the element at the given index, or null if out of bounds"
+return_type = "*ID<Line>"
+[[types."&Vec<ID<Line>>".methods.params]]
+name = "idx"
+type = "i64"
+
+[[types."&Vec<ID<Line>>".methods]]
+name = "iter"
+doc = "Returns an iterator for use in for-in loops"
+return_type = "VecIter<ID<Line>>"
+
+[types."&Vec<ID<Train>>"]
+kind = "struct"
+doc = "Reference to a vector of Train IDs. Can be used as a field in pub structs. The game UI shows a mini listing editor for Vec fields."
+
+[[types."&Vec<ID<Train>>".methods]]
+name = "len"
+doc = "Returns the number of elements"
+return_type = "i64"
+
+[[types."&Vec<ID<Train>>".methods]]
+name = "is_empty"
+doc = "Returns true if the vector contains no elements"
+return_type = "bool"
+
+[[types."&Vec<ID<Train>>".methods]]
+name = "contains"
+doc = "Returns true if the vector contains the given ID"
+return_type = "bool"
+[[types."&Vec<ID<Train>>".methods.params]]
+name = "value"
+type = "ID<Train>"
+
+[[types."&Vec<ID<Train>>".methods]]
+name = "get"
+doc = "Returns a pointer to the element at the given index, or null if out of bounds"
+return_type = "*ID<Train>"
+[[types."&Vec<ID<Train>>".methods.params]]
+name = "idx"
+type = "i64"
+
+[[types."&Vec<ID<Train>>".methods]]
+name = "iter"
+doc = "Returns an iterator for use in for-in loops"
+return_type = "VecIter<ID<Train>>"
+
+[types."&Vec<ID<Schedule>>"]
+kind = "struct"
+doc = "Reference to a vector of Schedule IDs. Can be used as a field in pub structs. The game UI shows a mini listing editor for Vec fields."
+
+[[types."&Vec<ID<Schedule>>".methods]]
+name = "len"
+doc = "Returns the number of elements"
+return_type = "i64"
+
+[[types."&Vec<ID<Schedule>>".methods]]
+name = "is_empty"
+doc = "Returns true if the vector contains no elements"
+return_type = "bool"
+
+[[types."&Vec<ID<Schedule>>".methods]]
+name = "contains"
+doc = "Returns true if the vector contains the given ID"
+return_type = "bool"
+[[types."&Vec<ID<Schedule>>".methods.params]]
+name = "value"
+type = "ID<Schedule>"
+
+[[types."&Vec<ID<Schedule>>".methods]]
+name = "get"
+doc = "Returns a pointer to the element at the given index, or null if out of bounds"
+return_type = "*ID<Schedule>"
+[[types."&Vec<ID<Schedule>>".methods.params]]
+name = "idx"
+type = "i64"
+
+[[types."&Vec<ID<Schedule>>".methods]]
+name = "iter"
+doc = "Returns an iterator for use in for-in loops"
+return_type = "VecIter<ID<Schedule>>"
+
+[types."&Vec<ID<Signal>>"]
+kind = "struct"
+doc = "Reference to a vector of Signal IDs. Can be used as a field in pub structs. The game UI shows a mini listing editor for Vec fields."
+
+[[types."&Vec<ID<Signal>>".methods]]
+name = "len"
+doc = "Returns the number of elements"
+return_type = "i64"
+
+[[types."&Vec<ID<Signal>>".methods]]
+name = "is_empty"
+doc = "Returns true if the vector contains no elements"
+return_type = "bool"
+
+[[types."&Vec<ID<Signal>>".methods]]
+name = "contains"
+doc = "Returns true if the vector contains the given ID"
+return_type = "bool"
+[[types."&Vec<ID<Signal>>".methods.params]]
+name = "value"
+type = "ID<Signal>"
+
+[[types."&Vec<ID<Signal>>".methods]]
+name = "get"
+doc = "Returns a pointer to the element at the given index, or null if out of bounds"
+return_type = "*ID<Signal>"
+[[types."&Vec<ID<Signal>>".methods.params]]
+name = "idx"
+type = "i64"
+
+[[types."&Vec<ID<Signal>>".methods]]
+name = "iter"
+doc = "Returns an iterator for use in for-in loops"
+return_type = "VecIter<ID<Signal>>"
+
+# Vec iterators for for-in loops
+[types."VecIter<ID<Line>>"]
+kind = "struct"
+doc = "Iterator for Vec<ID<Line>>, used in for-in loops"
+
+[[types."VecIter<ID<Line>>".methods]]
+name = "next"
+doc = "Get next element"
+return_type = "*ID<Line>"
+
+[types."VecIter<ID<Train>>"]
+kind = "struct"
+doc = "Iterator for Vec<ID<Train>>, used in for-in loops"
+
+[[types."VecIter<ID<Train>>".methods]]
+name = "next"
+doc = "Get next element"
+return_type = "*ID<Train>"
+
+[types."VecIter<ID<Schedule>>"]
+kind = "struct"
+doc = "Iterator for Vec<ID<Schedule>>, used in for-in loops"
+
+[[types."VecIter<ID<Schedule>>".methods]]
+name = "next"
+doc = "Get next element"
+return_type = "*ID<Schedule>"
+
+[types."VecIter<ID<Signal>>"]
+kind = "struct"
+doc = "Iterator for Vec<ID<Signal>>, used in for-in loops"
+
+[[types."VecIter<ID<Signal>>".methods]]
+name = "next"
+doc = "Get next element"
+return_type = "*ID<Signal>"
 
 # Signal result types
 [types.SignalLookaheadResult]

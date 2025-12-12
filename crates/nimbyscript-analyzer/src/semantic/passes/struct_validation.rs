@@ -124,7 +124,8 @@ fn validate_pub_field_type(field: Node, ctx: &SemanticContext, diagnostics: &mut
             Diagnostic::error(
                 format!(
                     "Invalid field type '{type_str}' for pub struct. \
-                    Allowed types: bool, i64, f64, script enums, ID<Line/Train/Schedule/Signal/Tag>"
+                    Allowed types: bool, i64, f64, script enums, ID<Line/Train/Schedule/Signal/Tag>, \
+                    &Vec<ID<Line/Train/Schedule/Signal>>"
                 ),
                 Span::new(type_node.start_byte(), type_node.end_byte()),
             )
@@ -302,6 +303,59 @@ pub struct Test extend Signal {
         assert!(
             errs.iter().all(|d| d.code.as_deref() != Some("E0501")),
             "ID<Signal> should be valid: {errs:?}"
+        );
+    }
+
+    #[test]
+    fn test_valid_vec_id_field() {
+        let source = r"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+pub struct Test extend Signal {
+    lines: &Vec<ID<Line>>,
+    trains: &Vec<ID<Train>>,
+    schedules: &Vec<ID<Schedule>>,
+    signals: &Vec<ID<Signal>>,
+}
+";
+        let diags = check(source);
+        let errs = errors(&diags);
+        assert!(
+            errs.iter().all(|d| d.code.as_deref() != Some("E0501")),
+            "&Vec<ID<T>> should be valid for Line, Train, Schedule, Signal: {errs:?}"
+        );
+    }
+
+    #[test]
+    fn test_invalid_vec_id_tag_field() {
+        // Tag is valid for ID<Tag> but NOT for &Vec<ID<Tag>>
+        let source = r"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+pub struct Test extend Signal {
+    tags: &Vec<ID<Tag>>,
+}
+";
+        let diags = check(source);
+        let errs = errors(&diags);
+        assert!(
+            errs.iter().any(|d| d.code.as_deref() == Some("E0501")),
+            "&Vec<ID<Tag>> should be invalid"
+        );
+    }
+
+    #[test]
+    fn test_invalid_vec_without_ref() {
+        // Vec<ID<T>> without & is not valid
+        let source = r"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+pub struct Test extend Signal {
+    lines: Vec<ID<Line>>,
+}
+";
+        let diags = check(source);
+        let errs = errors(&diags);
+        assert!(
+            errs.iter().any(|d| d.code.as_deref() == Some("E0501")),
+            "Vec<ID<T>> without & should be invalid"
         );
     }
 
