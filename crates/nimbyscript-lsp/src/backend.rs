@@ -9,6 +9,7 @@ use crate::document::Document;
 use crate::hover::get_hover;
 use crate::semantic_tokens::{compute_semantic_tokens, semantic_token_legend};
 use crate::signature_help::get_signature_help;
+use crate::type_hierarchy::{get_subtypes, get_supertypes, prepare_type_hierarchy};
 
 use nimbyscript_analyzer::ApiDefinitions;
 
@@ -121,6 +122,8 @@ impl LanguageServer for Backend {
                 ),
                 hover_provider: Some(HoverProviderCapability::Simple(true)),
                 document_symbol_provider: Some(OneOf::Left(true)),
+                // Note: type_hierarchy_provider is not yet in lsp-types 0.94.1
+                // The handlers are implemented and will respond if clients send requests
                 ..Default::default()
             },
             server_info: Some(ServerInfo {
@@ -134,6 +137,25 @@ impl LanguageServer for Backend {
         self.client
             .log_message(MessageType::INFO, "NimbyScript LSP initialized")
             .await;
+
+        // Dynamically register type hierarchy capability
+        // (not available in ServerCapabilities in lsp-types 0.94.1)
+        let registrations = vec![Registration {
+            id: "type-hierarchy".to_string(),
+            method: "textDocument/prepareTypeHierarchy".to_string(),
+            register_options: Some(serde_json::json!({
+                "documentSelector": [{ "language": "nimbyscript" }]
+            })),
+        }];
+
+        if let Err(e) = self.client.register_capability(registrations).await {
+            self.client
+                .log_message(
+                    MessageType::WARNING,
+                    format!("Failed to register type hierarchy capability: {e}"),
+                )
+                .await;
+        }
     }
 
     async fn shutdown(&self) -> Result<()> {
@@ -260,6 +282,51 @@ impl LanguageServer for Backend {
                 .collect();
 
             Ok(Some(DocumentSymbolResponse::Nested(lsp_symbols)))
+        } else {
+            Ok(None)
+        }
+    }
+
+    async fn prepare_type_hierarchy(
+        &self,
+        params: TypeHierarchyPrepareParams,
+    ) -> Result<Option<Vec<TypeHierarchyItem>>> {
+        let uri = &params.text_document_position_params.text_document.uri;
+        let position = params.text_document_position_params.position;
+
+        if let Some(doc) = self.documents.get(uri) {
+            Ok(prepare_type_hierarchy(
+                &doc,
+                position,
+                uri,
+                &self.api_definitions,
+            ))
+        } else {
+            Ok(None)
+        }
+    }
+
+    async fn supertypes(
+        &self,
+        params: TypeHierarchySupertypesParams,
+    ) -> Result<Option<Vec<TypeHierarchyItem>>> {
+        let uri = &params.item.uri;
+
+        if let Some(doc) = self.documents.get(uri) {
+            Ok(get_supertypes(&params.item, &doc, &self.api_definitions))
+        } else {
+            Ok(None)
+        }
+    }
+
+    async fn subtypes(
+        &self,
+        params: TypeHierarchySubtypesParams,
+    ) -> Result<Option<Vec<TypeHierarchyItem>>> {
+        let uri = &params.item.uri;
+
+        if let Some(doc) = self.documents.get(uri) {
+            Ok(get_subtypes(&params.item, &doc, &self.api_definitions))
         } else {
             Ok(None)
         }

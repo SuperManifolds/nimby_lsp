@@ -14,6 +14,7 @@ An unofficial Language Server Protocol (LSP) implementation for [NimbyScript](ht
 - **Hover Information** - Type information and documentation for symbols
 - **Signature Help** - Function parameter hints while typing
 - **Document Symbols** - Outline view of structs, enums, functions
+- **Type Hierarchy** - Navigate supertype/subtype relationships
 
 ## Editor Support
 
@@ -54,8 +55,9 @@ An unofficial Language Server Protocol (LSP) implementation for [NimbyScript](ht
 | `textDocument/linkedEditingRange` | ❌ |
 | `callHierarchy/incomingCalls` | ❌ |
 | `callHierarchy/outgoingCalls` | ❌ |
-| `typeHierarchy/supertypes` | ❌ |
-| `typeHierarchy/subtypes` | ❌ |
+| `textDocument/prepareTypeHierarchy` | ✅ |
+| `typeHierarchy/supertypes` | ✅ |
+| `typeHierarchy/subtypes` | ✅ |
 | `textDocument/inlayHint` | ❌ |
 | `workspace/symbol` | ❌ |
 
