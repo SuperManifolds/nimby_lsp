@@ -15,27 +15,27 @@ use crate::document::Document;
 
 /// Define the semantic token types we support
 pub const TOKEN_TYPES: &[SemanticTokenType] = &[
-    SemanticTokenType::KEYWORD,      // 0
-    SemanticTokenType::TYPE,         // 1
-    SemanticTokenType::FUNCTION,     // 2
-    SemanticTokenType::VARIABLE,     // 3
-    SemanticTokenType::PROPERTY,     // 4
-    SemanticTokenType::STRING,       // 5
-    SemanticTokenType::NUMBER,       // 6
-    SemanticTokenType::COMMENT,      // 7
-    SemanticTokenType::OPERATOR,     // 8
-    SemanticTokenType::PARAMETER,    // 9
-    SemanticTokenType::ENUM_MEMBER,  // 10
-    SemanticTokenType::STRUCT,       // 11
-    SemanticTokenType::ENUM,         // 12
+    SemanticTokenType::KEYWORD,     // 0
+    SemanticTokenType::TYPE,        // 1
+    SemanticTokenType::FUNCTION,    // 2
+    SemanticTokenType::VARIABLE,    // 3
+    SemanticTokenType::PROPERTY,    // 4
+    SemanticTokenType::STRING,      // 5
+    SemanticTokenType::NUMBER,      // 6
+    SemanticTokenType::COMMENT,     // 7
+    SemanticTokenType::OPERATOR,    // 8
+    SemanticTokenType::PARAMETER,   // 9
+    SemanticTokenType::ENUM_MEMBER, // 10
+    SemanticTokenType::STRUCT,      // 11
+    SemanticTokenType::ENUM,        // 12
 ];
 
 /// Define semantic token modifiers
 pub const TOKEN_MODIFIERS: &[SemanticTokenModifier] = &[
-    SemanticTokenModifier::DECLARATION,    // bit 0
-    SemanticTokenModifier::DEFINITION,     // bit 1
-    SemanticTokenModifier::READONLY,       // bit 2
-    SemanticTokenModifier::STATIC,         // bit 3
+    SemanticTokenModifier::DECLARATION,     // bit 0
+    SemanticTokenModifier::DEFINITION,      // bit 1
+    SemanticTokenModifier::READONLY,        // bit 2
+    SemanticTokenModifier::STATIC,          // bit 3
     SemanticTokenModifier::DEFAULT_LIBRARY, // bit 4
 ];
 
@@ -368,7 +368,12 @@ impl<'a> TokenCollector<'a> {
                 SemanticTokenType::TYPE
             };
 
-            self.add_token(id_node.start_byte(), id_node.end_byte(), token_type, &modifiers);
+            self.add_token(
+                id_node.start_byte(),
+                id_node.end_byte(),
+                token_type,
+                &modifiers,
+            );
         }
 
         // Handle generic arguments recursively
@@ -434,7 +439,12 @@ impl<'a> TokenCollector<'a> {
                 self.classify_path_prefix(name)
             };
 
-            self.add_token(id_node.start_byte(), id_node.end_byte(), token_type, &modifiers);
+            self.add_token(
+                id_node.start_byte(),
+                id_node.end_byte(),
+                token_type,
+                &modifiers,
+            );
         }
 
         // Handle generic arguments in path segment
@@ -512,7 +522,12 @@ impl<'a> TokenCollector<'a> {
                 self.classify_path_prefix(name)
             };
 
-            self.add_token(id_node.start_byte(), id_node.end_byte(), token_type, &modifiers);
+            self.add_token(
+                id_node.start_byte(),
+                id_node.end_byte(),
+                token_type,
+                &modifiers,
+            );
         }
 
         // Handle generics
@@ -663,9 +678,10 @@ impl<'a> TokenCollector<'a> {
             let (token_type, modifiers) = match symbol.kind {
                 ScopedSymbolKind::Variable => (SemanticTokenType::VARIABLE, vec![]),
                 ScopedSymbolKind::Parameter => (SemanticTokenType::PARAMETER, vec![]),
-                ScopedSymbolKind::Constant => {
-                    (SemanticTokenType::VARIABLE, vec![SemanticTokenModifier::READONLY])
-                }
+                ScopedSymbolKind::Constant => (
+                    SemanticTokenType::VARIABLE,
+                    vec![SemanticTokenModifier::READONLY],
+                ),
                 ScopedSymbolKind::Struct => (SemanticTokenType::STRUCT, vec![]),
                 ScopedSymbolKind::Enum => (SemanticTokenType::ENUM, vec![]),
                 ScopedSymbolKind::EnumVariant => (SemanticTokenType::ENUM_MEMBER, vec![]),
