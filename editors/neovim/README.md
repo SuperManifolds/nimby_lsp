@@ -4,12 +4,10 @@ Language server integration for NimbyScript in Neovim.
 
 ## Prerequisites
 
-1. Install the `nimbyscript-lsp` binary and ensure it's in your PATH:
-   ```bash
-   cargo install --path crates/nimbyscript-lsp
-   ```
+- Neovim 0.10+ (uses `vim.system` for async operations)
+- `curl` available in PATH (for auto-downloading the LSP binary)
 
-2. Neovim 0.8+ (0.11+ recommended for native LSP config)
+The LSP binary is automatically downloaded from GitHub releases on first use.
 
 ## Installation
 
@@ -53,8 +51,11 @@ require('nimbyscript').setup()
 
 ```lua
 require('nimbyscript').setup({
-    -- Path to LSP binary (searches PATH if nil)
+    -- Path to LSP binary (auto-downloads from GitHub if nil)
     cmd = nil,
+
+    -- Automatically check for and install updates on startup
+    auto_update = true,
 
     -- LSP server settings
     settings = {},
@@ -70,14 +71,52 @@ require('nimbyscript').setup({
 })
 ```
 
+### Using a Custom Binary
+
+To use a locally built or custom binary instead of auto-downloading:
+
+```lua
+require('nimbyscript').setup({
+    cmd = '/path/to/nimbyscript-lsp',
+})
+```
+
+### Disabling Auto-Update
+
+To disable automatic update checks on startup:
+
+```lua
+require('nimbyscript').setup({
+    auto_update = false,
+})
+```
+
 ## Features
 
-- Syntax highlighting (basic, via filetype detection)
+- Syntax highlighting (tree-sitter based)
 - Diagnostics (parse errors)
 - Completions (keywords, types, functions)
 - Hover information
 - Document symbols
 - Semantic tokens
+
+## Tree-sitter Syntax Highlighting
+
+For enhanced syntax highlighting, install the tree-sitter parser:
+
+1. Ensure you have [nvim-treesitter](https://github.com/nvim-treesitter/nvim-treesitter) installed
+2. Install the parser:
+   ```vim
+   :TSInstall nimbyscript
+   ```
+3. Enable highlighting in your config:
+   ```lua
+   require('nvim-treesitter.configs').setup({
+       highlight = { enable = true },
+   })
+   ```
+
+The parser is automatically registered when you call `require('nimbyscript').setup()`.
 
 ## Default Keymaps
 
@@ -112,5 +151,6 @@ When attached to a NimbyScript buffer:
 
 ### No syntax highlighting
 
-The basic syntax highlighting is provided by the LSP semantic tokens.
-For enhanced highlighting, consider using tree-sitter (grammar not yet available).
+1. Ensure nvim-treesitter is installed and configured
+2. Install the parser: `:TSInstall nimbyscript`
+3. Check parser status: `:TSInstallInfo`
