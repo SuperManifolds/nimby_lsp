@@ -73,6 +73,30 @@ This project follows the conventions outlined in `AGENTS.md`:
 - Prefer declarative over imperative code (iterators, functional patterns)
 - Do not use `_` prefixes or `#[allow(dead_code)]` to silence warnings - remove unused code
 
+## LLM and AI Assistance
+
+Using LLMs and AI coding assistants is allowed, but requires deliberate and responsible use. See [Oxide's RFD 576](https://rfd.shared.oxide.computer/rfd/0576) for the philosophy behind these guidelines.
+
+**Core principles:**
+
+- **You are accountable** - You are responsible for all code you submit, regardless of how it was written
+- **Understand your code** - Don't submit code you can't explain; be prepared to discuss every line in review
+- **Verify everything** - Always review, test, and understand LLM-generated code before committing
+- **Respect reviewer time** - Don't dump unreviewed LLM output into PRs
+
+**Good uses:**
+
+- Debugging assistance and "rubber duck" conversations
+- Understanding unfamiliar code patterns or APIs
+- Generating boilerplate or test cases (with careful review)
+- Research and documentation help
+
+**Discouraged practices:**
+
+- Submitting wholesale LLM-generated code without understanding it
+- Using LLMs to bypass learning the codebase
+- Relying on LLMs for architectural decisions without human validation
+
 ## Making Changes
 
 ### Branch Naming
