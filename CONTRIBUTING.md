@@ -51,14 +51,15 @@ cd editors/vscode && npm run lint
 Before submitting changes, ensure your code passes quality checks:
 
 ```bash
-# Check for compilation errors
+# Run all linters at once
+make lint
+
+# Or run individually:
 cargo check --all-targets
-
-# Run clippy (treat warnings as errors)
+cargo fmt --all --check
 cargo clippy --all-targets -- -D warnings
-
-# Lint TypeScript
 cd editors/vscode && npm run lint
+luacheck --config editors/neovim/.luacheckrc editors/neovim
 ```
 
 ### Code Style
