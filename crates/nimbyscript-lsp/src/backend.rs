@@ -1,4 +1,7 @@
+use std::sync::RwLock;
+
 use dashmap::DashMap;
+use serde::Deserialize;
 use serde_json::Value;
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
@@ -14,10 +17,34 @@ use crate::type_hierarchy::{get_subtypes, get_supertypes, prepare_type_hierarchy
 
 use nimbyscript_analyzer::ApiDefinitions;
 
+/// LSP server settings that can be configured by the client.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Settings {
+    #[serde(default = "default_true")]
+    pub inlay_hints_enabled: bool,
+    #[serde(default = "default_true")]
+    pub semantic_tokens_enabled: bool,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            inlay_hints_enabled: true,
+            semantic_tokens_enabled: true,
+        }
+    }
+}
+
 pub struct Backend {
     client: Client,
     documents: DashMap<Url, Document>,
     api_definitions: ApiDefinitions,
+    settings: RwLock<Settings>,
 }
 
 // Embed the API definitions TOML at compile time
@@ -36,6 +63,48 @@ impl Backend {
             client,
             documents: DashMap::new(),
             api_definitions,
+            settings: RwLock::new(Settings::default()),
+        }
+    }
+
+    /// Update settings from initialization options or configuration change.
+    fn update_settings(&self, value: &Value) {
+        // Check if this is the nested VS Code format: { "inlayHints": { "enabled": true }, ... }
+        // We check for nested format FIRST because flat format deserialization with defaults
+        // would succeed even when the data is in nested format (ignoring unknown fields).
+        if value.get("inlayHints").is_some() || value.get("semanticTokens").is_some() {
+            self.update_settings_nested(value);
+            return;
+        }
+
+        // Try direct/flat deserialization (for init options from extension)
+        if let Ok(settings) = serde_json::from_value::<Settings>(value.clone()) {
+            if let Ok(mut current) = self.settings.write() {
+                *current = settings;
+            }
+        }
+    }
+
+    /// Update settings from nested VS Code format.
+    fn update_settings_nested(&self, value: &Value) {
+        let Ok(mut current) = self.settings.write() else {
+            return;
+        };
+
+        if let Some(enabled) = value
+            .get("inlayHints")
+            .and_then(|v| v.get("enabled"))
+            .and_then(Value::as_bool)
+        {
+            current.inlay_hints_enabled = enabled;
+        }
+
+        if let Some(enabled) = value
+            .get("semanticTokens")
+            .and_then(|v| v.get("enabled"))
+            .and_then(Value::as_bool)
+        {
+            current.semantic_tokens_enabled = enabled;
         }
     }
 
@@ -91,11 +160,35 @@ impl Backend {
     fn resolve_completion_doc(&self, data: &Value) -> Option<Documentation> {
         resolve_completion(data, &self.api_definitions)
     }
+
+    /// Pull configuration from the client using workspace/configuration request.
+    async fn pull_configuration(&self) {
+        let items = vec![ConfigurationItem {
+            scope_uri: None,
+            section: Some("nimbyscript".to_string()),
+        }];
+
+        match self.client.configuration(items).await {
+            Ok(configs) => {
+                if let Some(config) = configs.into_iter().next() {
+                    self.update_settings(&config);
+                }
+            }
+            Err(e) => {
+                tracing::warn!("Failed to pull configuration: {e}");
+            }
+        }
+    }
 }
 
 #[tower_lsp::async_trait]
 impl LanguageServer for Backend {
-    async fn initialize(&self, _: InitializeParams) -> Result<InitializeResult> {
+    async fn initialize(&self, params: InitializeParams) -> Result<InitializeResult> {
+        // Parse initialization options for settings
+        if let Some(init_options) = params.initialization_options {
+            self.update_settings(&init_options);
+        }
+
         Ok(InitializeResult {
             capabilities: ServerCapabilities {
                 text_document_sync: Some(TextDocumentSyncCapability::Kind(
@@ -189,6 +282,30 @@ impl LanguageServer for Backend {
             .await;
     }
 
+    async fn did_change_configuration(&self, params: DidChangeConfigurationParams) {
+        // VS Code sends settings under "nimbyscript" key
+        if let Some(nimbyscript) = params.settings.get("nimbyscript") {
+            self.update_settings(nimbyscript);
+            return;
+        }
+
+        // VS Code with vscode-languageclient may send an empty object and expect us to pull
+        // configuration using workspace/configuration request
+        if params.settings.is_null()
+            || (params.settings.is_object()
+                && params
+                    .settings
+                    .as_object()
+                    .is_some_and(serde_json::Map::is_empty))
+        {
+            self.pull_configuration().await;
+            return;
+        }
+
+        // Some clients send the settings directly
+        self.update_settings(&params.settings);
+    }
+
     async fn completion(&self, params: CompletionParams) -> Result<Option<CompletionResponse>> {
         let uri = &params.text_document_position.text_document.uri;
         let position = params.text_document_position.position;
@@ -232,6 +349,13 @@ impl LanguageServer for Backend {
         &self,
         params: SemanticTokensParams,
     ) -> Result<Option<SemanticTokensResult>> {
+        // Check if semantic tokens are enabled
+        if let Ok(settings) = self.settings.read() {
+            if !settings.semantic_tokens_enabled {
+                return Ok(None);
+            }
+        }
+
         let uri = &params.text_document.uri;
 
         if let Some(doc) = self.documents.get(uri) {
@@ -335,6 +459,13 @@ impl LanguageServer for Backend {
     }
 
     async fn inlay_hint(&self, params: InlayHintParams) -> Result<Option<Vec<InlayHint>>> {
+        // Check if inlay hints are enabled
+        if let Ok(settings) = self.settings.read() {
+            if !settings.inlay_hints_enabled {
+                return Ok(Some(vec![]));
+            }
+        }
+
         let uri = &params.text_document.uri;
         let range = params.range;
 

@@ -89,6 +89,16 @@
           ],
           "default": "off",
           "description": "Traces communication between VS Code and the language server."
+        },
+        "nimbyscript.inlayHints.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable inlay hints for type annotations and parameter names."
+        },
+        "nimbyscript.semanticTokens.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable semantic token highlighting."
         }
       }
     }
