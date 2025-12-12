@@ -6,6 +6,7 @@ Language server integration for NimbyScript in Neovim.
 
 - Neovim 0.10+ (uses `vim.system` for async operations)
 - `curl` available in PATH (for auto-downloading the LSP binary)
+- [nvim-treesitter](https://github.com/nvim-treesitter/nvim-treesitter) (optional, for syntax highlighting)
 
 The LSP binary is automatically downloaded from GitHub releases on first use.
 
@@ -94,48 +95,41 @@ require('nimbyscript').setup({
 ## Features
 
 - Syntax highlighting (tree-sitter based)
-- Diagnostics (parse errors)
-- Completions (keywords, types, functions)
-- Hover information
+- Diagnostics (semantic errors and warnings)
+- Completions (keywords, types, functions, methods, fields)
+- Signature help (function parameter hints)
+- Hover information (type info and documentation)
 - Document symbols
-- Semantic tokens
+- Semantic tokens (enhanced highlighting from LSP)
+- Filetype icons (nvim-web-devicons and mini.icons)
 
 ## Tree-sitter Syntax Highlighting
 
-For enhanced syntax highlighting, install the tree-sitter parser:
+The tree-sitter parser is automatically registered when you call `require('nimbyscript').setup()`.
 
-1. Ensure you have [nvim-treesitter](https://github.com/nvim-treesitter/nvim-treesitter) installed
-2. Install the parser:
-   ```vim
-   :TSInstall nimbyscript
-   ```
-3. Enable highlighting in your config:
-   ```lua
-   require('nvim-treesitter.configs').setup({
-       highlight = { enable = true },
-   })
-   ```
+To install and enable the parser:
 
-The parser is automatically registered when you call `require('nimbyscript').setup()`.
+```vim
+:TSInstall nimbyscript
+```
 
-## Default Keymaps
+Make sure highlighting is enabled in your nvim-treesitter config:
 
-When attached to a NimbyScript buffer:
-
-| Key | Action |
-|-----|--------|
-| `gd` | Go to definition |
-| `K` | Hover documentation |
-| `gr` | Find references |
-| `<leader>rn` | Rename symbol |
-| `<leader>ca` | Code actions |
+```lua
+require('nvim-treesitter.configs').setup({
+    highlight = { enable = true },
+})
+```
 
 ## Troubleshooting
 
 ### LSP not starting
 
-1. Check if `nimbyscript-lsp` is in your PATH:
+1. Check if the binary exists (auto-downloaded or custom path):
    ```bash
+   # Auto-downloaded location:
+   ls ~/.local/share/nvim/nimbyscript/
+   # Or check if custom binary is in PATH:
    which nimbyscript-lsp
    ```
 
