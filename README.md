@@ -15,6 +15,7 @@ An unofficial Language Server Protocol (LSP) implementation for [NimbyScript](ht
 - **Signature Help** - Function parameter hints while typing
 - **Document Symbols** - Outline view of structs, enums, functions
 - **Type Hierarchy** - Navigate supertype/subtype relationships
+- **Inlay Hints** - Show inferred types and parameter names inline
 
 ## Editor Support
 
@@ -58,7 +59,7 @@ An unofficial Language Server Protocol (LSP) implementation for [NimbyScript](ht
 | `textDocument/prepareTypeHierarchy` | ✅ |
 | `typeHierarchy/supertypes` | ✅ |
 | `typeHierarchy/subtypes` | ✅ |
-| `textDocument/inlayHint` | ❌ |
+| `textDocument/inlayHint` | ✅ |
 | `workspace/symbol` | ❌ |
 
 ## Installation

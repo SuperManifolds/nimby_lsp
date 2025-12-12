@@ -7,6 +7,7 @@ use tower_lsp::{Client, LanguageServer};
 use crate::completions::{get_completions, resolve_completion};
 use crate::document::Document;
 use crate::hover::get_hover;
+use crate::inlay_hints::get_inlay_hints;
 use crate::semantic_tokens::{compute_semantic_tokens, semantic_token_legend};
 use crate::signature_help::get_signature_help;
 use crate::type_hierarchy::{get_subtypes, get_supertypes, prepare_type_hierarchy};
@@ -122,6 +123,7 @@ impl LanguageServer for Backend {
                 ),
                 hover_provider: Some(HoverProviderCapability::Simple(true)),
                 document_symbol_provider: Some(OneOf::Left(true)),
+                inlay_hint_provider: Some(OneOf::Left(true)),
                 // Note: type_hierarchy_provider is not yet in lsp-types 0.94.1
                 // The handlers are implemented and will respond if clients send requests
                 ..Default::default()
@@ -327,6 +329,18 @@ impl LanguageServer for Backend {
 
         if let Some(doc) = self.documents.get(uri) {
             Ok(get_subtypes(&params.item, &doc, &self.api_definitions))
+        } else {
+            Ok(None)
+        }
+    }
+
+    async fn inlay_hint(&self, params: InlayHintParams) -> Result<Option<Vec<InlayHint>>> {
+        let uri = &params.text_document.uri;
+        let range = params.range;
+
+        if let Some(doc) = self.documents.get(uri) {
+            let hints = get_inlay_hints(&doc, range, &self.api_definitions);
+            Ok(Some(hints))
         } else {
             Ok(None)
         }
