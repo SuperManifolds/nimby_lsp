@@ -67,7 +67,22 @@ Install from the [Visual Studio Marketplace](https://marketplace.visualstudio.co
 
 ### Neovim
 
-See [editors/neovim/README.md](editors/neovim/README.md) for detailed instructions.
+See [editors/neovim/README.md](editors/neovim/README.md) for detailed instructions. The LSP binary is automatically downloaded.
+
+### Other Editors
+
+Download the latest `nimbyscript-lsp` binary for your platform from [GitHub Releases](https://github.com/supermanifolds/nimby_lsp/releases/latest):
+
+| Platform | Binary |
+|----------|--------|
+| macOS (Apple Silicon) | `nimbyscript-lsp-darwin-arm64` |
+| macOS (Intel) | `nimbyscript-lsp-darwin-x64` |
+| Linux (x64) | `nimbyscript-lsp-linux-x64` |
+| Linux (ARM64) | `nimbyscript-lsp-linux-arm64` |
+| Windows (x64) | `nimbyscript-lsp-win32-x64.exe` |
+| Windows (ARM64) | `nimbyscript-lsp-win32-arm64.exe` |
+
+Configure your editor's LSP client to run the binary with no arguments. The server communicates over stdio.
 
 ### Building from Source
 
