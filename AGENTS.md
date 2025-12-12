@@ -13,7 +13,7 @@
 
 ## Code Changes
 
-- Always run `cargo clippy --all-targets -- -D warnings` after making Rust code changes
+- Always run `cargo clippy --all-targets -- -D warnings` and `cargo fmt` after making Rust code changes
 - Run `npm run lint` after making TypeScript changes in `editors/vscode/`
 - When implementing a new utility function make sure it is not already implemented elsewhere in the code base
 
