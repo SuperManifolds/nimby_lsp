@@ -136,7 +136,7 @@ package-all: package-macos-arm64 package-macos-x64 package-windows-x64 package-l
 #===============================================================================
 
 # Build and package for current platform only
-dev:
+dev: sync-queries
 	$(CARGO) build --release
 	rm -f $(SERVER_DIR)/$(BINARY_NAME) $(SERVER_DIR)/$(BINARY_NAME_WIN)
 	cp target/release/$(BINARY_NAME) $(SERVER_DIR)/ 2>/dev/null || \
