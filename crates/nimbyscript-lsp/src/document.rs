@@ -55,6 +55,19 @@ impl Document {
         &self.tree
     }
 
+    /// Create a SemanticContext for this document.
+    /// This runs the full semantic analysis pipeline.
+    pub fn create_semantic_context<'a>(
+        &'a self,
+        api: &'a ApiDefinitions,
+    ) -> SemanticContext<'a> {
+        let mut ctx = SemanticContext::new(&self.content, &self.tree, api);
+        collect_declarations(&mut ctx);
+        let registry = PassRegistry::default();
+        let _ = registry.run_all(&mut ctx);
+        ctx
+    }
+
     pub fn offset_to_position(&self, offset: usize) -> Position {
         let line = self
             .line_offsets
