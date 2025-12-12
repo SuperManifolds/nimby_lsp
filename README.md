@@ -17,11 +17,11 @@ An unofficial Language Server Protocol (LSP) implementation for [NimbyScript](ht
 
 ## Editor Support
 
-| Editor | LSP | Syntax Highlighting | Published | Installation |
-|--------|-----|---------------------|-----------|--------------|
-| VS Code | ✅ | ✅ | ✅ | [Marketplace](https://marketplace.visualstudio.com/items?itemName=supermanifolds.nimbyscript) |
-| Neovim | 🚧 | 🚧 | ❌ | See [editors/neovim](editors/neovim/README.md) |
-| Other LSP clients | ✅ | ❌ | - | Point to `nimbyscript-lsp` binary |
+| Editor | LSP | Syntax Highlighting | Installation |
+|--------|-----|---------------------|--------------|
+| VS Code | ✅ | ✅ | [Marketplace](https://marketplace.visualstudio.com/items?itemName=supermanifolds.nimbyscript) |
+| Neovim | ✅ | ✅ | See [editors/neovim](editors/neovim/README.md) |
+| Other LSP clients | ✅ | ❌ | Point to `nimbyscript-lsp` binary |
 
 ## LSP Capabilities
 
