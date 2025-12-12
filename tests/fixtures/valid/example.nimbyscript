@@ -167,7 +167,7 @@ pub fn HateDepots::control_train(
     sc: &mut SimController
 ) {
     // train is already removed from the tracks, don't interfere with potential attempts at shift assignation
-    if is_null(motion.presence.get()) {
+    if !is_valid(motion.presence.get()) {
         return;
     }
     // train is running a schedule, don't interfere
