@@ -71,32 +71,27 @@ jobs:
         env:
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: ${{ matrix.cross && 'aarch64-linux-gnu-gcc' || '' }}
 
+      - name: Rename binary for release
+        shell: bash
+        run: |
+          mkdir -p release
+          if [[ "${{ matrix.binary }}" == *.exe ]]; then
+            cp target/${{ matrix.target }}/release/${{ matrix.binary }} release/nimbyscript-lsp-${{ matrix.vscode-target }}.exe
+          else
+            cp target/${{ matrix.target }}/release/${{ matrix.binary }} release/nimbyscript-lsp-${{ matrix.vscode-target }}
+          fi
+
       - name: Upload binary artifact
         uses: actions/upload-artifact@v4
         with:
           name: binary-${{ matrix.vscode-target }}
-          path: target/${{ matrix.target }}/release/${{ matrix.binary }}
+          path: release/nimbyscript-lsp-${{ matrix.vscode-target }}*
           if-no-files-found: error
 
   package:
-    name: Package ${{ matrix.vscode-target }}
+    name: Package Universal Extension
     needs: build
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        include:
-          - vscode-target: darwin-arm64
-            binary: nimbyscript-lsp
-          - vscode-target: darwin-x64
-            binary: nimbyscript-lsp
-          - vscode-target: win32-x64
-            binary: nimbyscript-lsp.exe
-          - vscode-target: win32-arm64
-            binary: nimbyscript-lsp.exe
-          - vscode-target: linux-x64
-            binary: nimbyscript-lsp
-          - vscode-target: linux-arm64
-            binary: nimbyscript-lsp
 
     steps:
       - name: Checkout
@@ -109,69 +104,47 @@ jobs:
           cache: 'npm'
           cache-dependency-path: editors/vscode/package-lock.json
 
-      - name: Download binary
-        uses: actions/download-artifact@v4
-        with:
-          name: binary-${{ matrix.vscode-target }}
-          path: editors/vscode/server/
-
-      - name: Set executable permission
-        if: ${{ !startsWith(matrix.vscode-target, 'win32') }}
-        run: chmod +x editors/vscode/server/${{ matrix.binary }}
-
       - name: Install dependencies
         working-directory: editors/vscode
         run: npm ci
 
-      - name: Package extension
+      - name: Package universal extension
         working-directory: editors/vscode
-        run: npx vsce package --target ${{ matrix.vscode-target }}
-
-      - name: Rename binary for release
-        run: |
-          cp editors/vscode/server/${{ matrix.binary }} nimbyscript-lsp-${{ matrix.vscode-target }}${{ matrix.binary == 'nimbyscript-lsp.exe' && '.exe' || '' }}
+        run: npx vsce package
 
       - name: Upload VSIX artifact
         uses: actions/upload-artifact@v4
         with:
-          name: vsix-${{ matrix.vscode-target }}
+          name: vsix
           path: editors/vscode/*.vsix
-          if-no-files-found: error
-
-      - name: Upload standalone binary artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: standalone-${{ matrix.vscode-target }}
-          path: nimbyscript-lsp-${{ matrix.vscode-target }}*
           if-no-files-found: error
 
   release:
     name: Create Release
-    needs: package
+    needs: [build, package]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
 
     steps:
-      - name: Download all VSIX files
+      - name: Download VSIX
         uses: actions/download-artifact@v4
         with:
-          pattern: vsix-*
-          merge-multiple: true
+          name: vsix
           path: vsix/
 
-      - name: Download all standalone binaries
+      - name: Download all binaries
         uses: actions/download-artifact@v4
         with:
-          pattern: standalone-*
+          pattern: binary-*
           merge-multiple: true
-          path: standalone/
+          path: binaries/
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             vsix/*.vsix
-            standalone/*
+            binaries/*
           generate_release_notes: true
           draft: true
 
@@ -193,11 +166,10 @@ jobs:
           cache: 'npm'
           cache-dependency-path: editors/vscode/package-lock.json
 
-      - name: Download all VSIX files
+      - name: Download VSIX
         uses: actions/download-artifact@v4
         with:
-          pattern: vsix-*
-          merge-multiple: true
+          name: vsix
           path: vsix/
 
       - name: Install vsce
@@ -206,8 +178,4 @@ jobs:
       - name: Publish to Visual Studio Marketplace
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
-        run: |
-          for vsix in vsix/*.vsix; do
-            echo "Publishing $vsix"
-            vsce publish --packagePath "$vsix"
-          done
+        run: vsce publish --packagePath vsix/*.vsix
