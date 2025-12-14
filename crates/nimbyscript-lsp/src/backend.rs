@@ -4,6 +4,10 @@ use dashmap::DashMap;
 use serde::Deserialize;
 use serde_json::Value;
 use tower_lsp::jsonrpc::Result;
+use tower_lsp::lsp_types::request::{
+    GotoDeclarationParams, GotoDeclarationResponse, GotoImplementationParams,
+    GotoImplementationResponse, GotoTypeDefinitionParams, GotoTypeDefinitionResponse,
+};
 use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer};
 
@@ -11,6 +15,9 @@ use crate::completions::{get_completions, resolve_completion};
 use crate::document::Document;
 use crate::hover::get_hover;
 use crate::inlay_hints::get_inlay_hints;
+use crate::navigation::{
+    find_references, get_definition, get_implementations, get_type_definition,
+};
 use crate::semantic_tokens::{compute_semantic_tokens, semantic_token_legend};
 use crate::signature_help::get_signature_help;
 use crate::type_hierarchy::{get_subtypes, get_supertypes, prepare_type_hierarchy};
@@ -217,6 +224,11 @@ impl LanguageServer for Backend {
                 hover_provider: Some(HoverProviderCapability::Simple(true)),
                 document_symbol_provider: Some(OneOf::Left(true)),
                 inlay_hint_provider: Some(OneOf::Left(true)),
+                definition_provider: Some(OneOf::Left(true)),
+                declaration_provider: Some(DeclarationCapability::Simple(true)),
+                type_definition_provider: Some(TypeDefinitionProviderCapability::Simple(true)),
+                implementation_provider: Some(ImplementationProviderCapability::Simple(true)),
+                references_provider: Some(OneOf::Left(true)),
                 // Note: type_hierarchy_provider is not yet in lsp-types 0.94.1
                 // The handlers are implemented and will respond if clients send requests
                 ..Default::default()
@@ -472,6 +484,91 @@ impl LanguageServer for Backend {
         if let Some(doc) = self.documents.get(uri) {
             let hints = get_inlay_hints(&doc, range, &self.api_definitions);
             Ok(Some(hints))
+        } else {
+            Ok(None)
+        }
+    }
+
+    async fn goto_definition(
+        &self,
+        params: GotoDefinitionParams,
+    ) -> Result<Option<GotoDefinitionResponse>> {
+        let uri = &params.text_document_position_params.text_document.uri;
+        let position = params.text_document_position_params.position;
+
+        if let Some(doc) = self.documents.get(uri) {
+            Ok(get_definition(&doc, position, uri, &self.api_definitions))
+        } else {
+            Ok(None)
+        }
+    }
+
+    async fn goto_declaration(
+        &self,
+        params: GotoDeclarationParams,
+    ) -> Result<Option<GotoDeclarationResponse>> {
+        let uri = &params.text_document_position_params.text_document.uri;
+        let position = params.text_document_position_params.position;
+
+        // Declaration is the same as definition for NimbyScript
+        if let Some(doc) = self.documents.get(uri) {
+            Ok(get_definition(&doc, position, uri, &self.api_definitions))
+        } else {
+            Ok(None)
+        }
+    }
+
+    async fn goto_type_definition(
+        &self,
+        params: GotoTypeDefinitionParams,
+    ) -> Result<Option<GotoTypeDefinitionResponse>> {
+        let uri = &params.text_document_position_params.text_document.uri;
+        let position = params.text_document_position_params.position;
+
+        if let Some(doc) = self.documents.get(uri) {
+            Ok(get_type_definition(
+                &doc,
+                position,
+                uri,
+                &self.api_definitions,
+            ))
+        } else {
+            Ok(None)
+        }
+    }
+
+    async fn goto_implementation(
+        &self,
+        params: GotoImplementationParams,
+    ) -> Result<Option<GotoImplementationResponse>> {
+        let uri = &params.text_document_position_params.text_document.uri;
+        let position = params.text_document_position_params.position;
+
+        if let Some(doc) = self.documents.get(uri) {
+            Ok(get_implementations(
+                &doc,
+                position,
+                uri,
+                &self.api_definitions,
+            ))
+        } else {
+            Ok(None)
+        }
+    }
+
+    async fn references(&self, params: ReferenceParams) -> Result<Option<Vec<Location>>> {
+        let uri = &params.text_document_position.text_document.uri;
+        let position = params.text_document_position.position;
+        let include_declaration = params.context.include_declaration;
+
+        if let Some(doc) = self.documents.get(uri) {
+            Ok(find_references(
+                &doc,
+                position,
+                uri,
+                &self.api_definitions,
+                include_declaration,
+            ))
         } else {
             Ok(None)
         }
