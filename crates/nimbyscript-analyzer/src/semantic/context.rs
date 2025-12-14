@@ -48,6 +48,10 @@ pub struct SemanticContext<'a> {
 
     /// Public functions (callbacks)
     pub pub_functions: std::collections::HashSet<String>,
+
+    /// Private functions that look like callbacks (name, name_span)
+    /// These will generate warnings suggesting the user add `pub`
+    pub possibly_private_callbacks: Vec<(String, Span)>,
 }
 
 impl<'a> SemanticContext<'a> {
@@ -65,6 +69,7 @@ impl<'a> SemanticContext<'a> {
             pub_structs: std::collections::HashSet::new(),
             pub_enums: std::collections::HashSet::new(),
             pub_functions: std::collections::HashSet::new(),
+            possibly_private_callbacks: Vec::new(),
         }
     }
 
@@ -465,10 +470,21 @@ fn collect_function(node: Node, ctx: &mut SemanticContext) {
     };
     let name = name_node.text(ctx.source).to_string();
 
-    // Check if pub (or if it's a method/callback - methods with :: are effectively pub)
-    let is_pub = node.child_by_kind(kind::VISIBILITY_MODIFIER).is_some() || name.contains("::");
+    // Check if pub
+    let is_pub = node.child_by_kind(kind::VISIBILITY_MODIFIER).is_some();
     if is_pub {
         ctx.pub_functions.insert(name.clone());
+    } else {
+        // Check if this looks like a callback method missing `pub`
+        // Methods are written as `StructName::method_name`
+        let method_name = name
+            .find("::")
+            .map_or(name.as_str(), |pos| &name[pos + 2..]);
+        if ctx.api.is_valid_callback(method_name) {
+            let name_span = Span::new(name_node.start_byte(), name_node.end_byte());
+            ctx.possibly_private_callbacks
+                .push((name.clone(), name_span));
+        }
     }
 
     // Get return type

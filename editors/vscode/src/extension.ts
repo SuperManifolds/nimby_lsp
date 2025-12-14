@@ -151,6 +151,16 @@ async function ensureBinaryAvailable(context: vscode.ExtensionContext): Promise<
         return customPath;
     }
 
+    // Check for bundled binary (used in local development with `make install`)
+    const bundledPath = context.asAbsolutePath(
+        path.join('server', getBinaryName())
+    );
+    if (fs.existsSync(bundledPath)) {
+        outputChannel.appendLine(`Using bundled binary: ${bundledPath}`);
+        return bundledPath;
+    }
+
+    // No bundled binary - download from GitHub releases
     const { binaryPath, versionPath } = getStoragePaths(context);
     const extensionVersion = context.extension.packageJSON.version as string;
     const storedVersion = getStoredVersion(versionPath);
