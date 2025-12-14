@@ -3,6 +3,7 @@ mod completions;
 mod document;
 mod hover;
 mod inlay_hints;
+mod navigation;
 mod semantic_tokens;
 mod signature_help;
 mod type_hierarchy;

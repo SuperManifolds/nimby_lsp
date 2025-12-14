@@ -170,7 +170,9 @@ lint:
 
 # Install extension locally (after running dev)
 install: dev
-	code --install-extension $(EXTENSION_DIR)/*.vsix --force
+	rm -f $(EXTENSION_DIR)/nimbyscript-*.vsix
+	cd $(EXTENSION_DIR) && npx vsce package
+	code --install-extension $(EXTENSION_DIR)/nimbyscript-$(VERSION).vsix --force
 
 #===============================================================================
 # Neovim support
