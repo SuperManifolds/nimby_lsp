@@ -971,7 +971,9 @@ impl<'a> NavigationEngine<'a> {
         let name = name_node.text(self.content).to_string();
         let type_info = binding
             .child_by_field("type")
-            .map_or(TypeInfo::Unknown, |t| parse_type_string(t.text(self.content)));
+            .map_or(TypeInfo::Unknown, |t| {
+                parse_type_string(t.text(self.content))
+            });
         self.local_types.insert(name, type_info);
     }
 

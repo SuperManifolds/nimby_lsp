@@ -8,6 +8,7 @@
 //! - W0604: Unused parameter
 //! - W0605: Unused struct
 //! - W0606: Unused enum
+//! - W0607: Possibly missing `pub` on callback function
 
 use nimbyscript_parser::ast::Span;
 use nimbyscript_parser::{kind, Node, NodeExt};
@@ -35,6 +36,9 @@ impl SemanticPass for ScopeAnalysisPass {
 
         // Report unused symbols
         report_unused(ctx, diagnostics);
+
+        // Report possibly private callbacks
+        report_private_callbacks(ctx, diagnostics);
     }
 }
 
@@ -438,6 +442,21 @@ fn should_skip_unused(sym: &ScopedSymbol) -> bool {
     false
 }
 
+fn report_private_callbacks(ctx: &SemanticContext, diagnostics: &mut Vec<Diagnostic>) {
+    for (name, span) in &ctx.possibly_private_callbacks {
+        diagnostics.push(
+            Diagnostic::warning(
+                format!(
+                    "Function '{name}' looks like a callback but is missing `pub` keyword. \
+                     It won't be called by the game engine."
+                ),
+                *span,
+            )
+            .with_code("W0607"),
+        );
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -503,6 +522,107 @@ fn test2() {
         assert!(
             warns.iter().all(|d| d.code.as_deref() != Some("W0600")),
             "Different scope should not shadow: {warns:?}"
+        );
+    }
+
+    // W0607 - Private callback warning
+
+    #[test]
+    fn test_private_callback_method_warns() {
+        // Callbacks are methods written as StructName::callback_name
+        // Missing `pub` should warn
+        let source = r"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+pub struct MySignal {}
+fn MySignal::event_signal_check(self: &Self, ctx: &EventCtx, train: &Train, motion: &Motion, signal: &Signal) -> SignalCheck {
+    SignalCheck::Pass
+}
+";
+        let diags = check(source);
+        let warns = warnings(&diags);
+        assert!(
+            warns.iter().any(|d| d.code.as_deref() == Some("W0607")),
+            "Private callback method should warn: {warns:?}"
+        );
+    }
+
+    #[test]
+    fn test_private_callback_lookahead_warns() {
+        // Real-world example from user
+        let source = r"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+pub struct ProbeCheck {}
+fn ProbeCheck::event_signal_lookahead(
+    self: &ProbeCheck,
+    ctx: &EventCtx,
+    train: &Train,
+    motion: &Motion,
+    signal: &Signal,
+    train_distance: f64,
+    check: SignalCheck,
+    result: &mut SignalLookaheadResult
+) {
+}
+";
+        let diags = check(source);
+        let warns = warnings(&diags);
+        for w in &warns {
+            eprintln!("Warning: {:?} - {}", w.code, w.message);
+        }
+        assert!(
+            warns.iter().any(|d| d.code.as_deref() == Some("W0607")),
+            "Private callback method should warn: {warns:?}"
+        );
+    }
+
+    #[test]
+    fn test_pub_callback_method_no_warning() {
+        let source = r"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+pub struct MySignal {}
+pub fn MySignal::event_signal_check(self: &Self, ctx: &EventCtx, train: &Train, motion: &Motion, signal: &Signal) -> SignalCheck {
+    SignalCheck::Pass
+}
+";
+        let diags = check(source);
+        let warns = warnings(&diags);
+        assert!(
+            warns.iter().all(|d| d.code.as_deref() != Some("W0607")),
+            "Public callback method should not warn: {warns:?}"
+        );
+    }
+
+    #[test]
+    fn test_regular_private_function_no_callback_warning() {
+        let source = r"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+fn helper_function() {
+    // This is just a helper, not a callback
+}
+";
+        let diags = check(source);
+        let warns = warnings(&diags);
+        assert!(
+            warns.iter().all(|d| d.code.as_deref() != Some("W0607")),
+            "Regular private function should not get callback warning: {warns:?}"
+        );
+    }
+
+    #[test]
+    fn test_private_method_non_callback_no_warning() {
+        // Private method that's not a callback should not warn
+        let source = r"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+pub struct MyStruct {}
+fn MyStruct::helper_method(self: &Self) {
+    // Just a helper method
+}
+";
+        let diags = check(source);
+        let warns = warnings(&diags);
+        assert!(
+            warns.iter().all(|d| d.code.as_deref() != Some("W0607")),
+            "Private non-callback method should not warn: {warns:?}"
         );
     }
 }
