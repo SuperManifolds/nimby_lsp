@@ -708,6 +708,68 @@ fn check_return(
     }
 }
 
+/// Infer the return type of a method call, handling generic type parameters.
+/// For example, `ctx.db.view<Hitcher>(id)` returns `*Hitcher`.
+fn infer_method_call_type(
+    field_access: Node,
+    ctx: &SemanticContext,
+    local_types: &HashMap<String, TypeInfo>,
+) -> TypeInfo {
+    // 1. Get the object and method name
+    let Some(object) = field_access.child_by_field("object") else {
+        return TypeInfo::Unknown;
+    };
+    let method_name = field_access
+        .child_by_field("field")
+        .map_or("", |f| f.text(ctx.source));
+
+    // 2. Infer the object's type
+    let object_type = infer_expr_type(Some(object), ctx, local_types);
+    let base_type = object_type.unwrap_ref();
+
+    // 3. Get the type name
+    let type_name = match &base_type {
+        TypeInfo::Struct { name, .. } | TypeInfo::Generic { name, .. } => name.as_str(),
+        _ => return TypeInfo::Unknown,
+    };
+
+    // 4. Look up the method
+    let Some(method_def) = ctx.get_type_method(type_name, method_name) else {
+        return TypeInfo::Unknown;
+    };
+
+    // 5. Get the return type
+    let Some(return_type_str) = &method_def.return_type else {
+        return TypeInfo::Void;
+    };
+
+    // 6. If the method has type parameters, substitute them with provided type arguments
+    if !method_def.type_params.is_empty() {
+        // Extract type arguments from the field_access node (e.g., <Hitcher>)
+        if let Some(type_args_node) = field_access.child_by_field("type_arguments") {
+            // Parse the type arguments
+            let mut type_args = Vec::new();
+            let mut cursor = type_args_node.walk();
+            for child in type_args_node.children(&mut cursor) {
+                if child.kind() == kind::TYPE_IDENTIFIER {
+                    let type_arg = child.text(ctx.source);
+                    type_args.push(type_arg.to_string());
+                }
+            }
+
+            // Substitute type parameters in the return type
+            let mut substituted = return_type_str.clone();
+            for (param, arg) in method_def.type_params.iter().zip(type_args.iter()) {
+                substituted = substituted.replace(param, arg);
+            }
+
+            return ctx.resolve_type(&substituted);
+        }
+    }
+
+    ctx.resolve_type(return_type_str)
+}
+
 /// Type inference for expressions with local variable tracking.
 fn infer_expr_type(
     node: Option<Node>,
@@ -774,6 +836,11 @@ fn infer_expr_type(
         }
         kind::CALL_EXPRESSION => {
             if let Some(callee) = node.child_by_field("function") {
+                // Check if this is a method call (callee is field_access)
+                if callee.kind() == kind::FIELD_ACCESS {
+                    return infer_method_call_type(callee, ctx, local_types);
+                }
+
                 let func_name = callee.text(ctx.source);
 
                 // Check user functions

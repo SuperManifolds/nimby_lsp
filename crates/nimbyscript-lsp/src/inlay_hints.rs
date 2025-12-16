@@ -574,10 +574,16 @@ impl<'a> InlayHintEngine<'a> {
                     .as_ref()
                     .map(|t| parse_type_string(t))?;
 
-                // Try to get generic args from object type first (e.g., std::optional<T>.get())
-                let mut generic_args = Self::extract_generic_args(&object_type);
+                // First, check for explicit type arguments on the method call (e.g., view<Hitcher>)
+                let mut generic_args =
+                    Self::extract_explicit_type_args(callee, self.content, self.api);
 
-                // If method has type_params and no args from object, try to infer from arguments
+                // If no explicit type args, try to get generic args from object type (e.g., std::optional<T>.get())
+                if generic_args.is_empty() {
+                    generic_args = Self::extract_generic_args(&object_type);
+                }
+
+                // If still no args and method has type_params, try to infer from arguments
                 if generic_args.is_empty() && !method_def.type_params.is_empty() {
                     generic_args = self.infer_type_params_from_args(node, method_def, local_types);
                 }
@@ -640,6 +646,40 @@ impl<'a> InlayHintEngine<'a> {
             }
             _ => Vec::new(),
         }
+    }
+
+    /// Extract explicit type arguments from a field_access node's type_arguments field.
+    /// For `view<Hitcher>`, returns `[Hitcher]`.
+    fn extract_explicit_type_args(
+        field_access: Node,
+        content: &str,
+        api: &ApiDefinitions,
+    ) -> Vec<TypeInfo> {
+        let Some(type_args_node) = field_access.child_by_field("type_arguments") else {
+            return Vec::new();
+        };
+
+        let mut result = Vec::new();
+        let mut cursor = type_args_node.walk();
+        for child in type_args_node.children(&mut cursor) {
+            if child.kind() == kind::TYPE_IDENTIFIER {
+                let type_name = child.text(content);
+                // Resolve the type - check if it's a known type
+                if api.get_type(type_name).is_some() {
+                    result.push(TypeInfo::Struct {
+                        name: type_name.to_string(),
+                        extends: None,
+                    });
+                } else {
+                    // Could be a user-defined type
+                    result.push(TypeInfo::Struct {
+                        name: type_name.to_string(),
+                        extends: None,
+                    });
+                }
+            }
+        }
+        result
     }
 
     /// Infer type parameters from method arguments.
