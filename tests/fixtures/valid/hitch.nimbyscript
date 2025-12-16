@@ -1,0 +1,66 @@
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+
+pub struct Hitcher extend Train {
+    config: i64 meta {
+        min: 0,
+        max: 8,
+    },
+}
+
+pub struct Driver extend Train {
+    hitcher_detector: ID<Signal>,
+    driver_detector: ID<Signal>,
+}
+
+pub fn Driver::control_train(
+    self: &Driver,
+    ctx: &ControlCtx,
+    train: &Train,
+    motion: &Motion,
+    sc: &mut SimController
+) {
+    // this is a dumb example but also quite generic
+    // the basic idea is to check if the conditions for the driver train
+    // to pick another train hold up, then check if any hitcher train
+    // is available
+    // this is done with the use marker signals to decide if the trains
+    // are currently stopped in the expected spots
+    // control scripts are called only once every 6s so make sure the
+    // scheduled stop is at least 6*2s plus some margin
+
+    // lookup needed signals
+    let hitcher_detector &= ctx.db.view(self.hitcher_detector) else { return; }
+    let hitcher_detector_pos = hitcher_detector.forward();
+    let driver_detector &= ctx.db.view(self.driver_detector) else { return; }
+    let driver_detector_pos = driver_detector.forward();
+
+    // driver not stopped, ignore
+    if !is_valid(motion.schedule_stop.get()) {
+        return;
+    }
+
+    // driver not on the desired stop area, ignore
+    if !ctx.extrapolator.is_occupying(driver_detector_pos, train.id) {
+        return;
+    }
+
+    // check for a train on the hitch area, similar checks for valid configuration of the train
+    let hitcher &= ctx.extrapolator.get_one_occupation(hitcher_detector_pos, train.id) else { return; }
+    let hitcher_setup &= ctx.db.view<Hitcher>(hitcher) else { return; }
+    let hitcher_motion &= ctx.sim.view<Motion>(hitcher.id) else { return; }
+    if is_valid(hitcher_motion.schedule_dispatch.get()) {
+        return;
+    }
+    if is_valid(hitcher_motion.drive.get()) {
+        return;
+    }
+
+    // we are stopped, the hitcher is configured, stopped and in a valid state, therefore assert the hitch
+    sc.queue_train_set_configuration(hitcher, hitcher_setup.config);
+    sc.queue_train_hitch(train, hitcher);
+
+    // exercise for the reader: the unhitch script. ideas to keep in mind:
+    // the hitcher train can also have a control_train()
+    // it can lookup its current driver via motion.hitch.driver_train_id to make decisions
+    // it can have more setup data in its structs, priv structs, point to any signal, etc
+}

@@ -570,4 +570,20 @@ pub struct Foo {
             .collect();
         assert!(errors.is_empty(), "Minimal file should have no errors");
     }
+
+    #[test]
+    fn test_hitch_file_generic_method_calls() {
+        // This file uses generic method calls like ctx.db.view<Hitcher>(hitcher)
+        let content = include_str!("../../../tests/fixtures/valid/hitch.nimbyscript");
+        let doc = Document::new(content.to_string(), None);
+        let errors: Vec<_> = doc
+            .diagnostics()
+            .iter()
+            .filter(|d| matches!(d.severity, Severity::Error))
+            .collect();
+        assert!(
+            errors.is_empty(),
+            "Hitch file should have no errors, but found: {errors:?}"
+        );
+    }
 }

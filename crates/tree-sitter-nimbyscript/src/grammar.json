@@ -1744,6 +1744,22 @@
               "type": "SYMBOL",
               "name": "identifier"
             }
+          },
+          {
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "FIELD",
+                "name": "type_arguments",
+                "content": {
+                  "type": "SYMBOL",
+                  "name": "generic_arguments"
+                }
+              },
+              {
+                "type": "BLANK"
+              }
+            ]
           }
         ]
       }
@@ -2102,12 +2118,11 @@
       "path_segment"
     ],
     [
-      "_generic_path_segment",
-      "binary_expression"
-    ],
-    [
       "path_segment",
       "_generic_path_segment"
+    ],
+    [
+      "field_access"
     ]
   ],
   "precedences": [],
