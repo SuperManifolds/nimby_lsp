@@ -627,6 +627,16 @@
             "named": true
           }
         ]
+      },
+      "type_arguments": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "generic_arguments",
+            "named": true
+          }
+        ]
       }
     }
   },

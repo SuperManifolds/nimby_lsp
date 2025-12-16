@@ -25,9 +25,9 @@ module.exports = grammar({
 
   conflicts: $ => [
     [$._assignable, $.path_segment],
-    // GLR: try both interpretations when we see identifier<
-    [$._generic_path_segment, $.binary_expression],
     [$.path_segment, $._generic_path_segment],
+    // GLR: try both interpretations when we see obj.method< (could be generic args or comparison)
+    [$.field_access],
   ],
 
   rules: {
@@ -385,6 +385,7 @@ module.exports = grammar({
       field('object', $._postfix_expression),
       '.',
       field('field', $.identifier),
+      optional(field('type_arguments', $.generic_arguments)),
     )),
 
     _atom_expression: $ => choice(
