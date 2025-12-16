@@ -13,6 +13,8 @@ An unofficial Language Server Protocol (LSP) implementation for [NimbyScript](ht
 - **Completions** - Context-aware completions with documentation
 - **Hover Information** - Type information and documentation for symbols
 - **Signature Help** - Function parameter hints while typing
+- **Go to Definition** - Navigate to symbol definitions, type definitions, and implementations
+- **Find References** - Find all references to a symbol
 - **Document Symbols** - Outline view of structs, enums, functions
 - **Type Hierarchy** - Navigate supertype/subtype relationships
 - **Inlay Hints** - Show inferred types and parameter names inline
@@ -36,11 +38,11 @@ An unofficial Language Server Protocol (LSP) implementation for [NimbyScript](ht
 | `textDocument/publishDiagnostics` | ✅ |
 | `textDocument/documentSymbol` | ✅ |
 | `textDocument/semanticTokens/full` | ✅ |
-| `textDocument/declaration` | ❌ |
-| `textDocument/definition` | ❌ |
-| `textDocument/typeDefinition` | ❌ |
-| `textDocument/implementation` | ❌ |
-| `textDocument/references` | ❌ |
+| `textDocument/declaration` | ✅ |
+| `textDocument/definition` | ✅ |
+| `textDocument/typeDefinition` | ✅ |
+| `textDocument/implementation` | ✅ |
+| `textDocument/references` | ✅ |
 | `textDocument/documentHighlight` | ❌ |
 | `textDocument/codeAction` | ❌ |
 | `textDocument/codeLens` | ❌ |

@@ -38,6 +38,19 @@ Hover over symbols to see:
 
 Get parameter hints while typing function and method calls.
 
+### Go to Definition
+
+Navigate to symbol definitions with F12 or Ctrl+Click:
+- Jump to struct, enum, and function definitions
+- Go to type definitions
+- Find implementations
+
+### Find References
+
+Find all references to a symbol (Shift+F12):
+- See where structs, functions, and variables are used
+- Navigate between usages
+
 ### Document Outline
 
 Navigate your code with the outline view showing all:
