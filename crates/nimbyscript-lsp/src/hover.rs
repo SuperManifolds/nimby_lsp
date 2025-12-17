@@ -936,6 +936,13 @@ mod tests {
         ApiDefinitions::load_from_file(&api_path).expect("Failed to load API")
     }
 
+    fn extract_hover_content(hover: Option<Hover>) -> String {
+        match hover.expect("hover should exist").contents {
+            HoverContents::Markup(m) => m.value,
+            _ => panic!("Expected markup content"),
+        }
+    }
+
     #[test]
     fn test_hover_on_type_annotation() {
         let api = make_api();
@@ -955,10 +962,7 @@ pub struct Test extend Signal {
 
         let hover = get_hover(&doc, id_pos, &api);
         assert!(hover.is_some(), "Should have hover info for 'ID'");
-        let hover_content = match hover.expect("hover should exist").contents {
-            HoverContents::Markup(m) => m.value,
-            _ => panic!("Expected markup content"),
-        };
+        let hover_content = extract_hover_content(hover);
         assert!(
             hover_content.contains("ID<Train>"),
             "Hover should mention ID<Train>"
@@ -1002,10 +1006,7 @@ pub fn Test::control_train(
 
         let hover = get_hover(&doc, presence_pos, &api);
         assert!(hover.is_some(), "Should have hover info for 'presence'");
-        let hover_content = match hover.expect("hover should exist").contents {
-            HoverContents::Markup(m) => m.value,
-            _ => panic!("Expected markup content"),
-        };
+        let hover_content = extract_hover_content(hover);
         assert!(
             hover_content.contains("Motion.presence"),
             "Hover should mention Motion.presence"
@@ -1024,13 +1025,401 @@ pub fn Test::control_train(
 
         let hover = get_hover(&doc, get_pos, &api);
         assert!(hover.is_some(), "Should have hover info for 'get'");
-        let hover_content = match hover.expect("hover should exist").contents {
-            HoverContents::Markup(m) => m.value,
-            _ => panic!("Expected markup content"),
-        };
+        let hover_content = extract_hover_content(hover);
         assert!(
             hover_content.contains("std::optional.get"),
             "Hover should mention std::optional.get"
         );
+    }
+
+    #[test]
+    fn test_hover_on_user_struct_definition() {
+        let api = make_api();
+
+        let code = r#"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+pub struct MySignal extend Signal {
+    meta { label: "My Signal" },
+    count: i64,
+    train_id: ID<Train>,
+}
+"#;
+        let doc = Document::new(code.to_string(), Some(&api));
+
+        // Find position of "MySignal" in struct definition
+        let offset = code.find("MySignal").expect("MySignal should exist");
+        let pos = doc.offset_to_position(offset);
+
+        let hover = get_hover(&doc, pos, &api);
+        assert!(hover.is_some(), "Should have hover info for struct name");
+        let content = extract_hover_content(hover);
+
+        assert!(
+            content.contains("struct MySignal"),
+            "Should contain struct name"
+        );
+        assert!(
+            content.contains("extends **Signal**"),
+            "Should show extends type"
+        );
+        assert!(content.contains("count"), "Should list count field");
+        assert!(content.contains("train_id"), "Should list train_id field");
+        assert!(
+            content.contains("Available callbacks"),
+            "Should list available callbacks"
+        );
+    }
+
+    #[test]
+    fn test_hover_on_user_enum_definition() {
+        let api = make_api();
+
+        let code = r"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+enum Status {
+    Active,
+    Inactive,
+    Pending,
+}
+";
+        let doc = Document::new(code.to_string(), Some(&api));
+
+        // Find position of "Status" in enum definition
+        let offset = code.find("Status").expect("Status should exist");
+        let pos = doc.offset_to_position(offset);
+
+        let hover = get_hover(&doc, pos, &api);
+        assert!(hover.is_some(), "Should have hover info for enum name");
+        let content = extract_hover_content(hover);
+
+        assert!(content.contains("enum Status"), "Should contain enum name");
+        assert!(content.contains("Active"), "Should list Active variant");
+        assert!(content.contains("Inactive"), "Should list Inactive variant");
+        assert!(content.contains("Pending"), "Should list Pending variant");
+    }
+
+    #[test]
+    fn test_hover_on_local_variable() {
+        let api = make_api();
+
+        // Test hover on `self` parameter which is a local variable/parameter
+        let code = r"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+pub struct Test extend Signal {}
+pub fn Test::event_signal_check(
+    self: &Test,
+    ctx: &EventCtx,
+    train: &Train,
+    motion: &Motion,
+    signal: &Signal
+): SignalCheck {
+    let _x = self;
+    return SignalCheck::Pass;
+}
+";
+        let doc = Document::new(code.to_string(), Some(&api));
+
+        // Find position of "self" in "_x = self"
+        let usage_offset = code.find("_x = self").expect("usage should exist") + "_x = ".len();
+        let pos = doc.offset_to_position(usage_offset);
+
+        let hover = get_hover(&doc, pos, &api);
+        assert!(hover.is_some(), "Should have hover info for local variable");
+        let content = extract_hover_content(hover);
+
+        assert!(content.contains("self"), "Should contain parameter name");
+        assert!(content.contains("Test"), "Should show parameter type Test");
+    }
+
+    #[test]
+    fn test_hover_on_callback_definition() {
+        let api = make_api();
+
+        let code = r"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+pub struct MySignal extend Signal {}
+pub fn MySignal::event_signal_check(
+    self: &MySignal,
+    ctx: &EventCtx,
+    train: &Train,
+    motion: &Motion,
+    signal: &Signal
+): SignalCheck {
+    return SignalCheck::Pass;
+}
+";
+        let doc = Document::new(code.to_string(), Some(&api));
+
+        // Find position of "event_signal_check" in function definition
+        let offset = code
+            .find("event_signal_check")
+            .expect("event_signal_check should exist");
+        let pos = doc.offset_to_position(offset);
+
+        let hover = get_hover(&doc, pos, &api);
+        assert!(hover.is_some(), "Should have hover info for callback");
+        let content = extract_hover_content(hover);
+
+        assert!(
+            content.contains("MySignal::event_signal_check"),
+            "Should contain full callback name"
+        );
+        assert!(
+            content.contains("callback for Signal"),
+            "Should mention it's a callback"
+        );
+    }
+
+    #[test]
+    fn test_hover_on_user_struct_field_access() {
+        let api = make_api();
+
+        let code = r"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+pub struct MySignal extend Signal {
+    count: i64,
+}
+pub fn MySignal::event_signal_check(
+    self: &MySignal,
+    ctx: &EventCtx,
+    train: &Train,
+    motion: &Motion,
+    signal: &Signal
+): SignalCheck {
+    if self.count > 0 {
+        return SignalCheck::Stop;
+    }
+    return SignalCheck::Pass;
+}
+";
+        let doc = Document::new(code.to_string(), Some(&api));
+
+        // Find position of "count" in self.count
+        let base_offset = code.find("self.count").expect("self.count should exist");
+        let count_offset = base_offset + "self.".len();
+        let pos = doc.offset_to_position(count_offset);
+
+        let hover = get_hover(&doc, pos, &api);
+        assert!(
+            hover.is_some(),
+            "Should have hover info for user struct field"
+        );
+        let content = extract_hover_content(hover);
+
+        assert!(
+            content.contains("MySignal.count"),
+            "Should mention struct and field"
+        );
+        assert!(content.contains("i64"), "Should show field type");
+    }
+
+    #[test]
+    fn test_hover_on_api_enum_variant() {
+        let api = make_api();
+
+        let code = r"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+pub struct MySignal extend Signal {}
+pub fn MySignal::event_signal_check(
+    self: &MySignal,
+    ctx: &EventCtx,
+    train: &Train,
+    motion: &Motion,
+    signal: &Signal
+): SignalCheck {
+    return SignalCheck::Pass;
+}
+";
+        let doc = Document::new(code.to_string(), Some(&api));
+
+        // Find position of "SignalCheck::Pass"
+        let offset = code
+            .find("SignalCheck::Pass")
+            .expect("SignalCheck::Pass should exist");
+        let pos = doc.offset_to_position(offset);
+
+        let hover = get_hover(&doc, pos, &api);
+        assert!(
+            hover.is_some(),
+            "Should have hover info for API enum variant"
+        );
+        let content = extract_hover_content(hover);
+
+        assert!(
+            content.contains("SignalCheck::Pass"),
+            "Should contain enum variant"
+        );
+    }
+
+    #[test]
+    fn test_hover_on_user_enum_variant() {
+        let api = make_api();
+
+        let code = r"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+enum Status {
+    Active,
+    Inactive,
+}
+pub struct MySignal extend Signal {
+    status: Status,
+}
+pub fn MySignal::event_signal_check(
+    self: &MySignal,
+    ctx: &EventCtx,
+    train: &Train,
+    motion: &Motion,
+    signal: &Signal
+): SignalCheck {
+    if self.status == Status::Active {
+        return SignalCheck::Stop;
+    }
+    return SignalCheck::Pass;
+}
+";
+        let doc = Document::new(code.to_string(), Some(&api));
+
+        // Find position of "Status::Active" (use the comparison one)
+        let search_start = code
+            .find("self.status ==")
+            .expect("comparison should exist");
+        let offset = code[search_start..]
+            .find("Status::Active")
+            .expect("Status::Active should exist")
+            + search_start;
+        let pos = doc.offset_to_position(offset);
+
+        let hover = get_hover(&doc, pos, &api);
+        assert!(
+            hover.is_some(),
+            "Should have hover info for user enum variant"
+        );
+        let content = extract_hover_content(hover);
+
+        assert!(
+            content.contains("Status::Active"),
+            "Should contain user enum variant"
+        );
+    }
+
+    #[test]
+    fn test_hover_on_api_function() {
+        let api = make_api();
+
+        // Test hover on abs which is a simpler function
+        let code = r"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+pub struct MySignal extend Signal {}
+pub fn MySignal::event_signal_check(
+    self: &MySignal,
+    ctx: &EventCtx,
+    train: &Train,
+    motion: &Motion,
+    signal: &Signal
+): SignalCheck {
+    let val = abs(-5);
+    return SignalCheck::Pass;
+}
+";
+        let doc = Document::new(code.to_string(), Some(&api));
+
+        // Find position of "abs" function - hover on first char of "abs"
+        let offset = code.find("abs(").expect("abs should exist");
+        let pos = doc.offset_to_position(offset);
+
+        let hover = get_hover(&doc, pos, &api);
+        assert!(hover.is_some(), "Should have hover info for API function");
+        let content = extract_hover_content(hover);
+
+        assert!(content.contains("abs"), "Should contain function name");
+    }
+
+    #[test]
+    fn test_hover_on_api_type() {
+        let api = make_api();
+
+        let code = r"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+pub struct MySignal extend Signal {}
+";
+        let doc = Document::new(code.to_string(), Some(&api));
+
+        // Find position of "Signal" in extend clause
+        let offset = code
+            .find("extend Signal")
+            .expect("extend Signal should exist")
+            + "extend ".len();
+        let pos = doc.offset_to_position(offset);
+
+        let hover = get_hover(&doc, pos, &api);
+        assert!(hover.is_some(), "Should have hover info for API type");
+        let content = extract_hover_content(hover);
+
+        assert!(
+            content.contains("Signal") && content.contains("game type"),
+            "Should identify Signal as a game type"
+        );
+    }
+
+    #[test]
+    fn test_hover_on_function_parameter() {
+        let api = make_api();
+
+        let code = r"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+pub struct MySignal extend Signal {}
+pub fn MySignal::event_signal_check(
+    self: &MySignal,
+    ctx: &EventCtx,
+    train: &Train,
+    motion: &Motion,
+    signal: &Signal
+): SignalCheck {
+    let id = train.id;
+    return SignalCheck::Pass;
+}
+";
+        let doc = Document::new(code.to_string(), Some(&api));
+
+        // Find the `train` usage in `train.id`
+        let offset = code.find("train.id").expect("train.id should exist");
+        let pos = doc.offset_to_position(offset);
+
+        let hover = get_hover(&doc, pos, &api);
+        assert!(
+            hover.is_some(),
+            "Should have hover info for parameter usage"
+        );
+        let content = extract_hover_content(hover);
+
+        assert!(content.contains("train"), "Should contain parameter name");
+        assert!(
+            content.contains("Train"),
+            "Should show parameter type (Train)"
+        );
+    }
+
+    #[test]
+    fn test_hover_on_db_view_method() {
+        let api = make_api();
+
+        let code = r"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+pub struct MySignal extend Signal {
+    target: ID<Signal>,
+}
+pub fn MySignal::event_signal_check(
+    self: &MySignal,
+    ctx: &EventCtx,
+    train: &Train,
+    motion: &Motion,
+    signal: &Signal
+): SignalCheck {
+    let result &= ctx.db.view(self.target) else {
+        return SignalCheck::Pass;
+    }
+    return SignalCheck::Pass;
+}
+";
+        let doc = Document::new(code.to_string(), Some(&api));
+
+        // Find position of "view" method
+        let offset = code.find("db.view").expect("db.view should exist") + "db.".len();
+        let pos = doc.offset_to_position(offset);
+
+        let hover = get_hover(&doc, pos, &api);
+        assert!(hover.is_some(), "Should have hover info for view method");
+        let content = extract_hover_content(hover);
+
+        assert!(content.contains("DB.view"), "Should mention DB.view method");
     }
 }

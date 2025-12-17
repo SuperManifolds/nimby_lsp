@@ -65,9 +65,12 @@ pub fn infer_node_type(
         kind::UNARY_EXPRESSION => node
             .child_by_field("operand")
             .and_then(|op| infer_node_type(ctx, op, local_types, enclosing_struct)),
-        kind::BINARY_EXPRESSION => node
-            .child_by_field("left")
-            .and_then(|left| infer_node_type(ctx, left, local_types, enclosing_struct)),
+        kind::BINARY_EXPRESSION => {
+            // Binary expressions don't have named fields, get first named child (left operand)
+            let mut cursor = node.walk();
+            let left = node.children(&mut cursor).find(Node::is_named);
+            left.and_then(|l| infer_node_type(ctx, l, local_types, enclosing_struct))
+        }
         _ => None,
     }
 }

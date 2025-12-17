@@ -1,4 +1,5 @@
 // Invalid: unclosed brace
+// @error E0002 "Missing }"
 script meta {
     lang: nimbyscript.v1,
     api: nimbyrails.v1,

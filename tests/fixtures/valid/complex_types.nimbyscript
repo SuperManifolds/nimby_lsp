@@ -3,48 +3,102 @@ script meta {
     api: nimbyrails.v1,
 }
 
-// Struct with various complex type fields
-pub struct TypeTest extend Script {
-    // ID generics
+// Struct with various complex type fields that are valid for pub structs
+pub struct TypeTest extend Signal {
+    meta { label: "Type Test" },
+
+    // ID generics (valid for pub structs)
     signal_id: ID<Signal>,
     train_id: ID<Train>,
+    schedule_id: ID<Schedule>,
+    line_id: ID<Line>,
+    tag_id: ID<Tag>,
 
-    // Optional types
-    maybe_value: std::optional<i64>,
-
-    // Array types
-    position: [f64; 3],
-
-    // Simple types
+    // Simple types (valid for pub structs)
     count: i64,
     ratio: f64,
     enabled: bool,
-    name: String,
 }
-
-// Function using complex types
-pub fn use_generics(id: ID<Signal>): std::optional<f64> {
-    return nil;
-}
-
-// Function with multiple generic types
-pub fn multi_generics(a: ID<Signal>, b: ID<Train>): bool {
-    return a.valid() && b.valid();
-}
-
-// Working with arrays
-pub fn array_sum(arr: [f64; 3]): f64 {
-    return arr[0] + arr[1] + arr[2];
-}
-
-// Const definitions
-const MAX_SPEED: f64 = 300.0;
-const MIN_COUNT: i64 = 0;
-const ENABLED_DEFAULT: bool = true;
 
 // Enum definition
-pub enum Status {
+enum Status {
     Active,
     Inactive,
-    Pending = 5,
+    Pending,
+}
+
+// Struct using user-defined enum (valid)
+pub struct StatusHolder extend Signal {
+    meta { label: "Status Holder" },
+    current_status: Status,
+}
+
+// Private struct can use any types
+struct InternalData {
+    value: i64,
+    train: ID<Train>,
+}
+
+// Callback that uses complex types
+pub fn TypeTest::event_signal_check(
+    self: &TypeTest,
+    ctx: &EventCtx,
+    train: &Train,
+    motion: &Motion,
+    signal: &Signal
+): SignalCheck {
+    // Using ID<T>::empty() static method
+    let empty_train = ID<Train>::empty();
+
+    // Using ID<T>.equals() method on a struct field
+    // This tests that generic type method resolution uses ID<Signal>, not Signal
+    if self.signal_id.equals(signal.id) {
+        return SignalCheck::Stop;
+    }
+
+    // Using is_valid with optional types
+    let view_result &= ctx.db.view(self.train_id) else {
+        return SignalCheck::Pass;
+    }
+
+    // Using count field
+    if self.count > 0 {
+        return SignalCheck::Stop;
+    }
+
+    return SignalCheck::Pass;
+}
+
+// Callback that uses private struct
+struct TaskData {
+    counter: i64,
+}
+
+pub fn TaskData::task_run(
+    self: &TaskData,
+    ctx: &ControlCtx,
+    sc: &mut SimController
+) {
+    log("counter: @", self.counter);
+}
+
+// Callback that tests optional unwrapping
+pub fn StatusHolder::event_signal_check(
+    self: &StatusHolder,
+    ctx: &EventCtx,
+    train: &Train,
+    motion: &Motion,
+    signal: &Signal
+): SignalCheck {
+    // Using optional field access
+    let drive &= motion.drive.get() else {
+        return SignalCheck::Pass;
+    }
+
+    // Testing enum comparison
+    if self.current_status == Status::Active {
+        return SignalCheck::Pass;
+    }
+
+    return SignalCheck::Stop;
 }

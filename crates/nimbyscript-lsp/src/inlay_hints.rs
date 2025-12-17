@@ -517,12 +517,12 @@ impl<'a> InlayHintEngine<'a> {
                 }
             }
             kind::BINARY_EXPRESSION => {
-                // For binary ops, check left operand
-                if let Some(left) = node.child_by_field("left") {
-                    self.infer_node_type_with_context(left, local_types, enclosing_struct)
-                } else {
-                    None
-                }
+                // Binary expressions don't have named fields, get first named child (left operand)
+                let mut cursor = node.walk();
+                let left = node.children(&mut cursor).find(Node::is_named);
+                left.and_then(|l| {
+                    self.infer_node_type_with_context(l, local_types, enclosing_struct)
+                })
             }
             _ => None,
         }
@@ -1209,6 +1209,274 @@ pub fn Test::control_train(self: &Test, ctx: &ControlCtx, train: &Train, motion:
                         InlayHintLabel::LabelParts(_) => "<parts>",
                     }
                 ))
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn test_type_hint_for_user_struct_field() {
+        let api = make_api();
+        // Access a field of a user struct to ensure field type inference works
+        let code = r"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+pub struct MySignal extend Signal {
+    count: i64,
+}
+pub fn MySignal::event_signal_check(
+    self: &MySignal,
+    ctx: &EventCtx,
+    train: &Train,
+    motion: &Motion,
+    signal: &Signal
+): SignalCheck {
+    let val = self.count;
+    return SignalCheck::Pass;
+}
+";
+        let doc = Document::new(code.to_string(), Some(&api));
+        let hints = get_inlay_hints(&doc, full_range(), &api);
+
+        let type_hints: Vec<_> = hints
+            .iter()
+            .filter(|h| h.kind == Some(InlayHintKind::TYPE))
+            .collect();
+
+        assert!(!type_hints.is_empty(), "Should have type hint for 'val'");
+
+        let val_hint = type_hints.iter().find(|h| {
+            if let InlayHintLabel::String(s) = &h.label {
+                s.contains("i64")
+            } else {
+                false
+            }
+        });
+        assert!(val_hint.is_some(), "Should have i64 type hint for val");
+    }
+
+    #[test]
+    fn test_type_hint_for_api_field() {
+        let api = make_api();
+        // Access an API type field
+        let code = r"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+pub struct Test extend Signal {}
+pub fn Test::event_signal_check(
+    self: &Test,
+    ctx: &EventCtx,
+    train: &Train,
+    motion: &Motion,
+    signal: &Signal
+): SignalCheck {
+    let id = train.id;
+    return SignalCheck::Pass;
+}
+";
+        let doc = Document::new(code.to_string(), Some(&api));
+        let hints = get_inlay_hints(&doc, full_range(), &api);
+
+        let type_hints: Vec<_> = hints
+            .iter()
+            .filter(|h| h.kind == Some(InlayHintKind::TYPE))
+            .collect();
+
+        assert!(!type_hints.is_empty(), "Should have type hint for 'id'");
+
+        let id_hint = type_hints.iter().find(|h| {
+            if let InlayHintLabel::String(s) = &h.label {
+                s.contains("ID<Train>")
+            } else {
+                false
+            }
+        });
+        assert!(id_hint.is_some(), "Should have ID<Train> type hint for id");
+    }
+
+    #[test]
+    fn test_param_hints_for_method_call() {
+        let api = make_api();
+        let code = r"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+pub struct Test extend Signal {
+    target: ID<Signal>,
+}
+pub fn Test::event_signal_check(
+    self: &Test,
+    ctx: &EventCtx,
+    train: &Train,
+    motion: &Motion,
+    signal: &Signal
+): SignalCheck {
+    let sig &= ctx.db.view(self.target) else { return SignalCheck::Pass; }
+    return SignalCheck::Pass;
+}
+";
+        let doc = Document::new(code.to_string(), Some(&api));
+        let hints = get_inlay_hints(&doc, full_range(), &api);
+
+        let param_hints: Vec<_> = hints
+            .iter()
+            .filter(|h| h.kind == Some(InlayHintKind::PARAMETER))
+            .collect();
+
+        // DB.view takes an id parameter
+        assert!(
+            !param_hints.is_empty(),
+            "Should have parameter hint for view()"
+        );
+    }
+
+    #[test]
+    fn test_no_hints_for_empty_function() {
+        let api = make_api();
+        let code = r"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+pub fn test() {
+}
+";
+        let doc = Document::new(code.to_string(), Some(&api));
+        let hints = get_inlay_hints(&doc, full_range(), &api);
+
+        assert!(hints.is_empty(), "Should have no hints for empty function");
+    }
+
+    #[test]
+    fn test_type_hint_for_binary_expression() {
+        let api = make_api();
+        // Test binary expression type inference in a callback context
+        let code = r"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+pub struct Test extend Signal {}
+pub fn Test::event_signal_check(
+    self: &Test,
+    ctx: &EventCtx,
+    train: &Train,
+    motion: &Motion,
+    signal: &Signal
+): SignalCheck {
+    let sum = 1 + 2;
+    let product = 3.0 * 4.0;
+    return SignalCheck::Pass;
+}
+";
+        let doc = Document::new(code.to_string(), Some(&api));
+        let hints = get_inlay_hints(&doc, full_range(), &api);
+
+        let type_hints: Vec<_> = hints
+            .iter()
+            .filter(|h| h.kind == Some(InlayHintKind::TYPE))
+            .collect();
+
+        assert_eq!(type_hints.len(), 2, "Should have 2 type hints");
+
+        let labels: Vec<_> = type_hints
+            .iter()
+            .map(|h| match &h.label {
+                InlayHintLabel::String(s) => s.as_str(),
+                InlayHintLabel::LabelParts(_) => "",
+            })
+            .collect();
+
+        assert!(labels.contains(&": i64"), "Should have i64 for sum");
+        assert!(labels.contains(&": f64"), "Should have f64 for product");
+    }
+
+    #[test]
+    fn test_type_hint_for_unary_expression() {
+        let api = make_api();
+        let code = r"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+pub fn test() {
+    let neg = -42;
+}
+";
+        let doc = Document::new(code.to_string(), Some(&api));
+        let hints = get_inlay_hints(&doc, full_range(), &api);
+
+        let type_hints: Vec<_> = hints
+            .iter()
+            .filter(|h| h.kind == Some(InlayHintKind::TYPE))
+            .collect();
+
+        assert_eq!(type_hints.len(), 1, "Should have 1 type hint for neg");
+
+        let label = match &type_hints[0].label {
+            InlayHintLabel::String(s) => s.as_str(),
+            InlayHintLabel::LabelParts(_) => "",
+        };
+        assert_eq!(label, ": i64", "Should have i64 for negated integer");
+    }
+
+    #[test]
+    fn test_type_hint_for_string_literal() {
+        let api = make_api();
+        // Need function context for type inference
+        let code = r#"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+pub struct Test extend Signal {}
+pub fn Test::event_signal_check(
+    self: &Test,
+    ctx: &EventCtx,
+    train: &Train,
+    motion: &Motion,
+    signal: &Signal
+): SignalCheck {
+    let msg = "hello";
+    return SignalCheck::Pass;
+}
+"#;
+        let doc = Document::new(code.to_string(), Some(&api));
+        let hints = get_inlay_hints(&doc, full_range(), &api);
+
+        let type_hints: Vec<_> = hints
+            .iter()
+            .filter(|h| h.kind == Some(InlayHintKind::TYPE))
+            .collect();
+
+        assert_eq!(type_hints.len(), 1, "Should have 1 type hint for msg");
+
+        let label = match &type_hints[0].label {
+            InlayHintLabel::String(s) => s.as_str(),
+            InlayHintLabel::LabelParts(_) => "",
+        };
+        // Type name is "String" (capitalized)
+        assert_eq!(label, ": String", "Should have String type");
+    }
+
+    #[test]
+    fn test_param_hints_for_abs_function() {
+        let api = make_api();
+        // abs function takes a "value" parameter
+        let code = r"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+pub struct Test extend Signal {}
+pub fn Test::event_signal_check(
+    self: &Test,
+    ctx: &EventCtx,
+    train: &Train,
+    motion: &Motion,
+    signal: &Signal
+): SignalCheck {
+    let result = abs(-5);
+    return SignalCheck::Pass;
+}
+";
+        let doc = Document::new(code.to_string(), Some(&api));
+        let hints = get_inlay_hints(&doc, full_range(), &api);
+
+        let param_hints: Vec<_> = hints
+            .iter()
+            .filter(|h| h.kind == Some(InlayHintKind::PARAMETER))
+            .collect();
+
+        // abs takes "value" as param
+        let value_hint = param_hints.iter().find(|h| {
+            if let InlayHintLabel::String(s) = &h.label {
+                s.contains("value")
+            } else {
+                false
+            }
+        });
+        assert!(
+            value_hint.is_some(),
+            "Should have 'value:' hint for abs, got: {:?}",
+            param_hints
+                .iter()
+                .map(|h| match &h.label {
+                    InlayHintLabel::String(s) => s.as_str(),
+                    InlayHintLabel::LabelParts(_) => "",
+                })
                 .collect::<Vec<_>>()
         );
     }

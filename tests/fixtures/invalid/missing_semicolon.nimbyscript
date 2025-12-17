@@ -5,6 +5,7 @@ script meta {
 }
 
 fn test() {
+    // @error E0002 "Missing ;"
     let x = 1  // <- missing semicolon
     return x;
 }
