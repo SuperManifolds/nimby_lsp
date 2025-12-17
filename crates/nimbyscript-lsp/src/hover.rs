@@ -8,62 +8,16 @@ use std::fmt::Write;
 use tower_lsp::lsp_types::*;
 
 use nimbyscript_analyzer::{
-    collect_declarations, types::parse_type_string, ApiDefinitions, FunctionDef, SemanticContext,
-    TypeInfo,
+    collect_declarations, ApiDefinitions, FunctionDef, SemanticContext, TypeInfo,
 };
 use nimbyscript_parser::{kind, Node, NodeExt};
 
 use crate::document::Document;
-
-/// Type alias for (name, type) pairs used for params and bindings
-type NameTypePairs = Vec<(String, TypeInfo)>;
-
-/// Extract parameter (name, type) as strings from a PARAMETER node.
-fn extract_param_strings(param_node: Node, content: &str) -> Option<(String, String)> {
-    let name = param_node.child_by_field("name")?;
-    let ty = param_node.child_by_field("type")?;
-    Some((name.text(content).to_string(), ty.text(content).to_string()))
-}
-
-/// Extract all parameters from a PARAMETERS node as (name, type) string pairs.
-fn extract_params_from_node(params_node: Node, content: &str) -> Vec<(String, String)> {
-    let mut cursor = params_node.walk();
-    params_node
-        .children(&mut cursor)
-        .filter(|c| c.kind() == kind::PARAMETER)
-        .filter_map(|c| extract_param_strings(c, content))
-        .collect()
-}
-
-/// Extract parameter (name, TypeInfo) from a PARAMETER node.
-fn extract_param_type_info(param_node: Node, content: &str) -> Option<(String, TypeInfo)> {
-    let name = param_node.child_by_field("name")?;
-    let ty = param_node.child_by_field("type")?;
-    Some((
-        name.text(content).to_string(),
-        parse_type_string(ty.text(content)),
-    ))
-}
-
-/// Extract all parameters from a PARAMETERS node as (name, TypeInfo) pairs.
-fn extract_params_with_types(params_node: Node, content: &str) -> Vec<(String, TypeInfo)> {
-    let mut cursor = params_node.walk();
-    params_node
-        .children(&mut cursor)
-        .filter(|c| c.kind() == kind::PARAMETER)
-        .filter_map(|c| extract_param_type_info(c, content))
-        .collect()
-}
-
-/// Extract binding (name, type) from a let statement node.
-fn extract_binding_from_let(node: Node, content: &str) -> Option<(String, TypeInfo)> {
-    let name_node = node.child_by_field("name")?;
-    let name = name_node.text(content).to_string();
-    let type_info = node
-        .child_by_field("type")
-        .map_or(TypeInfo::Unknown, |t| parse_type_string(t.text(content)));
-    Some((name, type_info))
-}
+use crate::type_inference::{
+    collect_local_types_in_function, cursor_in_node, extract_params_strings, find_ancestor_of_kind,
+    find_deepest_node_at, find_enclosing_function, format_callback_signature, format_signature,
+    infer_node_type, unwrap_to_type_name, TypeContext,
+};
 
 // ============================================================================
 // Public API
@@ -202,7 +156,7 @@ impl<'a> HoverEngine<'a> {
         let root = self.doc.tree().root_node();
 
         // Find the smallest node containing the cursor
-        let node = self.find_deepest_node_at(root)?;
+        let node = find_deepest_node_at(root, self.offset)?;
 
         // Try various context detection strategies
         self.detect_struct_definition(node)
@@ -215,35 +169,14 @@ impl<'a> HoverEngine<'a> {
             .or_else(|| self.detect_identifier(node))
     }
 
-    /// Find the deepest AST node containing the cursor position.
-    fn find_deepest_node_at<'b>(&self, node: Node<'b>) -> Option<Node<'b>> {
-        let start = node.start_byte();
-        let end = node.end_byte();
-
-        // tree-sitter end_byte is exclusive, so use >= for end check
-        if self.offset < start || self.offset >= end {
-            return None;
-        }
-
-        // Try to find a more specific child node
-        let mut cursor = node.walk();
-        for child in node.children(&mut cursor) {
-            if let Some(deeper) = self.find_deepest_node_at(child) {
-                return Some(deeper);
-            }
-        }
-
-        Some(node)
-    }
-
     /// Detect if hovering over a struct definition.
     fn detect_struct_definition(&self, node: Node) -> Option<HoverContext> {
         // Walk up to find struct_definition
-        let struct_node = Self::find_ancestor_of_kind(node, kind::STRUCT_DEFINITION)?;
+        let struct_node = find_ancestor_of_kind(node, kind::STRUCT_DEFINITION)?;
         let name_node = struct_node.child_by_field("name")?;
 
         // Only trigger if cursor is on the struct name
-        if !self.cursor_in_node(name_node) {
+        if !cursor_in_node(self.offset, name_node) {
             return None;
         }
 
@@ -275,11 +208,11 @@ impl<'a> HoverEngine<'a> {
 
     /// Detect if hovering over a function definition.
     fn detect_function_definition(&self, node: Node) -> Option<HoverContext> {
-        let func_node = Self::find_ancestor_of_kind(node, kind::FUNCTION_DEFINITION)?;
+        let func_node = find_ancestor_of_kind(node, kind::FUNCTION_DEFINITION)?;
         let name_node = func_node.child_by_field("name")?;
 
         // Only trigger if cursor is on the function name
-        if !self.cursor_in_node(name_node) {
+        if !cursor_in_node(self.offset, name_node) {
             return None;
         }
 
@@ -293,7 +226,7 @@ impl<'a> HoverEngine<'a> {
         // Collect parameters
         let params = func_node
             .child_by_kind(kind::PARAMETERS)
-            .map(|pn| extract_params_from_node(pn, self.content))
+            .map(|pn| extract_params_strings(pn, self.content))
             .unwrap_or_default();
 
         let return_type = func_node
@@ -332,11 +265,11 @@ impl<'a> HoverEngine<'a> {
 
     /// Detect if hovering over an enum definition.
     fn detect_enum_definition(&self, node: Node) -> Option<HoverContext> {
-        let enum_node = Self::find_ancestor_of_kind(node, kind::ENUM_DEFINITION)?;
+        let enum_node = find_ancestor_of_kind(node, kind::ENUM_DEFINITION)?;
         let name_node = enum_node.child_by_field("name")?;
 
         // Only trigger if cursor is on the enum name
-        if !self.cursor_in_node(name_node) {
+        if !cursor_in_node(self.offset, name_node) {
             return None;
         }
 
@@ -359,13 +292,13 @@ impl<'a> HoverEngine<'a> {
     /// Detect if hovering over a field access (e.g., ctx.db).
     fn detect_field_access(&self, node: Node) -> Option<HoverContext> {
         // Look for field_access node
-        let field_node = Self::find_ancestor_of_kind(node, kind::FIELD_ACCESS)?;
+        let field_node = find_ancestor_of_kind(node, kind::FIELD_ACCESS)?;
 
         // Get the field name being accessed
         let field_name_node = field_node.child_by_field("field")?;
 
         // Only trigger if cursor is on the field name
-        if !self.cursor_in_node(field_name_node) {
+        if !cursor_in_node(self.offset, field_name_node) {
             return None;
         }
 
@@ -373,8 +306,8 @@ impl<'a> HoverEngine<'a> {
 
         // Get the object being accessed
         let object_node = field_node.child_by_field("object")?;
-        let object_type = self.infer_node_type(object_node)?;
-        let type_name = Self::unwrap_to_type_name(&object_type)?;
+        let object_type = self.infer_type(object_node)?;
+        let type_name = unwrap_to_type_name(&object_type)?;
 
         // Check if this is an API field
         if let Some(type_def) = self.api.get_type(&type_name) {
@@ -403,7 +336,7 @@ impl<'a> HoverEngine<'a> {
     /// Detect if hovering over a method call (e.g., db.view()).
     fn detect_method_call(&self, node: Node) -> Option<HoverContext> {
         // Look for call_expression with a field_access as callee
-        let call_node = Self::find_ancestor_of_kind(node, kind::CALL_EXPRESSION)?;
+        let call_node = find_ancestor_of_kind(node, kind::CALL_EXPRESSION)?;
         let callee = call_node.child_by_field("function")?;
 
         if callee.kind() != kind::FIELD_ACCESS {
@@ -413,14 +346,14 @@ impl<'a> HoverEngine<'a> {
         let method_name_node = callee.child_by_field("field")?;
 
         // Only trigger if cursor is on the method name
-        if !self.cursor_in_node(method_name_node) {
+        if !cursor_in_node(self.offset, method_name_node) {
             return None;
         }
 
         let method_name = method_name_node.text(self.content).to_string();
         let object_node = callee.child_by_field("object")?;
-        let object_type = self.infer_node_type(object_node)?;
-        let type_name = Self::unwrap_to_type_name(&object_type)?;
+        let object_type = self.infer_type(object_node)?;
+        let type_name = unwrap_to_type_name(&object_type)?;
 
         // Get the base type name (strip generic parameters)
         let base_type_name = Self::base_type_name(&type_name);
@@ -451,7 +384,7 @@ impl<'a> HoverEngine<'a> {
     /// Detect if hovering over a type reference in a type annotation (e.g., ID<Train>).
     fn detect_type_reference(&self, node: Node) -> Option<HoverContext> {
         // Check if we're in a type_identifier context
-        let type_id_node = Self::find_ancestor_of_kind(node, kind::TYPE_IDENTIFIER)?;
+        let type_id_node = find_ancestor_of_kind(node, kind::TYPE_IDENTIFIER)?;
 
         // Get the full type text (e.g., "ID<Train>") for API lookup
         let full_type = type_id_node.text(self.content);
@@ -522,7 +455,7 @@ impl<'a> HoverEngine<'a> {
 
     /// Detect if hovering over a path expression (e.g., SignalCheck::Pass).
     fn detect_path_expression(&self, node: Node) -> Option<HoverContext> {
-        let path_node = Self::find_ancestor_of_kind(node, kind::PATH_EXPRESSION)?;
+        let path_node = find_ancestor_of_kind(node, kind::PATH_EXPRESSION)?;
         let text = path_node.text(self.content);
 
         if !text.contains("::") {
@@ -622,170 +555,29 @@ impl<'a> HoverEngine<'a> {
     // Helpers
     // ========================================================================
 
-    fn cursor_in_node(&self, node: Node) -> bool {
-        self.offset >= node.start_byte() && self.offset <= node.end_byte()
-    }
-
-    fn find_ancestor_of_kind<'b>(node: Node<'b>, target_kind: &str) -> Option<Node<'b>> {
-        let mut current = Some(node);
-        while let Some(n) = current {
-            if n.kind() == target_kind {
-                return Some(n);
-            }
-            current = n.parent();
-        }
-        None
-    }
-
-    /// Infer the type of an AST node.
-    fn infer_node_type(&self, node: Node) -> Option<TypeInfo> {
-        match node.kind() {
-            kind::IDENTIFIER => {
-                let name = node.text(self.content);
-                self.local_types.get(name).cloned()
-            }
-            kind::PATH_EXPRESSION => {
-                // Path expressions can be simple identifiers like "motion"
-                // or paths like "Foo::bar"
-                let text = node.text(self.content);
-                if text.contains("::") {
-                    // Path like Foo::bar - not supported for type inference yet
-                    None
-                } else {
-                    // Simple identifier - look up in local types
-                    self.local_types.get(text).cloned()
-                }
-            }
-            kind::FIELD_ACCESS => {
-                let object = node.child_by_field("object")?;
-                let field = node.child_by_field("field")?;
-                let object_type = self.infer_node_type(object)?;
-                let type_name = Self::unwrap_to_type_name(&object_type)?;
-                let field_name = field.text(self.content);
-
-                // Check user struct fields
-                if let Some(fields) = self.struct_fields.get(&type_name) {
-                    if let Some(field_type) = fields.get(field_name) {
-                        return Some(field_type.clone());
-                    }
-                }
-
-                // Check API type fields
-                if let Some(type_def) = self.api.get_type(&type_name) {
-                    if let Some(field_def) = type_def.fields.get(field_name) {
-                        return Some(parse_type_string(&field_def.ty));
-                    }
-                }
-
-                None
-            }
-            kind::CALL_EXPRESSION => self.infer_call_expression_type(node),
-            _ => None,
+    /// Create a TypeContext from this engine's state.
+    fn type_context(&self) -> TypeContext<'_> {
+        TypeContext {
+            content: self.content,
+            api: self.api,
+            struct_fields: &self.struct_fields,
+            user_structs: &self.user_structs,
         }
     }
 
-    /// Infer the return type of a call expression.
-    fn infer_call_expression_type(&self, node: Node) -> Option<TypeInfo> {
-        let callee = node.child_by_field("function")?;
-        if callee.kind() != kind::FIELD_ACCESS {
-            return None;
-        }
-        let object = callee.child_by_field("object")?;
-        let method = callee.child_by_field("field")?;
-        let object_type = self.infer_node_type(object)?;
-        let type_name = Self::unwrap_to_type_name(&object_type)?;
-        let method_name = method.text(self.content);
-
-        let type_def = self.api.get_type(&type_name)?;
-        let method_def = type_def.methods.iter().find(|m| m.name == method_name)?;
-        method_def
-            .return_type
-            .as_ref()
-            .map(|t| parse_type_string(t))
-    }
-
-    fn unwrap_to_type_name(ty: &TypeInfo) -> Option<String> {
-        match ty {
-            TypeInfo::Struct { name, .. } | TypeInfo::Enum { name } => Some(name.clone()),
-            TypeInfo::Reference { inner, .. } | TypeInfo::Pointer { inner, .. } => {
-                Self::unwrap_to_type_name(inner)
-            }
-            TypeInfo::Generic { name, args } => {
-                if args.is_empty() {
-                    Some(name.clone())
-                } else {
-                    let arg_names: Vec<_> =
-                        args.iter().filter_map(Self::unwrap_to_type_name).collect();
-                    Some(format!("{}<{}>", name, arg_names.join(", ")))
-                }
-            }
-            _ => None,
-        }
+    /// Infer the type of an AST node using shared inference.
+    fn infer_type(&self, node: Node) -> Option<TypeInfo> {
+        let ctx = self.type_context();
+        infer_node_type(&ctx, node, &self.local_types, None)
     }
 
     /// Collect local variable types from the enclosing function.
     fn collect_local_types(&mut self) {
         let root = self.doc.tree().root_node();
-        if let Some((params, bindings)) = self.find_function_locals(root) {
-            for (name, ty) in params {
+        if let Some(func) = find_enclosing_function(root, self.offset) {
+            let types = collect_local_types_in_function(func, self.content, Some(self.offset));
+            for (name, ty) in types {
                 self.local_types.insert(name, ty);
-            }
-            for (name, ty) in bindings {
-                self.local_types.insert(name, ty);
-            }
-        }
-    }
-
-    fn find_function_locals(&self, node: Node) -> Option<(NameTypePairs, NameTypePairs)> {
-        if node.kind() == kind::FUNCTION_DEFINITION {
-            let start = node.start_byte();
-            let end = node.end_byte();
-            if start <= self.offset && self.offset <= end {
-                let mut params = Vec::new();
-                let mut bindings = Vec::new();
-
-                // Extract parameters
-                if let Some(params_node) = node.child_by_kind(kind::PARAMETERS) {
-                    params = extract_params_with_types(params_node, self.content);
-                }
-
-                // Extract let bindings
-                if let Some(body) = node.child_by_field("body") {
-                    self.collect_bindings(body, &mut bindings);
-                }
-
-                return Some((params, bindings));
-            }
-        }
-
-        let mut cursor = node.walk();
-        for child in node.children(&mut cursor) {
-            if let Some(result) = self.find_function_locals(child) {
-                return Some(result);
-            }
-        }
-
-        None
-    }
-
-    fn collect_bindings(&self, node: Node, bindings: &mut Vec<(String, TypeInfo)>) {
-        let mut cursor = node.walk();
-        for child in node.children(&mut cursor) {
-            if child.start_byte() >= self.offset {
-                break;
-            }
-
-            let is_let =
-                child.kind() == kind::LET_STATEMENT || child.kind() == kind::LET_ELSE_STATEMENT;
-            if is_let {
-                if let Some(binding) = extract_binding_from_let(child, self.content) {
-                    bindings.push(binding);
-                }
-            }
-
-            // Recurse into blocks
-            if child.kind() == kind::BLOCK {
-                self.collect_bindings(child, bindings);
             }
         }
     }
@@ -1127,45 +919,6 @@ impl<'a> HoverEngine<'a> {
         if let Some(ret) = &func.return_type {
             let _ = write!(result, "\n**Returns:** `{ret}`");
         }
-    }
-}
-
-// ============================================================================
-// Helper Functions
-// ============================================================================
-
-fn format_signature(func: &FunctionDef) -> String {
-    let params = func
-        .params
-        .iter()
-        .map(|p| format!("{}: {}", p.name, p.ty))
-        .collect::<Vec<_>>()
-        .join(", ");
-
-    match &func.return_type {
-        Some(ret) => format!("({params}) -> {ret}"),
-        None => format!("({params})"),
-    }
-}
-
-fn format_callback_signature(func: &FunctionDef, struct_name: &str) -> String {
-    let params = func
-        .params
-        .iter()
-        .map(|p| {
-            let ty = if p.ty == "&Self" {
-                format!("&{struct_name}")
-            } else {
-                p.ty.clone()
-            };
-            format!("{}: {ty}", p.name)
-        })
-        .collect::<Vec<_>>()
-        .join(", ");
-
-    match &func.return_type {
-        Some(ret) => format!("({params}) -> {ret}"),
-        None => format!("({params})"),
     }
 }
 

@@ -8,12 +8,14 @@ use std::collections::HashMap;
 
 use tower_lsp::lsp_types::*;
 
-use nimbyscript_analyzer::{
-    collect_declarations, types::parse_type_string, ApiDefinitions, SemanticContext, TypeInfo,
-};
+use nimbyscript_analyzer::{collect_declarations, ApiDefinitions, SemanticContext, TypeInfo};
 use nimbyscript_parser::{kind, Node, NodeExt};
 
 use crate::document::Document;
+use crate::type_inference::{
+    base_type_name, find_ancestor_of_kind, get_enclosing_struct_name, infer_node_type,
+    parse_type_string, unwrap_to_type_name, TypeContext,
+};
 
 // ============================================================================
 // Public API
@@ -54,6 +56,16 @@ impl<'a> InlayHintEngine<'a> {
             range,
             struct_fields: ctx.struct_fields,
             user_structs: ctx.user_structs,
+        }
+    }
+
+    /// Create a TypeContext from this engine's state.
+    fn type_context(&self) -> TypeContext<'_> {
+        TypeContext {
+            content: self.content,
+            api: self.api,
+            struct_fields: &self.struct_fields,
+            user_structs: &self.user_structs,
         }
     }
 
@@ -166,19 +178,13 @@ impl<'a> InlayHintEngine<'a> {
     /// Infer the type of an expression within a function context.
     fn infer_type_in_function(&self, let_node: Node, expr: Node) -> Option<TypeInfo> {
         // Find the enclosing function to get local variable types
-        let func_node = Self::find_ancestor_of_kind(let_node, kind::FUNCTION_DEFINITION)?;
+        let func_node = find_ancestor_of_kind(let_node, kind::FUNCTION_DEFINITION)?;
         let local_types = self.collect_locals_before(func_node, let_node.start_byte());
-        let enclosing_struct = self.get_enclosing_struct_name(func_node);
+        let enclosing_struct = get_enclosing_struct_name(func_node, self.content);
 
-        self.infer_node_type_with_context(expr, &local_types, enclosing_struct.as_deref())
-    }
-
-    /// Get the struct name from a method's function name (e.g., "Foo::bar" -> "Foo")
-    fn get_enclosing_struct_name(&self, func_node: Node) -> Option<String> {
-        let name_node = func_node.child_by_field("name")?;
-        let name = name_node.text(self.content);
-        let pos = name.find("::")?;
-        Some(name[..pos].to_string())
+        // Use shared type inference
+        let ctx = self.type_context();
+        infer_node_type(&ctx, expr, &local_types, enclosing_struct.as_deref())
     }
 
     /// Collect local variable types declared before a given offset.
@@ -391,12 +397,12 @@ impl<'a> InlayHintEngine<'a> {
                 let method_name = method_name_node.text(self.content);
 
                 // Find the enclosing function to get local types
-                let func_node = Self::find_ancestor_of_kind(call_node, kind::FUNCTION_DEFINITION)?;
+                let func_node = find_ancestor_of_kind(call_node, kind::FUNCTION_DEFINITION)?;
                 let local_types = self.collect_locals_before(func_node, call_node.start_byte());
 
                 let object_type = self.infer_node_type(object_node, &local_types)?;
-                let type_name = Self::unwrap_to_type_name(&object_type)?;
-                let base_type_name = Self::base_type_name(&type_name);
+                let type_name = unwrap_to_type_name(&object_type)?;
+                let base_type_name = base_type_name(&type_name);
 
                 if let Some(type_def) = self.api.get_type(&base_type_name) {
                     if let Some(method) = type_def.methods.iter().find(|m| m.name == method_name) {
@@ -524,7 +530,7 @@ impl<'a> InlayHintEngine<'a> {
 
     /// Resolve a type name, handling `Self` resolution via enclosing struct.
     fn resolve_type_name(ty: &TypeInfo, enclosing_struct: Option<&str>) -> Option<String> {
-        let name = Self::unwrap_to_type_name(ty)?;
+        let name = unwrap_to_type_name(ty)?;
         if name == "Self" {
             enclosing_struct.map(ToString::to_string)
         } else {
@@ -618,7 +624,7 @@ impl<'a> InlayHintEngine<'a> {
                     self.infer_node_type_with_context(object, local_types, enclosing_struct)?;
                 let type_name = Self::resolve_type_name(&object_type, enclosing_struct)?;
                 let method_name = method.text(self.content);
-                let base_type_name = Self::base_type_name(&type_name);
+                let base_type_name = base_type_name(&type_name);
 
                 // Check for default struct methods (e.g., clone on private structs)
                 if let Some(default_method) = self.api.get_default_struct_method(method_name) {
@@ -659,44 +665,6 @@ impl<'a> InlayHintEngine<'a> {
     // ========================================================================
     // Helpers
     // ========================================================================
-
-    fn find_ancestor_of_kind<'b>(node: Node<'b>, target_kind: &str) -> Option<Node<'b>> {
-        let mut current = Some(node);
-        while let Some(n) = current {
-            if n.kind() == target_kind {
-                return Some(n);
-            }
-            current = n.parent();
-        }
-        None
-    }
-
-    fn unwrap_to_type_name(ty: &TypeInfo) -> Option<String> {
-        match ty {
-            TypeInfo::Struct { name, .. } | TypeInfo::Enum { name } => Some(name.clone()),
-            TypeInfo::Reference { inner, .. } | TypeInfo::Pointer { inner, .. } => {
-                Self::unwrap_to_type_name(inner)
-            }
-            TypeInfo::Generic { name, args } => {
-                if args.is_empty() {
-                    Some(name.clone())
-                } else {
-                    let arg_names: Vec<_> =
-                        args.iter().filter_map(Self::unwrap_to_type_name).collect();
-                    Some(format!("{}<{}>", name, arg_names.join(", ")))
-                }
-            }
-            _ => None,
-        }
-    }
-
-    fn base_type_name(type_name: &str) -> String {
-        if let Some(idx) = type_name.find('<') {
-            type_name[..idx].to_string()
-        } else {
-            type_name.to_string()
-        }
-    }
 
     /// Extract generic type arguments from a type, unwrapping references/pointers.
     /// For `std::optional<Motion::Drive>`, returns `[Motion::Drive]`.

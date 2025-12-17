@@ -11,6 +11,9 @@ use nimbyscript_analyzer::{collect_declarations, ApiDefinitions, SemanticContext
 use nimbyscript_parser::{kind, Node, NodeExt};
 
 use crate::document::Document;
+use crate::type_inference::{
+    cursor_in_node, find_ancestor_of_kind, find_deepest_node_at, node_to_range,
+};
 
 /// Data stored in TypeHierarchyItem.data field for later lookups.
 #[derive(Debug, Serialize, Deserialize)]
@@ -178,7 +181,7 @@ impl<'a> TypeHierarchyEngine<'a> {
     /// Prepare type hierarchy items for the current position.
     fn prepare(&self, uri: &Url) -> Option<Vec<TypeHierarchyItem>> {
         let root = self.doc.tree().root_node();
-        let node = self.find_deepest_node_at(root)?;
+        let node = find_deepest_node_at(root, self.offset)?;
 
         // Try various detection strategies
         self.detect_struct_definition(node, uri)
@@ -186,40 +189,21 @@ impl<'a> TypeHierarchyEngine<'a> {
             .or_else(|| self.detect_type_reference(node, uri))
     }
 
-    /// Find the deepest AST node containing the cursor position.
-    fn find_deepest_node_at<'b>(&self, node: Node<'b>) -> Option<Node<'b>> {
-        let start = node.start_byte();
-        let end = node.end_byte();
-
-        if self.offset < start || self.offset >= end {
-            return None;
-        }
-
-        let mut cursor = node.walk();
-        for child in node.children(&mut cursor) {
-            if let Some(deeper) = self.find_deepest_node_at(child) {
-                return Some(deeper);
-            }
-        }
-
-        Some(node)
-    }
-
     /// Detect if cursor is on a struct definition.
     fn detect_struct_definition(&self, node: Node, uri: &Url) -> Option<Vec<TypeHierarchyItem>> {
-        let struct_node = Self::find_ancestor_of_kind(node, kind::STRUCT_DEFINITION)?;
+        let struct_node = find_ancestor_of_kind(node, kind::STRUCT_DEFINITION)?;
         let name_node = struct_node.child_by_field("name")?;
 
         // Only trigger if cursor is on the struct name
-        if !self.cursor_in_node(name_node) {
+        if !cursor_in_node(self.offset, name_node) {
             return None;
         }
 
         let name = name_node.text(self.content).to_string();
         let extends = self.doc.struct_extends(&name);
 
-        let range = self.node_to_range(struct_node);
-        let selection_range = self.node_to_range(name_node);
+        let range = node_to_range(self.doc, struct_node);
+        let selection_range = node_to_range(self.doc, name_node);
 
         Some(vec![TypeHierarchyItem {
             name: name.clone(),
@@ -241,18 +225,18 @@ impl<'a> TypeHierarchyEngine<'a> {
 
     /// Detect if cursor is on an enum definition.
     fn detect_enum_definition(&self, node: Node, uri: &Url) -> Option<Vec<TypeHierarchyItem>> {
-        let enum_node = Self::find_ancestor_of_kind(node, kind::ENUM_DEFINITION)?;
+        let enum_node = find_ancestor_of_kind(node, kind::ENUM_DEFINITION)?;
         let name_node = enum_node.child_by_field("name")?;
 
         // Only trigger if cursor is on the enum name
-        if !self.cursor_in_node(name_node) {
+        if !cursor_in_node(self.offset, name_node) {
             return None;
         }
 
         let name = name_node.text(self.content).to_string();
 
-        let range = self.node_to_range(enum_node);
-        let selection_range = self.node_to_range(name_node);
+        let range = node_to_range(self.doc, enum_node);
+        let selection_range = node_to_range(self.doc, name_node);
 
         // Enums don't have hierarchy, but we still return them for consistency
         Some(vec![TypeHierarchyItem {
@@ -276,7 +260,7 @@ impl<'a> TypeHierarchyEngine<'a> {
     /// Detect if cursor is on a type reference (in type annotations, extends clauses, etc.).
     fn detect_type_reference(&self, node: Node, uri: &Url) -> Option<Vec<TypeHierarchyItem>> {
         // Check if we're in a type_identifier context
-        let type_id_node = Self::find_ancestor_of_kind(node, kind::TYPE_IDENTIFIER)?;
+        let type_id_node = find_ancestor_of_kind(node, kind::TYPE_IDENTIFIER)?;
 
         // Get the base type name
         let base_type_name = if node.kind() == kind::IDENTIFIER {
@@ -291,7 +275,7 @@ impl<'a> TypeHierarchyEngine<'a> {
 
         // Check if it's an API type
         if let Some(type_def) = self.api.get_type(base_type_name) {
-            let selection_range = self.node_to_range(node);
+            let selection_range = node_to_range(self.doc, node);
             return Some(vec![TypeHierarchyItem {
                 name: base_type_name.to_string(),
                 kind: SymbolKind::STRUCT,
@@ -312,7 +296,7 @@ impl<'a> TypeHierarchyEngine<'a> {
 
         // Check if it's an API enum
         if let Some(enum_def) = self.api.get_enum(base_type_name) {
-            let selection_range = self.node_to_range(node);
+            let selection_range = node_to_range(self.doc, node);
             return Some(vec![TypeHierarchyItem {
                 name: base_type_name.to_string(),
                 kind: SymbolKind::ENUM,
@@ -334,7 +318,7 @@ impl<'a> TypeHierarchyEngine<'a> {
         // Check if it's a user-defined struct
         if self.user_structs.contains_key(base_type_name) {
             let extends = self.doc.struct_extends(base_type_name);
-            let selection_range = self.node_to_range(node);
+            let selection_range = node_to_range(self.doc, node);
 
             // Try to find the actual struct definition for the full range
             let (range, _) = find_struct_ranges(self.doc, base_type_name)
@@ -360,7 +344,7 @@ impl<'a> TypeHierarchyEngine<'a> {
 
         // Check if it's a user-defined enum
         if self.user_enums.contains_key(base_type_name) {
-            let selection_range = self.node_to_range(node);
+            let selection_range = node_to_range(self.doc, node);
             return Some(vec![TypeHierarchyItem {
                 name: base_type_name.to_string(),
                 kind: SymbolKind::ENUM,
@@ -380,31 +364,6 @@ impl<'a> TypeHierarchyEngine<'a> {
         }
 
         None
-    }
-
-    // ========================================================================
-    // Helpers
-    // ========================================================================
-
-    fn cursor_in_node(&self, node: Node) -> bool {
-        self.offset >= node.start_byte() && self.offset <= node.end_byte()
-    }
-
-    fn find_ancestor_of_kind<'b>(node: Node<'b>, target_kind: &str) -> Option<Node<'b>> {
-        let mut current = Some(node);
-        while let Some(n) = current {
-            if n.kind() == target_kind {
-                return Some(n);
-            }
-            current = n.parent();
-        }
-        None
-    }
-
-    fn node_to_range(&self, node: Node) -> Range {
-        let start = self.doc.offset_to_position(node.start_byte());
-        let end = self.doc.offset_to_position(node.end_byte());
-        Range::new(start, end)
     }
 }
 
