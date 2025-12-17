@@ -3,6 +3,8 @@
 use nimbyscript_analyzer::{ApiDefinitions, Diagnostic};
 use nimbyscript_parser::{kind, Node, NodeExt};
 
+use crate::type_inference::extract_params_strings;
+
 // =============================================================================
 // Callback Validation
 // =============================================================================
@@ -22,17 +24,6 @@ pub fn validate_public_functions(
             validate_public_functions(child, content, api, diagnostics);
         }
     }
-}
-
-/// Extract a single parameter's name and type from a parameter node
-fn extract_parameter(param: Node, content: &str) -> (String, String) {
-    let param_name = param
-        .child_by_field("name")
-        .map_or_else(String::new, |n| n.text(content).to_string());
-    let param_type = param
-        .child_by_field("type")
-        .map_or_else(String::new, |n| n.text(content).to_string());
-    (param_name, param_type)
 }
 
 /// Parsed function signature info
@@ -66,12 +57,7 @@ fn parse_fn_signature(node: Node, content: &str) -> FnSignature {
                 sig.name_end = child.end_byte();
             }
             kind::PARAMETERS => {
-                let mut param_cursor = child.walk();
-                for param in child.children(&mut param_cursor) {
-                    if param.kind() == kind::PARAMETER {
-                        sig.params.push(extract_parameter(param, content));
-                    }
-                }
+                sig.params = extract_params_strings(child, content);
             }
             kind::TYPE => {
                 if node.child_by_field("return_type").map(|n| n.id()) == Some(child.id()) {

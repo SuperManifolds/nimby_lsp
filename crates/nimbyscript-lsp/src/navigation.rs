@@ -7,12 +7,15 @@ use std::collections::HashMap;
 use tower_lsp::lsp_types::request::{GotoImplementationResponse, GotoTypeDefinitionResponse};
 use tower_lsp::lsp_types::*;
 
-use nimbyscript_analyzer::{
-    collect_declarations, types::parse_type_string, ApiDefinitions, SemanticContext, TypeInfo,
-};
+use nimbyscript_analyzer::{collect_declarations, ApiDefinitions, SemanticContext, TypeInfo};
 use nimbyscript_parser::{kind, Node, NodeExt};
 
 use crate::document::Document;
+use crate::type_inference::{
+    base_type_name, cursor_in_node, find_ancestor_of_kind, find_deepest_node_at,
+    find_enclosing_function, infer_node_type, node_to_range, parse_type_string,
+    unwrap_to_type_name, TypeContext,
+};
 
 // ============================================================================
 // Public API
@@ -120,7 +123,7 @@ impl<'a> NavigationEngine<'a> {
 
     fn find_definition(&self, uri: &Url) -> Option<GotoDefinitionResponse> {
         let root = self.doc.tree().root_node();
-        let node = self.find_deepest_node_at(root)?;
+        let node = find_deepest_node_at(root, self.offset)?;
 
         // Try various detection strategies
         self.definition_for_struct_reference(node, uri)
@@ -178,7 +181,7 @@ impl<'a> NavigationEngine<'a> {
         uri: &Url,
     ) -> Option<GotoDefinitionResponse> {
         // Check if we're in a call expression
-        let call_node = Self::find_ancestor_of_kind(node, kind::CALL_EXPRESSION)?;
+        let call_node = find_ancestor_of_kind(node, kind::CALL_EXPRESSION)?;
         let func_node = call_node.child_by_field("function")?;
 
         // Get function name - handle both simple calls and path expressions
@@ -189,7 +192,7 @@ impl<'a> NavigationEngine<'a> {
         let func_name = func_node.text(self.content);
 
         // Only trigger if cursor is on the function name
-        if !self.cursor_in_node(func_node) {
+        if !cursor_in_node(self.offset, func_node) {
             return None;
         }
 
@@ -204,18 +207,18 @@ impl<'a> NavigationEngine<'a> {
 
     /// Find definition when on a field access.
     fn definition_for_field_access(&self, node: Node, uri: &Url) -> Option<GotoDefinitionResponse> {
-        let field_node = Self::find_ancestor_of_kind(node, kind::FIELD_ACCESS)?;
+        let field_node = find_ancestor_of_kind(node, kind::FIELD_ACCESS)?;
         let field_name_node = field_node.child_by_field("field")?;
 
         // Only trigger if cursor is on the field name
-        if !self.cursor_in_node(field_name_node) {
+        if !cursor_in_node(self.offset, field_name_node) {
             return None;
         }
 
         let field_name = field_name_node.text(self.content);
         let object_node = field_node.child_by_field("object")?;
-        let object_type = self.infer_node_type(object_node)?;
-        let type_name = Self::unwrap_to_type_name(&object_type)?;
+        let object_type = self.infer_type(object_node)?;
+        let type_name = unwrap_to_type_name(&object_type)?;
 
         // Check if it's a user struct field
         if self.struct_fields.contains_key(&type_name) {
@@ -249,7 +252,7 @@ impl<'a> NavigationEngine<'a> {
         uri: &Url,
     ) -> Option<GotoDefinitionResponse> {
         // Check if we're in a type_identifier context
-        let type_id_node = Self::find_ancestor_of_kind(node, kind::TYPE_IDENTIFIER)?;
+        let type_id_node = find_ancestor_of_kind(node, kind::TYPE_IDENTIFIER)?;
 
         // Get the base type name
         let base_type_name = if node.kind() == kind::IDENTIFIER {
@@ -283,12 +286,12 @@ impl<'a> NavigationEngine<'a> {
 
     fn find_type_definition(&self, uri: &Url) -> Option<GotoTypeDefinitionResponse> {
         let root = self.doc.tree().root_node();
-        let node = self.find_deepest_node_at(root)?;
+        let node = find_deepest_node_at(root, self.offset)?;
 
         // Get the type of the symbol at cursor
         let type_info = self.infer_type_at_cursor(node)?;
-        let type_name = Self::unwrap_to_type_name(&type_info)?;
-        let base_type_name = Self::base_type_name(&type_name);
+        let type_name = unwrap_to_type_name(&type_info)?;
+        let base_type_name = base_type_name(&type_name);
 
         // Check if it's a user-defined struct
         if self.user_structs.contains_key(&base_type_name) {
@@ -312,13 +315,12 @@ impl<'a> NavigationEngine<'a> {
                 let name = node.text(self.content);
                 self.local_types.get(name).cloned()
             }
-            kind::FIELD_ACCESS => self.infer_node_type(node),
-            kind::CALL_EXPRESSION => self.infer_call_type(node),
+            kind::FIELD_ACCESS | kind::CALL_EXPRESSION => self.infer_type(node),
             _ => {
                 // Try walking up to find a meaningful node
                 if let Some(parent) = node.parent() {
                     match parent.kind() {
-                        kind::FIELD_ACCESS | kind::CALL_EXPRESSION => self.infer_node_type(parent),
+                        kind::FIELD_ACCESS | kind::CALL_EXPRESSION => self.infer_type(parent),
                         _ => None,
                     }
                 } else {
@@ -334,7 +336,7 @@ impl<'a> NavigationEngine<'a> {
 
     fn find_implementations(&self, uri: &Url) -> Option<GotoImplementationResponse> {
         let root = self.doc.tree().root_node();
-        let node = self.find_deepest_node_at(root)?;
+        let node = find_deepest_node_at(root, self.offset)?;
 
         // Get the type name at cursor
         let type_name = self.get_type_name_at_cursor(node)?;
@@ -373,7 +375,7 @@ impl<'a> NavigationEngine<'a> {
         }
 
         // Check if we're in a type_identifier
-        if let Some(type_id_node) = Self::find_ancestor_of_kind(node, kind::TYPE_IDENTIFIER) {
+        if let Some(type_id_node) = find_ancestor_of_kind(node, kind::TYPE_IDENTIFIER) {
             let mut cursor = type_id_node.walk();
             let id_node = type_id_node
                 .children(&mut cursor)
@@ -392,7 +394,7 @@ impl<'a> NavigationEngine<'a> {
 
     fn find_references(&self, uri: &Url, include_declaration: bool) -> Option<Vec<Location>> {
         let root = self.doc.tree().root_node();
-        let node = self.find_deepest_node_at(root)?;
+        let node = find_deepest_node_at(root, self.offset)?;
 
         // Get the name of the symbol at cursor
         let name = self.get_symbol_name_at_cursor(node)?;
@@ -414,7 +416,7 @@ impl<'a> NavigationEngine<'a> {
                 .or_else(|| self.find_function_definition_location(&name, uri))
         } else {
             // For local variables, need to find references within the same function scope
-            if let Some(func_node) = self.find_enclosing_function(root) {
+            if let Some(func_node) = find_enclosing_function(root, self.offset) {
                 self.collect_identifier_references(func_node, &name, uri, &mut references);
             }
 
@@ -444,25 +446,25 @@ impl<'a> NavigationEngine<'a> {
         }
 
         // Check if we're on a struct/enum/function definition name
-        if let Some(struct_node) = Self::find_ancestor_of_kind(node, kind::STRUCT_DEFINITION) {
+        if let Some(struct_node) = find_ancestor_of_kind(node, kind::STRUCT_DEFINITION) {
             if let Some(name_node) = struct_node.child_by_field("name") {
-                if self.cursor_in_node(name_node) {
+                if cursor_in_node(self.offset, name_node) {
                     return Some(name_node.text(self.content).to_string());
                 }
             }
         }
 
-        if let Some(enum_node) = Self::find_ancestor_of_kind(node, kind::ENUM_DEFINITION) {
+        if let Some(enum_node) = find_ancestor_of_kind(node, kind::ENUM_DEFINITION) {
             if let Some(name_node) = enum_node.child_by_field("name") {
-                if self.cursor_in_node(name_node) {
+                if cursor_in_node(self.offset, name_node) {
                     return Some(name_node.text(self.content).to_string());
                 }
             }
         }
 
-        if let Some(func_node) = Self::find_ancestor_of_kind(node, kind::FUNCTION_DEFINITION) {
+        if let Some(func_node) = find_ancestor_of_kind(node, kind::FUNCTION_DEFINITION) {
             if let Some(name_node) = func_node.child_by_field("name") {
-                if self.cursor_in_node(name_node) {
+                if cursor_in_node(self.offset, name_node) {
                     return Some(name_node.text(self.content).to_string());
                 }
             }
@@ -481,7 +483,7 @@ impl<'a> NavigationEngine<'a> {
         if node.kind() == kind::IDENTIFIER && node.text(self.content) == name {
             references.push(Location {
                 uri: uri.clone(),
-                range: self.node_to_range(node),
+                range: node_to_range(self.doc, node),
             });
         }
 
@@ -492,7 +494,7 @@ impl<'a> NavigationEngine<'a> {
             if func_name == name || func_name.ends_with(&format!("::{name}")) {
                 references.push(Location {
                     uri: uri.clone(),
-                    range: self.node_to_range(node),
+                    range: node_to_range(self.doc, node),
                 });
             }
         }
@@ -518,7 +520,7 @@ impl<'a> NavigationEngine<'a> {
                 if name_node.text(self.content) == name {
                     return Some(Location {
                         uri: uri.clone(),
-                        range: self.node_to_range(name_node),
+                        range: node_to_range(self.doc, name_node),
                     });
                 }
             }
@@ -545,7 +547,7 @@ impl<'a> NavigationEngine<'a> {
                 if name_node.text(self.content) == name {
                     return Some(Location {
                         uri: uri.clone(),
-                        range: self.node_to_range(name_node),
+                        range: node_to_range(self.doc, name_node),
                     });
                 }
             }
@@ -572,7 +574,7 @@ impl<'a> NavigationEngine<'a> {
                 if name_node.text(self.content) == name {
                     return Some(Location {
                         uri: uri.clone(),
-                        range: self.node_to_range(name_node),
+                        range: node_to_range(self.doc, name_node),
                     });
                 }
             }
@@ -642,7 +644,7 @@ impl<'a> NavigationEngine<'a> {
             if field_name_node.text(self.content) == field_name {
                 return Some(Location {
                     uri: uri.clone(),
-                    range: self.node_to_range(field_name_node),
+                    range: node_to_range(self.doc, field_name_node),
                 });
             }
         }
@@ -653,7 +655,7 @@ impl<'a> NavigationEngine<'a> {
         let root = self.doc.tree().root_node();
 
         // Find the enclosing function
-        let func_node = self.find_enclosing_function(root)?;
+        let func_node = find_enclosing_function(root, self.offset)?;
 
         // Check parameters first
         if let Some(params_node) = func_node.child_by_kind(kind::PARAMETERS) {
@@ -682,7 +684,7 @@ impl<'a> NavigationEngine<'a> {
             if name_node.text(self.content) == name {
                 return Some(Location {
                     uri: uri.clone(),
-                    range: self.node_to_range(name_node),
+                    range: node_to_range(self.doc, name_node),
                 });
             }
         }
@@ -703,7 +705,7 @@ impl<'a> NavigationEngine<'a> {
                 if name_node.text(self.content) == name {
                     return Some(Location {
                         uri: uri.clone(),
-                        range: self.node_to_range(name_node),
+                        range: node_to_range(self.doc, name_node),
                     });
                 }
             }
@@ -715,7 +717,7 @@ impl<'a> NavigationEngine<'a> {
                 if name_node.text(self.content) == name {
                     return Some(Location {
                         uri: uri.clone(),
-                        range: self.node_to_range(name_node),
+                        range: node_to_range(self.doc, name_node),
                     });
                 }
             }
@@ -740,28 +742,9 @@ impl<'a> NavigationEngine<'a> {
         if name_node.text(self.content) == name {
             return Some(Location {
                 uri: uri.clone(),
-                range: self.node_to_range(name_node),
+                range: node_to_range(self.doc, name_node),
             });
         }
-        None
-    }
-
-    fn find_enclosing_function<'b>(&self, node: Node<'b>) -> Option<Node<'b>> {
-        if node.kind() == kind::FUNCTION_DEFINITION {
-            let start = node.start_byte();
-            let end = node.end_byte();
-            if start <= self.offset && self.offset <= end {
-                return Some(node);
-            }
-        }
-
-        let mut cursor = node.walk();
-        for child in node.children(&mut cursor) {
-            if let Some(func) = self.find_enclosing_function(child) {
-                return Some(func);
-            }
-        }
-
         None
     }
 
@@ -769,147 +752,29 @@ impl<'a> NavigationEngine<'a> {
     // Type Inference
     // ========================================================================
 
-    fn infer_node_type(&self, node: Node) -> Option<TypeInfo> {
-        match node.kind() {
-            kind::IDENTIFIER => {
-                let name = node.text(self.content);
-                self.local_types.get(name).cloned()
-            }
-            kind::PATH_EXPRESSION => {
-                let text = node.text(self.content);
-                if text.contains("::") {
-                    None
-                } else {
-                    self.local_types.get(text).cloned()
-                }
-            }
-            kind::FIELD_ACCESS => {
-                let object = node.child_by_field("object")?;
-                let field = node.child_by_field("field")?;
-                let object_type = self.infer_node_type(object)?;
-                let type_name = Self::unwrap_to_type_name(&object_type)?;
-                let field_name = field.text(self.content);
-
-                // Check user struct fields
-                if let Some(fields) = self.struct_fields.get(&type_name) {
-                    if let Some(field_type) = fields.get(field_name) {
-                        return Some(field_type.clone());
-                    }
-                }
-
-                // Check API type fields
-                if let Some(type_def) = self.api.get_type(&type_name) {
-                    if let Some(field_def) = type_def.fields.get(field_name) {
-                        return Some(parse_type_string(&field_def.ty));
-                    }
-                }
-
-                None
-            }
-            kind::CALL_EXPRESSION => self.infer_call_type(node),
-            _ => None,
+    /// Create a TypeContext from this engine's state.
+    fn type_context(&self) -> TypeContext<'_> {
+        TypeContext {
+            content: self.content,
+            api: self.api,
+            struct_fields: &self.struct_fields,
+            user_structs: &self.user_structs,
         }
     }
 
-    fn infer_call_type(&self, node: Node) -> Option<TypeInfo> {
-        let callee = node.child_by_field("function")?;
-
-        if callee.kind() != kind::FIELD_ACCESS {
-            // Check for user-defined function call
-            let func_name = callee.text(self.content);
-            if let Some(return_type) = self.user_functions.get(func_name) {
-                return return_type.clone();
-            }
-            return None;
-        }
-
-        let object = callee.child_by_field("object")?;
-        let method = callee.child_by_field("field")?;
-        let object_type = self.infer_node_type(object)?;
-        let type_name = Self::unwrap_to_type_name(&object_type)?;
-        let method_name = method.text(self.content);
-
-        let type_def = self.api.get_type(&type_name)?;
-        let method_def = type_def.methods.iter().find(|m| m.name == method_name)?;
-        method_def
-            .return_type
-            .as_ref()
-            .map(|t| parse_type_string(t))
+    /// Infer the type of an AST node using shared inference.
+    fn infer_type(&self, node: Node) -> Option<TypeInfo> {
+        let ctx = self.type_context();
+        infer_node_type(&ctx, node, &self.local_types, None)
     }
 
     // ========================================================================
     // Helpers
     // ========================================================================
 
-    fn find_deepest_node_at<'b>(&self, node: Node<'b>) -> Option<Node<'b>> {
-        let start = node.start_byte();
-        let end = node.end_byte();
-
-        if self.offset < start || self.offset >= end {
-            return None;
-        }
-
-        let mut cursor = node.walk();
-        for child in node.children(&mut cursor) {
-            if let Some(deeper) = self.find_deepest_node_at(child) {
-                return Some(deeper);
-            }
-        }
-
-        Some(node)
-    }
-
-    fn find_ancestor_of_kind<'b>(node: Node<'b>, target_kind: &str) -> Option<Node<'b>> {
-        let mut current = Some(node);
-        while let Some(n) = current {
-            if n.kind() == target_kind {
-                return Some(n);
-            }
-            current = n.parent();
-        }
-        None
-    }
-
-    fn cursor_in_node(&self, node: Node) -> bool {
-        self.offset >= node.start_byte() && self.offset <= node.end_byte()
-    }
-
-    fn node_to_range(&self, node: Node) -> Range {
-        let start = self.doc.offset_to_position(node.start_byte());
-        let end = self.doc.offset_to_position(node.end_byte());
-        Range::new(start, end)
-    }
-
-    fn unwrap_to_type_name(ty: &TypeInfo) -> Option<String> {
-        match ty {
-            TypeInfo::Struct { name, .. } | TypeInfo::Enum { name } => Some(name.clone()),
-            TypeInfo::Reference { inner, .. } | TypeInfo::Pointer { inner, .. } => {
-                Self::unwrap_to_type_name(inner)
-            }
-            TypeInfo::Generic { name, args } => {
-                if args.is_empty() {
-                    Some(name.clone())
-                } else {
-                    let arg_names: Vec<_> =
-                        args.iter().filter_map(Self::unwrap_to_type_name).collect();
-                    Some(format!("{}<{}>", name, arg_names.join(", ")))
-                }
-            }
-            _ => None,
-        }
-    }
-
-    fn base_type_name(type_name: &str) -> String {
-        if let Some(idx) = type_name.find('<') {
-            type_name[..idx].to_string()
-        } else {
-            type_name.to_string()
-        }
-    }
-
     fn collect_local_types(&mut self) {
         let root = self.doc.tree().root_node();
-        let Some(func_node) = Self::find_enclosing_function_static(root, self.offset) else {
+        let Some(func_node) = find_enclosing_function(root, self.offset) else {
             return;
         };
 
@@ -940,25 +805,6 @@ impl<'a> NavigationEngine<'a> {
             let type_info = parse_type_string(type_node.text(self.content));
             self.local_types.insert(name, type_info);
         }
-    }
-
-    fn find_enclosing_function_static(node: Node<'_>, offset: usize) -> Option<Node<'_>> {
-        if node.kind() == kind::FUNCTION_DEFINITION {
-            let start = node.start_byte();
-            let end = node.end_byte();
-            if start <= offset && offset <= end {
-                return Some(node);
-            }
-        }
-
-        let mut cursor = node.walk();
-        for child in node.children(&mut cursor) {
-            if let Some(func) = Self::find_enclosing_function_static(child, offset) {
-                return Some(func);
-            }
-        }
-
-        None
     }
 
     fn collect_binding_from_let(&mut self, node: Node) {

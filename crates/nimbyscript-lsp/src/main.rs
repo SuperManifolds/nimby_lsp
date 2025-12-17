@@ -7,6 +7,7 @@ mod navigation;
 mod semantic_tokens;
 mod signature_help;
 mod type_hierarchy;
+mod type_inference;
 mod validation;
 
 use std::env;

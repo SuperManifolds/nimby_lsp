@@ -15,6 +15,7 @@ use nimbyscript_analyzer::{
 use nimbyscript_parser::{kind, parse, Node, NodeExt, Tree};
 
 use crate::document::Document;
+use crate::type_inference::{extract_params, format_signature, parse_type_string};
 
 /// Type alias for (name, type) pairs used for params and bindings
 type NameTypePairs = Vec<(String, TypeInfo)>;
@@ -37,25 +38,6 @@ const KEYWORDS: &[&str] = &[
 const PRIMITIVE_TYPES: &[&str] = &[
     "i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64", "f32", "f64", "bool",
 ];
-
-/// Extract parameter (name, type) from a PARAMETER node.
-fn extract_param_from_node(param_node: Node, content: &str) -> Option<(String, TypeInfo)> {
-    let name_node = param_node.child_by_field("name")?;
-    let type_node = param_node.child_by_field("type")?;
-    let name = name_node.text(content).to_string();
-    let type_info = parse_type_string_simple(type_node.text(content));
-    Some((name, type_info))
-}
-
-/// Extract all parameters from a PARAMETERS node.
-fn extract_params_from_node(params_node: Node, content: &str) -> Vec<(String, TypeInfo)> {
-    let mut cursor = params_node.walk();
-    params_node
-        .children(&mut cursor)
-        .filter(|child| child.kind() == kind::PARAMETER)
-        .filter_map(|child| extract_param_from_node(child, content))
-        .collect()
-}
 
 /// Collect all blocks from a control flow statement's children.
 fn collect_child_blocks(node: Node) -> Vec<Node> {
@@ -341,30 +323,21 @@ impl<'a> CompletionEngine<'a> {
             // Check module functions
             if let Some(module_def) = self.api.get_module(module) {
                 if let Some(func) = module_def.functions.iter().find(|f| f.name == func_name) {
-                    return func
-                        .return_type
-                        .as_ref()
-                        .map(|t| parse_type_string_simple(t));
+                    return func.return_type.as_ref().map(|t| parse_type_string(t));
                 }
             }
 
             // Check type static methods
             if let Some(type_def) = self.api.get_type(module) {
                 if let Some(method) = type_def.methods.iter().find(|m| m.name == func_name) {
-                    return method
-                        .return_type
-                        .as_ref()
-                        .map(|t| parse_type_string_simple(t));
+                    return method.return_type.as_ref().map(|t| parse_type_string(t));
                 }
             }
         }
 
         // Global function call
         if let Some(func) = self.api.get_function(callee) {
-            return func
-                .return_type
-                .as_ref()
-                .map(|t| parse_type_string_simple(t));
+            return func.return_type.as_ref().map(|t| parse_type_string(t));
         }
 
         None
@@ -394,7 +367,7 @@ impl<'a> CompletionEngine<'a> {
         // Check game type fields
         if let Some(type_def) = self.api.get_type(&type_name) {
             if let Some(field) = type_def.fields.get(field_name) {
-                return Some(parse_type_string_simple(&field.ty));
+                return Some(parse_type_string(&field.ty));
             }
         }
 
@@ -408,10 +381,7 @@ impl<'a> CompletionEngine<'a> {
         // Check game type methods
         if let Some(type_def) = self.api.get_type(&type_name) {
             if let Some(method) = type_def.methods.iter().find(|m| m.name == method_name) {
-                return method
-                    .return_type
-                    .as_ref()
-                    .map(|t| parse_type_string_simple(t));
+                return method.return_type.as_ref().map(|t| parse_type_string(t));
             }
         }
 
@@ -482,11 +452,11 @@ impl<'a> CompletionEngine<'a> {
                 // Extract return type
                 let return_type = node
                     .child_by_field("return_type")
-                    .map(|rt| parse_type_string_simple(rt.text(self.content)));
+                    .map(|rt| parse_type_string(rt.text(self.content)));
 
                 // Extract parameters
                 if let Some(params_node) = node.child_by_kind(kind::PARAMETERS) {
-                    params = extract_params_from_node(params_node, self.content);
+                    params = extract_params(params_node, self.content);
                 }
 
                 // Extract let bindings from body
@@ -552,7 +522,7 @@ impl<'a> CompletionEngine<'a> {
         for child in binding.children(&mut cursor) {
             if child.kind() == "type_pattern" || child.kind() == kind::TYPE {
                 let type_str = child.text(self.content);
-                let type_info = parse_type_string_simple(type_str);
+                let type_info = parse_type_string(type_str);
                 return Some((name, type_info));
             }
         }
@@ -1288,101 +1258,9 @@ fn position_to_offset(content: &str, position: Position) -> usize {
     content.len()
 }
 
-/// Simple type string parser (reuses the concept from TypeInfo).
-fn parse_type_string_simple(s: &str) -> TypeInfo {
-    let s = s.trim();
-
-    // Handle reference types
-    if let Some(inner) = s.strip_prefix('&') {
-        let inner = inner.trim();
-        if let Some(inner) = inner.strip_prefix("mut ") {
-            return TypeInfo::reference(parse_type_string_simple(inner.trim()), true);
-        }
-        return TypeInfo::reference(parse_type_string_simple(inner), false);
-    }
-
-    // Handle pointer types
-    if let Some(inner) = s.strip_prefix('*') {
-        let inner = inner.trim();
-        if let Some(inner) = inner.strip_prefix("mut ") {
-            return TypeInfo::pointer(parse_type_string_simple(inner.trim()), true);
-        }
-        return TypeInfo::pointer(parse_type_string_simple(inner), false);
-    }
-
-    // Handle generic types
-    if let Some(angle_pos) = s.find('<') {
-        if s.ends_with('>') {
-            let name = s[..angle_pos].trim();
-            let args_str = &s[angle_pos + 1..s.len() - 1];
-            let args = parse_generic_args_simple(args_str);
-            return TypeInfo::generic(name, args);
-        }
-    }
-
-    // Primitive types
-    match s {
-        "bool" => TypeInfo::Bool,
-        "i64" | "i32" | "i16" | "i8" | "u64" | "u32" | "u16" | "u8" => TypeInfo::I64,
-        "f64" | "f32" => TypeInfo::F64,
-        "String" | "string" => TypeInfo::String,
-        "void" | "()" => TypeInfo::Void,
-        "" => TypeInfo::Unknown,
-        _ => TypeInfo::struct_type(s),
-    }
-}
-
-fn parse_generic_args_simple(s: &str) -> Vec<TypeInfo> {
-    let mut args = Vec::new();
-    let mut current = String::new();
-    let mut depth = 0;
-
-    for c in s.chars() {
-        match c {
-            '<' => {
-                depth += 1;
-                current.push(c);
-            }
-            '>' => {
-                depth -= 1;
-                current.push(c);
-            }
-            ',' if depth == 0 => {
-                let trimmed = current.trim();
-                if !trimmed.is_empty() {
-                    args.push(parse_type_string_simple(trimmed));
-                }
-                current.clear();
-            }
-            _ => current.push(c),
-        }
-    }
-
-    let trimmed = current.trim();
-    if !trimmed.is_empty() {
-        args.push(parse_type_string_simple(trimmed));
-    }
-
-    args
-}
-
 // ============================================================================
 // Formatting Functions
 // ============================================================================
-
-fn format_signature(func: &FunctionDef) -> String {
-    let params = func
-        .params
-        .iter()
-        .map(|p| format!("{}: {}", p.name, p.ty))
-        .collect::<Vec<_>>()
-        .join(", ");
-
-    match &func.return_type {
-        Some(ret) => format!("({params}) -> {ret}"),
-        None => format!("({params})"),
-    }
-}
 
 fn format_snippet(name: &str, func: &FunctionDef) -> String {
     if func.params.is_empty() {
