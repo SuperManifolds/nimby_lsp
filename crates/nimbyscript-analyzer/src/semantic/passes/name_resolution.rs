@@ -448,17 +448,13 @@ fn resolve_path(node: Node, ctx: &SemanticContext, diagnostics: &mut Vec<Diagnos
             }
         } else if ctx.is_user_struct(first) {
             // User-defined structs:
-            // - Private structs have automatic new() and clone() static methods
+            // - Private structs have automatic default struct methods (e.g., new, clone)
             // - Public structs (extend Signal/Train/etc) have NO static methods
             let is_private = !ctx.is_pub_struct(first);
-            let has_valid_static = is_private && (second == "new" || second == "clone");
+            let has_valid_static = is_private && ctx.is_default_struct_method(second);
 
             if !has_valid_static {
-                let msg = if is_private {
-                    format!("Private struct '{first}' only has static methods 'new' and 'clone', not '{second}'")
-                } else {
-                    format!("Public struct '{first}' has no static method '{second}'")
-                };
+                let msg = make_struct_static_method_error(ctx, first, second, is_private);
                 diagnostics.push(
                     Diagnostic::error(msg, Span::new(node.start_byte(), node.end_byte()))
                         .with_code("E0307"),
@@ -702,6 +698,26 @@ fn is_builtin_function(name: &str) -> bool {
             | "clamp"
             | "lerp"
     )
+}
+
+/// Generate error message for invalid static method on user struct
+fn make_struct_static_method_error(
+    ctx: &SemanticContext,
+    struct_name: &str,
+    method_name: &str,
+    is_private: bool,
+) -> String {
+    if is_private {
+        let available: Vec<_> = ctx.api.default_struct_method_names().take(5).collect();
+        let hint = if available.is_empty() {
+            String::new()
+        } else {
+            format!(". Available: {}", available.join(", "))
+        };
+        format!("Private struct '{struct_name}' has no static method '{method_name}'{hint}")
+    } else {
+        format!("Public struct '{struct_name}' has no static method '{method_name}'")
+    }
 }
 
 #[cfg(test)]

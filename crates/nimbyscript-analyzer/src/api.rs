@@ -18,6 +18,9 @@ pub struct ApiDefinitions {
     pub modules: HashMap<String, ModuleDef>,
     #[serde(default)]
     pub callbacks: Vec<FunctionDef>,
+    /// Methods that all private (non-pub) user structs automatically have
+    #[serde(default)]
+    pub default_struct_methods: Vec<FunctionDef>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -177,6 +180,21 @@ impl ApiDefinitions {
             .iter()
             .filter(|c| c.for_type.as_deref() == Some(game_type))
             .collect()
+    }
+
+    /// Get a default struct method by name
+    pub fn get_default_struct_method(&self, name: &str) -> Option<&FunctionDef> {
+        self.default_struct_methods.iter().find(|m| m.name == name)
+    }
+
+    /// Check if a method name is a default struct method
+    pub fn is_default_struct_method(&self, name: &str) -> bool {
+        self.default_struct_methods.iter().any(|m| m.name == name)
+    }
+
+    /// Get all default struct method names
+    pub fn default_struct_method_names(&self) -> impl Iterator<Item = &str> {
+        self.default_struct_methods.iter().map(|m| m.name.as_str())
     }
 }
 

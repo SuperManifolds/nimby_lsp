@@ -353,6 +353,14 @@ fn check_method_call(
         inner_type.unwrap_or(type_name)
     };
 
+    // Check for default struct methods on private user structs
+    let is_private_struct =
+        ctx.is_user_struct(effective_type) && !ctx.is_pub_struct(effective_type);
+    if method_def.is_none() && is_private_struct && ctx.is_default_struct_method(method_name) {
+        // Valid default method on a private struct (e.g., clone), no further validation needed
+        return;
+    }
+
     if let Some(method_def) = method_def {
         // Method exists - validate argument count
         let expected_params = method_def.params.len();
