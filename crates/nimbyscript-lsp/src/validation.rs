@@ -266,14 +266,14 @@ fn validate_meta_blocks_inner(
         }
     }
 
-    // Script meta is required only at the top level
+    // Script meta is recommended but optional
     if is_top_level && !found_script_meta {
         diagnostics.push(
-            Diagnostic::error(
+            Diagnostic::warning(
                 "Missing script meta block. Add: script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }".to_string(),
                 nimbyscript_parser::ast::Span::new(0, 0),
             )
-            .with_code("E0200"),
+            .with_code("W0200"),
         );
     }
 }
@@ -760,9 +760,9 @@ mod tests {
     fn test_missing_script_meta() {
         let content = "pub struct Foo { }";
         let diags = get_diagnostics(content);
-        let errs = errors(&diags);
-        assert!(!errs.is_empty(), "Missing meta should produce error");
-        assert!(errs.iter().any(|d| d.code.as_deref() == Some("E0200")));
+        let warns = warnings(&diags);
+        assert!(!warns.is_empty(), "Missing meta should produce warning");
+        assert!(warns.iter().any(|d| d.code.as_deref() == Some("W0200")));
     }
 
     #[test]
