@@ -13,6 +13,7 @@ use tower_lsp::{Client, LanguageServer};
 
 use crate::completions::{get_completions, resolve_completion};
 use crate::document::Document;
+use crate::formatting::{format_document, format_on_type, format_range, FormattingConfig};
 use crate::hover::get_hover;
 use crate::inlay_hints::get_inlay_hints;
 use crate::navigation::{
@@ -229,6 +230,12 @@ impl LanguageServer for Backend {
                 type_definition_provider: Some(TypeDefinitionProviderCapability::Simple(true)),
                 implementation_provider: Some(ImplementationProviderCapability::Simple(true)),
                 references_provider: Some(OneOf::Left(true)),
+                document_formatting_provider: Some(OneOf::Left(true)),
+                document_range_formatting_provider: Some(OneOf::Left(true)),
+                document_on_type_formatting_provider: Some(DocumentOnTypeFormattingOptions {
+                    first_trigger_character: "}".to_string(),
+                    more_trigger_character: Some(vec![";".to_string()]),
+                }),
                 // Note: type_hierarchy_provider is not yet in lsp-types 0.94.1
                 // The handlers are implemented and will respond if clients send requests
                 ..Default::default()
@@ -569,6 +576,47 @@ impl LanguageServer for Backend {
                 &self.api_definitions,
                 include_declaration,
             ))
+        } else {
+            Ok(None)
+        }
+    }
+
+    async fn formatting(&self, params: DocumentFormattingParams) -> Result<Option<Vec<TextEdit>>> {
+        let uri = &params.text_document.uri;
+        let config = FormattingConfig::from(&params.options);
+
+        if let Some(doc) = self.documents.get(uri) {
+            Ok(Some(format_document(&doc, &config)))
+        } else {
+            Ok(None)
+        }
+    }
+
+    async fn range_formatting(
+        &self,
+        params: DocumentRangeFormattingParams,
+    ) -> Result<Option<Vec<TextEdit>>> {
+        let uri = &params.text_document.uri;
+        let range = params.range;
+        let config = FormattingConfig::from(&params.options);
+
+        if let Some(doc) = self.documents.get(uri) {
+            Ok(Some(format_range(&doc, range, &config)))
+        } else {
+            Ok(None)
+        }
+    }
+
+    async fn on_type_formatting(
+        &self,
+        params: DocumentOnTypeFormattingParams,
+    ) -> Result<Option<Vec<TextEdit>>> {
+        let uri = &params.text_document_position.text_document.uri;
+        let position = params.text_document_position.position;
+        let config = FormattingConfig::from(&params.options);
+
+        if let Some(doc) = self.documents.get(uri) {
+            Ok(Some(format_on_type(&doc, position, &params.ch, &config)))
         } else {
             Ok(None)
         }
