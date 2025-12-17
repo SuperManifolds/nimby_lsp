@@ -128,6 +128,14 @@ fn infer_call_expression(
     }
 }
 
+/// Check if a default struct method is static (no self parameter).
+fn is_static_method(method: &FunctionDef) -> bool {
+    method
+        .params
+        .first()
+        .is_none_or(|p| p.ty != "&Self" && p.ty != "Self")
+}
+
 /// Infer return type for path-based calls (global functions, module functions, type methods).
 fn infer_path_call_expression(
     ctx: &TypeContext,
@@ -165,6 +173,15 @@ fn infer_path_call_expression(
         }
     }
 
+    // Check if prefix is a user-defined struct with static default methods (e.g., Task::new())
+    if ctx.user_structs.contains_key(prefix) {
+        if let Some(default_method) = ctx.api.get_default_struct_method(name) {
+            if is_static_method(default_method) {
+                return infer_default_method_return_type(ctx, default_method, prefix, prefix);
+            }
+        }
+    }
+
     None
 }
 
@@ -183,9 +200,11 @@ fn infer_method_call_expression(
     let method_name = method.text(ctx.content);
     let base_type = base_type_name(&type_name);
 
-    // Check for default struct methods (e.g., clone on private structs)
+    // Check for default instance methods (e.g., clone on private structs)
     if let Some(default_method) = ctx.api.get_default_struct_method(method_name) {
-        return infer_default_method_return_type(ctx, default_method, &type_name, &base_type);
+        if !is_static_method(default_method) {
+            return infer_default_method_return_type(ctx, default_method, &type_name, &base_type);
+        }
     }
 
     // Look up method in API type
