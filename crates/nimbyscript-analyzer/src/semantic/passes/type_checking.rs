@@ -322,35 +322,64 @@ fn check_method_call(
         return;
     }
 
-    // 5. Get the type name - handle both Struct and Generic (for std::optional)
-    let (type_name, inner_type) = match &base_type {
-        TypeInfo::Struct { name, .. } => (name.as_str(), None),
+    // 5. Get the type name - handle both Struct and Generic types
+    // For generics, we need different strategies:
+    // - ID<Signal>: lookup methods on "ID<Signal>" in API
+    // - std::optional<T>: lookup methods on "std::optional", fallback to T
+    let (base_type_name, full_type_name, inner_type) = match &base_type {
+        TypeInfo::Struct { name, .. } => (name.as_str(), None, None),
         TypeInfo::Generic { name, args } => {
-            // For std::optional<T>, first check methods on optional itself,
-            // then fall back to methods on T
-            let inner = args.first().and_then(|t| {
-                if let TypeInfo::Struct { name, .. } = t {
-                    Some(name.as_str())
+            // Build full type name for display/API lookup (e.g., "ID<Signal>")
+            let full_name = args.first().and_then(|t| {
+                if let TypeInfo::Struct { name: arg_name, .. } = t {
+                    Some(format!("{name}<{arg_name}>"))
                 } else {
                     None
                 }
             });
-            (name.as_str(), inner)
+
+            // For std::optional<T>, we can fall back to methods on T
+            let inner = if name == "std::optional" {
+                args.first().and_then(|t| {
+                    if let TypeInfo::Struct { name, .. } = t {
+                        Some(name.as_str())
+                    } else {
+                        None
+                    }
+                })
+            } else {
+                None
+            };
+            (name.as_str(), full_name, inner)
         }
         _ => return, // Can't call methods on non-struct types
     };
 
+    // Determine lookup strategy based on type:
+    // - For std::optional<T>: look up on "std::optional" first, then fallback to T
+    // - For other generics like ID<T>: look up on "ID<T>" (full type name)
+    // - For plain structs: look up on the struct name
+    let is_optional = base_type_name == "std::optional";
+    let lookup_type = if is_optional {
+        base_type_name // Look up on "std::optional"
+    } else {
+        full_type_name.as_deref().unwrap_or(base_type_name) // Look up on "ID<Signal>" or plain name
+    };
+
     // 6. Check if method exists on the type (or inner type for optionals)
-    let method_def = ctx.get_type_method(type_name, method_name).or_else(|| {
+    let method_def = ctx.get_type_method(lookup_type, method_name).or_else(|| {
         // If not found on the outer type, try the inner type (for optionals)
         inner_type.and_then(|inner| ctx.get_type_method(inner, method_name))
     });
 
-    // Determine which type name to use for error messages
-    let effective_type = if ctx.get_type_method(type_name, method_name).is_some() {
-        type_name
+    // For error messages, use the full type name for generics
+    let display_type = full_type_name.as_deref().unwrap_or(base_type_name);
+
+    // Determine effective type for error messages - which type did we find the method on?
+    let effective_type = if ctx.get_type_method(lookup_type, method_name).is_some() {
+        display_type
     } else {
-        inner_type.unwrap_or(type_name)
+        inner_type.unwrap_or(display_type)
     };
 
     // Check for default struct methods on private user structs
@@ -400,7 +429,7 @@ fn check_method_call(
         } else {
             // Get available methods for hint
             let available: Vec<_> = ctx
-                .get_type_methods(effective_type)
+                .get_type_methods(lookup_type)
                 .iter()
                 .map(|(name, _)| *name)
                 .take(5)

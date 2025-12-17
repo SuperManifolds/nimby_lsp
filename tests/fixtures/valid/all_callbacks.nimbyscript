@@ -23,19 +23,51 @@ pub fn SignalHandler::event_signal_lookahead(
     ctx: &EventCtx,
     train: &Train,
     motion: &Motion,
-    signal: &Signal
-): SignalAspect {
-    return SignalAspect::Clear;
+    signal: &Signal,
+    train_distance: f64,
+    check: SignalCheck,
+    result: &mut SignalLookaheadResult
+) {
+    // No-op
 }
 
-pub fn SignalHandler::event_signal_speed(
+pub fn SignalHandler::event_signal_change_path(
     self: &SignalHandler,
     ctx: &EventCtx,
     train: &Train,
     motion: &Motion,
+    signal: &Signal,
+    check: SignalCheck,
+    result: &mut SignalChangePathResult
+): SignalChangePath {
+    return SignalChangePath::Keep;
+}
+
+pub fn SignalHandler::event_signal_pass_by(
+    self: &SignalHandler,
+    ctx: &EventCtx,
+    train: &Train,
+    motion: &Motion,
+    signal: &Signal,
+    sc: &mut SimController
+) {
+    // No-op
+}
+
+pub fn SignalHandler::event_signal_marker_reserved(
+    self: &SignalHandler,
+    db: &DB,
     signal: &Signal
-): std::optional<f64> {
-    return nil;
+): ID<Train> {
+    return ID<Train>::empty();
+}
+
+pub fn SignalHandler::event_signal_texture_state(
+    self: &SignalHandler,
+    db: &DB,
+    signal: &Signal
+): i64 {
+    return 0;
 }
 
 // Train callbacks
@@ -43,19 +75,50 @@ pub struct TrainHandler extend Train {
     meta { label: "Train Handler" },
 }
 
+pub fn TrainHandler::event_train_shift_setup(
+    self: &TrainHandler,
+    ctx: &EventCtx,
+    train: &Train,
+    motion: &Motion,
+    ss: &mut ShiftSetup
+) {
+    // No-op
+}
+
 pub fn TrainHandler::event_train_shift_allow(
     self: &TrainHandler,
     ctx: &EventCtx,
-    motion: &Motion
+    train: &Train,
+    motion: &Motion,
+    sched: &Schedule,
+    shift: &Shift,
+    run: &Run,
+    stop_idx: i64,
+    arrival_us: i64,
+    pose: &Pose
 ): ShiftAllow {
     return ShiftAllow::Allow;
 }
 
-pub fn TrainHandler::event_train_speed_adjust(
+pub fn TrainHandler::control_train(
     self: &TrainHandler,
-    ctx: &EventCtx,
+    ctx: &ControlCtx,
+    train: &Train,
     motion: &Motion,
-    speed: &mut f64
+    sc: &mut SimController
 ) {
-    // No adjustment
+    // No-op
+}
+
+// Task callback (private struct)
+struct MyTask {
+    data: i64,
+}
+
+pub fn MyTask::task_run(
+    self: &MyTask,
+    ctx: &ControlCtx,
+    sc: &mut SimController
+) {
+    // No-op
 }

@@ -1,23 +1,11 @@
-mod backend;
-mod completions;
-mod document;
-mod hover;
-mod inlay_hints;
-mod navigation;
-mod semantic_tokens;
-mod signature_help;
-mod type_hierarchy;
-mod type_inference;
-mod validation;
-
 use std::env;
 use std::process::ExitCode;
 
 use tower_lsp::{LspService, Server};
 use tracing_subscriber::EnvFilter;
 
-use document::Document;
 use nimbyscript_analyzer::ApiDefinitions;
+use nimbyscript_lsp::document::Document;
 
 // Embed the API definitions TOML at compile time
 const API_DEFINITIONS_TOML: &str = include_str!("../../../api-definitions/nimbyrails.v1.toml");
@@ -105,7 +93,7 @@ async fn main() -> ExitCode {
     let stdin = tokio::io::stdin();
     let stdout = tokio::io::stdout();
 
-    let (service, socket) = LspService::new(backend::Backend::new);
+    let (service, socket) = LspService::new(nimbyscript_lsp::backend::Backend::new);
 
     Server::new(stdin, stdout, socket).serve(service).await;
 

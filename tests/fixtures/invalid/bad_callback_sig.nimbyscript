@@ -7,6 +7,7 @@ pub struct BadSig extend Signal {
     meta { label: "Bad Signature Test" },
 }
 
+// @error E0103 "should return 'SignalCheck', but returns 'i64'"
 // Wrong return type - should be SignalCheck, not i64
 pub fn BadSig::event_signal_check(
     self: &BadSig,
@@ -18,6 +19,7 @@ pub fn BadSig::event_signal_check(
     return 0;
 }
 
+// @error E0101 "expects 8 parameters, but 1 were provided"
 // Wrong parameter count - missing parameters
 pub fn BadSig::event_signal_lookahead(
     self: &BadSig

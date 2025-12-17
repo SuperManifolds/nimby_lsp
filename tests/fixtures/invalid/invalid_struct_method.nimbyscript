@@ -1,3 +1,5 @@
+// @error E0301 "Undefined function 'is_null'"
+// @error E0307 "Private struct 'Task' has no static method 'blorp'"
 script meta {
     lang: nimbyscript.v1,
     api: nimbyrails.v1,

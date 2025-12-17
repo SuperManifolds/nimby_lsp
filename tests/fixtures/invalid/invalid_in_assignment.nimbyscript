@@ -1,3 +1,5 @@
+// @error E0301 "Undefined function 'is_null'"
+// @error E0305 "Undefined method 'slurp' on type 'Motion::Drive'"
 script meta {
     lang: nimbyscript.v1,
     api: nimbyrails.v1,
