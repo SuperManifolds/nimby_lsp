@@ -168,8 +168,17 @@ impl<'a> InlayHintEngine<'a> {
         // Find the enclosing function to get local variable types
         let func_node = Self::find_ancestor_of_kind(let_node, kind::FUNCTION_DEFINITION)?;
         let local_types = self.collect_locals_before(func_node, let_node.start_byte());
+        let enclosing_struct = self.get_enclosing_struct_name(func_node);
 
-        self.infer_node_type(expr, &local_types)
+        self.infer_node_type_with_context(expr, &local_types, enclosing_struct.as_deref())
+    }
+
+    /// Get the struct name from a method's function name (e.g., "Foo::bar" -> "Foo")
+    fn get_enclosing_struct_name(&self, func_node: Node) -> Option<String> {
+        let name_node = func_node.child_by_field("name")?;
+        let name = name_node.text(self.content);
+        let pos = name.find("::")?;
+        Some(name[..pos].to_string())
     }
 
     /// Collect local variable types declared before a given offset.
@@ -438,6 +447,17 @@ impl<'a> InlayHintEngine<'a> {
         node: Node,
         local_types: &HashMap<String, TypeInfo>,
     ) -> Option<TypeInfo> {
+        self.infer_node_type_with_context(node, local_types, None)
+    }
+
+    /// Infer the type of an AST node with optional enclosing struct context.
+    /// The enclosing_struct is used to resolve `Self` to the actual struct type.
+    fn infer_node_type_with_context(
+        &self,
+        node: Node,
+        local_types: &HashMap<String, TypeInfo>,
+        enclosing_struct: Option<&str>,
+    ) -> Option<TypeInfo> {
         match node.kind() {
             kind::IDENTIFIER => {
                 let name = node.text(self.content);
@@ -455,8 +475,9 @@ impl<'a> InlayHintEngine<'a> {
             kind::FIELD_ACCESS => {
                 let object = node.child_by_field("object")?;
                 let field = node.child_by_field("field")?;
-                let object_type = self.infer_node_type(object, local_types)?;
-                let type_name = Self::unwrap_to_type_name(&object_type)?;
+                let object_type =
+                    self.infer_node_type_with_context(object, local_types, enclosing_struct)?;
+                let type_name = Self::resolve_type_name(&object_type, enclosing_struct)?;
                 let field_name = field.text(self.content);
 
                 // Check user struct fields
@@ -475,14 +496,16 @@ impl<'a> InlayHintEngine<'a> {
 
                 None
             }
-            kind::CALL_EXPRESSION => self.infer_call_expression_type(node, local_types),
+            kind::CALL_EXPRESSION => {
+                self.infer_call_expression_type_with_context(node, local_types, enclosing_struct)
+            }
             kind::NUMBER => Some(self.infer_number_type(node)),
             kind::BOOLEAN => Some(TypeInfo::Bool),
             kind::STRING_LITERAL => Some(TypeInfo::String),
             kind::UNARY_EXPRESSION => {
                 // For negation, check operand
                 if let Some(operand) = node.child_by_field("operand") {
-                    self.infer_node_type(operand, local_types)
+                    self.infer_node_type_with_context(operand, local_types, enclosing_struct)
                 } else {
                     None
                 }
@@ -490,12 +513,40 @@ impl<'a> InlayHintEngine<'a> {
             kind::BINARY_EXPRESSION => {
                 // For binary ops, check left operand
                 if let Some(left) = node.child_by_field("left") {
-                    self.infer_node_type(left, local_types)
+                    self.infer_node_type_with_context(left, local_types, enclosing_struct)
                 } else {
                     None
                 }
             }
             _ => None,
+        }
+    }
+
+    /// Resolve a type name, handling `Self` resolution via enclosing struct.
+    fn resolve_type_name(ty: &TypeInfo, enclosing_struct: Option<&str>) -> Option<String> {
+        let name = Self::unwrap_to_type_name(ty)?;
+        if name == "Self" {
+            enclosing_struct.map(ToString::to_string)
+        } else {
+            Some(name)
+        }
+    }
+
+    /// Infer return type for a default struct method (new, clone).
+    fn infer_default_method_return_type(
+        &self,
+        method: &nimbyscript_analyzer::FunctionDef,
+        type_name: &str,
+        base_type_name: &str,
+    ) -> Option<TypeInfo> {
+        let ret = method.return_type.as_ref()?;
+        if ret == "Self" {
+            Some(TypeInfo::Struct {
+                name: type_name.to_string(),
+                extends: self.user_structs.get(base_type_name).cloned().flatten(),
+            })
+        } else {
+            Some(parse_type_string(ret))
         }
     }
 
@@ -509,11 +560,12 @@ impl<'a> InlayHintEngine<'a> {
         }
     }
 
-    /// Infer the return type of a call expression.
-    fn infer_call_expression_type(
+    /// Infer the return type of a call expression with enclosing struct context.
+    fn infer_call_expression_type_with_context(
         &self,
         node: Node,
         local_types: &HashMap<String, TypeInfo>,
+        enclosing_struct: Option<&str>,
     ) -> Option<TypeInfo> {
         let callee = node.child_by_field("function")?;
 
@@ -562,10 +614,20 @@ impl<'a> InlayHintEngine<'a> {
                 // Method call
                 let object = callee.child_by_field("object")?;
                 let method = callee.child_by_field("field")?;
-                let object_type = self.infer_node_type(object, local_types)?;
-                let type_name = Self::unwrap_to_type_name(&object_type)?;
+                let object_type =
+                    self.infer_node_type_with_context(object, local_types, enclosing_struct)?;
+                let type_name = Self::resolve_type_name(&object_type, enclosing_struct)?;
                 let method_name = method.text(self.content);
                 let base_type_name = Self::base_type_name(&type_name);
+
+                // Check for default struct methods (e.g., clone on private structs)
+                if let Some(default_method) = self.api.get_default_struct_method(method_name) {
+                    return self.infer_default_method_return_type(
+                        default_method,
+                        &type_name,
+                        &base_type_name,
+                    );
+                }
 
                 let type_def = self.api.get_type(&base_type_name)?;
                 let method_def = type_def.methods.iter().find(|m| m.name == method_name)?;

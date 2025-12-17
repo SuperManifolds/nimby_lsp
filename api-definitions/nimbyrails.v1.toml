@@ -6,6 +6,24 @@ version = "1.0.0"
 api_version = "nimbyrails.v1"
 
 # ============================================
+# Default Struct Methods
+# ============================================
+# Methods that all private (non-pub) structs automatically have
+
+[[default_struct_methods]]
+name = "new"
+doc = "Create a new instance with default values"
+return_type = "Self"
+
+[[default_struct_methods]]
+name = "clone"
+doc = "Create a copy of this instance"
+return_type = "Self"
+[[default_struct_methods.params]]
+name = "self"
+type = "&Self"
+
+# ============================================
 # Standard Library Functions
 # ============================================
 

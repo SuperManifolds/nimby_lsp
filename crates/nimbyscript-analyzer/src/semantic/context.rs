@@ -276,6 +276,17 @@ impl<'a> SemanticContext<'a> {
         false
     }
 
+    /// Get a default struct method by name.
+    /// Default struct methods are methods all private (non-pub) structs automatically have.
+    pub fn get_default_struct_method(&self, method_name: &str) -> Option<&crate::api::FunctionDef> {
+        self.api.get_default_struct_method(method_name)
+    }
+
+    /// Check if a method name is a default struct method
+    pub fn is_default_struct_method(&self, method_name: &str) -> bool {
+        self.api.is_default_struct_method(method_name)
+    }
+
     /// Get the variants of an enum (user-defined or game enum)
     pub fn get_enum_variants(&self, name: &str) -> Option<Vec<String>> {
         // Check user-defined enums first
