@@ -18,6 +18,7 @@ An unofficial Language Server Protocol (LSP) implementation for [NimbyScript](ht
 - **Document Symbols** - Outline view of structs, enums, functions
 - **Type Hierarchy** - Navigate supertype/subtype relationships
 - **Inlay Hints** - Show inferred types and parameter names inline
+- **Document Formatting** - Format documents, selections, and on-type formatting
 
 ## Editor Support
 
@@ -48,9 +49,9 @@ An unofficial Language Server Protocol (LSP) implementation for [NimbyScript](ht
 | `textDocument/codeLens` | ❌ |
 | `textDocument/documentLink` | ❌ |
 | `textDocument/colorPresentation` | ❌ |
-| `textDocument/formatting` | ❌ |
-| `textDocument/rangeFormatting` | ❌ |
-| `textDocument/onTypeFormatting` | ❌ |
+| `textDocument/formatting` | ✅ |
+| `textDocument/rangeFormatting` | ✅ |
+| `textDocument/onTypeFormatting` | ✅ |
 | `textDocument/rename` | ❌ |
 | `textDocument/prepareRename` | ❌ |
 | `textDocument/foldingRange` | ❌ |
