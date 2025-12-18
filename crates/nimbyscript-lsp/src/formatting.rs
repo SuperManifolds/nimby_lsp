@@ -199,15 +199,17 @@ impl<'a> FormattingEngine<'a> {
         let mut result = format!("{indent}script meta {{\n");
 
         // Find the meta_block child which contains the meta_map
-        if let Some(meta_block) = node.child_by_kind(kind::META_BLOCK) {
-            if let Some(meta_map) = meta_block.child_by_kind(kind::META_MAP) {
-                let mut cursor = meta_map.walk();
-                for child in meta_map.children(&mut cursor) {
-                    if child.kind() == kind::META_ENTRY {
-                        let formatted = self.format_meta_entry(child, indent_level + 1);
-                        result.push_str(&formatted);
-                        result.push_str(",\n");
-                    }
+        let meta_map = node
+            .child_by_kind(kind::META_BLOCK)
+            .and_then(|mb| mb.child_by_kind(kind::META_MAP));
+
+        if let Some(map) = meta_map {
+            let mut cursor = map.walk();
+            for child in map.children(&mut cursor) {
+                if child.kind() == kind::META_ENTRY {
+                    let formatted = self.format_meta_entry(child, indent_level + 1);
+                    result.push_str(&formatted);
+                    result.push_str(",\n");
                 }
             }
         }
