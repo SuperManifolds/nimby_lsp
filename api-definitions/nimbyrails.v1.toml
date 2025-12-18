@@ -330,6 +330,7 @@ timed_stop = { type = "std::optional<Motion::TimedStop>", doc = "Timed stop stat
 schedule_stop = { type = "std::optional<Motion::ScheduleStop>", doc = "Schedule stop state", readonly = true }
 schedule_station_event = { type = "std::optional<Motion::ScheduleStationEvent>", doc = "Schedule station event state", readonly = true }
 schedule_dispatch = { type = "std::optional<Motion::ScheduleDispatch>", doc = "Schedule dispatch state", readonly = true }
+run_dispatch = { type = "std::optional<Motion::RunDispatch>", doc = "Run dispatch state (for shift-less line running)", readonly = true }
 hitch = { type = "std::optional<Motion::Hitch>", doc = "Hitch state", readonly = true }
 
 [types.SimController]
@@ -466,6 +467,14 @@ doc = "A schedule definition"
 [types.Schedule.fields]
 id = { type = "ID<Schedule>", doc = "Unique identifier", readonly = true }
 tags = { type = "Tags", doc = "Tags attached to this schedule", readonly = true }
+
+[[types.Schedule.methods]]
+name = "view"
+doc = "Returns a pointer to the shift if it's contained in this schedule"
+return_type = "*Shift"
+[[types.Schedule.methods.params]]
+name = "shift_id"
+type = "ID<Shift>"
 
 [types.Station]
 kind = "struct"
@@ -697,6 +706,21 @@ return_type = "bool"
 name = "other"
 type = "ID<Script>"
 
+[types."ID<Shift>"]
+kind = "struct"
+doc = "ID reference to a Shift entity"
+[[types."ID<Shift>".methods]]
+name = "empty"
+doc = "Returns a sentinel empty ID value"
+return_type = "ID<Shift>"
+[[types."ID<Shift>".methods]]
+name = "equals"
+doc = "Compare two ID instances"
+return_type = "bool"
+[[types."ID<Shift>".methods.params]]
+name = "other"
+type = "ID<Shift>"
+
 [types.EventCtx]
 kind = "struct"
 doc = "Context for event handlers"
@@ -750,7 +774,17 @@ kind = "struct"
 doc = "Schedule dispatch state"
 [types."Motion::ScheduleDispatch".fields]
 sched_id = { type = "ID<Schedule>", doc = "Schedule ID", readonly = true }
+shift_id = { type = "ID<Shift>", doc = "Shift ID", readonly = true }
 run = { type = "Run", doc = "Current run", readonly = true }
+run_epoch_start = { type = "i64", doc = "Run epoch start time", readonly = true }
+
+[types."Motion::RunDispatch"]
+kind = "struct"
+doc = "Simulation state of a train currently running a line (with or without a schedule shift)"
+[types."Motion::RunDispatch".fields]
+line_id = { type = "ID<Line>", doc = "Line being run", readonly = true }
+station_id = { type = "ID<Station>", doc = "Current/next station", readonly = true }
+run = { type = "Run", doc = "The run projection", readonly = true }
 run_epoch_start = { type = "i64", doc = "Run epoch start time", readonly = true }
 
 # std::optional
@@ -776,6 +810,7 @@ line_id = { type = "ID<Line>", doc = "Line ID", readonly = true }
 kind = "struct"
 doc = "A schedule shift"
 [types.Shift.fields]
+id = { type = "ID<Shift>", doc = "Unique identifier", readonly = true }
 tags = { type = "Tags", doc = "Tags attached to this shift", readonly = true }
 
 # Additional SimController methods
@@ -804,6 +839,19 @@ name = "train"
 type = "&Train"
 [[types.SimController.methods.params]]
 name = "config"
+type = "i64"
+
+[[types.SimController.methods]]
+name = "queue_train_run_line"
+doc = "Queue a train to run a line without a schedule shift. Train must be unassigned and unhitched. Train will run the full line from its current position, driving to the first stop, then ending unassigned at the last stop."
+[[types.SimController.methods.params]]
+name = "train"
+type = "&Train"
+[[types.SimController.methods.params]]
+name = "line"
+type = "&Line"
+[[types.SimController.methods.params]]
+name = "arrival_offset_s"
 type = "i64"
 
 # Extrapolator methods
