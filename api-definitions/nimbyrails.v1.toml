@@ -619,164 +619,22 @@ type = "&TapeTrace"
 doc = "The trace to check for intersection"
 
 # ID generic type - wrapper for referencing game objects
-[types."ID<Signal>"]
+# This single definition applies to all ID<T> types (ID<Signal>, ID<Train>, etc.)
+[types."ID<T>"]
 kind = "struct"
-doc = "ID reference to a Signal entity"
-[[types."ID<Signal>".methods]]
+type_params = ["T"]
+doc = "ID reference to a {T} entity"
+[[types."ID<T>".methods]]
 name = "empty"
 doc = "Returns a sentinel empty ID value"
-return_type = "ID<Signal>"
-[[types."ID<Signal>".methods]]
+return_type = "ID<T>"
+[[types."ID<T>".methods]]
 name = "equals"
 doc = "Compare two ID instances"
 return_type = "bool"
-[[types."ID<Signal>".methods.params]]
+[[types."ID<T>".methods.params]]
 name = "other"
-type = "ID<Signal>"
-doc = "The ID to compare with"
-
-[types."ID<Train>"]
-kind = "struct"
-doc = "ID reference to a Train entity"
-[[types."ID<Train>".methods]]
-name = "empty"
-doc = "Returns a sentinel empty ID value"
-return_type = "ID<Train>"
-[[types."ID<Train>".methods]]
-name = "equals"
-doc = "Compare two ID instances"
-return_type = "bool"
-[[types."ID<Train>".methods.params]]
-name = "other"
-type = "ID<Train>"
-doc = "The ID to compare with"
-
-[types."ID<Tag>"]
-kind = "struct"
-doc = "ID reference to a Tag entity"
-[[types."ID<Tag>".methods]]
-name = "empty"
-doc = "Returns a sentinel empty ID value"
-return_type = "ID<Tag>"
-[[types."ID<Tag>".methods]]
-name = "equals"
-doc = "Compare two ID instances"
-return_type = "bool"
-[[types."ID<Tag>".methods.params]]
-name = "other"
-type = "ID<Tag>"
-doc = "The ID to compare with"
-
-[types."ID<Line>"]
-kind = "struct"
-doc = "ID reference to a Line entity"
-[[types."ID<Line>".methods]]
-name = "empty"
-doc = "Returns a sentinel empty ID value"
-return_type = "ID<Line>"
-[[types."ID<Line>".methods]]
-name = "equals"
-doc = "Compare two ID instances"
-return_type = "bool"
-[[types."ID<Line>".methods.params]]
-name = "other"
-type = "ID<Line>"
-doc = "The ID to compare with"
-
-[types."ID<Schedule>"]
-kind = "struct"
-doc = "ID reference to a Schedule entity"
-[[types."ID<Schedule>".methods]]
-name = "empty"
-doc = "Returns a sentinel empty ID value"
-return_type = "ID<Schedule>"
-[[types."ID<Schedule>".methods]]
-name = "equals"
-doc = "Compare two ID instances"
-return_type = "bool"
-[[types."ID<Schedule>".methods.params]]
-name = "other"
-type = "ID<Schedule>"
-doc = "The ID to compare with"
-
-[types."ID<Building>"]
-kind = "struct"
-doc = "ID reference to a Building entity"
-[[types."ID<Building>".methods]]
-name = "empty"
-doc = "Returns a sentinel empty ID value"
-return_type = "ID<Building>"
-[[types."ID<Building>".methods]]
-name = "equals"
-doc = "Compare two ID instances"
-return_type = "bool"
-[[types."ID<Building>".methods.params]]
-name = "other"
-type = "ID<Building>"
-doc = "The ID to compare with"
-
-[types."ID<Station>"]
-kind = "struct"
-doc = "ID reference to a Station entity"
-[[types."ID<Station>".methods]]
-name = "empty"
-doc = "Returns a sentinel empty ID value"
-return_type = "ID<Station>"
-[[types."ID<Station>".methods]]
-name = "equals"
-doc = "Compare two ID instances"
-return_type = "bool"
-[[types."ID<Station>".methods.params]]
-name = "other"
-type = "ID<Station>"
-doc = "The ID to compare with"
-
-[types."ID<Track>"]
-kind = "struct"
-doc = "ID reference to a Track entity"
-[[types."ID<Track>".methods]]
-name = "empty"
-doc = "Returns a sentinel empty ID value"
-return_type = "ID<Track>"
-[[types."ID<Track>".methods]]
-name = "equals"
-doc = "Compare two ID instances"
-return_type = "bool"
-[[types."ID<Track>".methods.params]]
-name = "other"
-type = "ID<Track>"
-doc = "The ID to compare with"
-
-[types."ID<Script>"]
-kind = "struct"
-doc = "ID reference to a Script entity"
-[[types."ID<Script>".methods]]
-name = "empty"
-doc = "Returns a sentinel empty ID value"
-return_type = "ID<Script>"
-[[types."ID<Script>".methods]]
-name = "equals"
-doc = "Compare two ID instances"
-return_type = "bool"
-[[types."ID<Script>".methods.params]]
-name = "other"
-type = "ID<Script>"
-doc = "The ID to compare with"
-
-[types."ID<Shift>"]
-kind = "struct"
-doc = "ID reference to a Shift entity"
-[[types."ID<Shift>".methods]]
-name = "empty"
-doc = "Returns a sentinel empty ID value"
-return_type = "ID<Shift>"
-[[types."ID<Shift>".methods]]
-name = "equals"
-doc = "Compare two ID instances"
-return_type = "bool"
-[[types."ID<Shift>".methods.params]]
-name = "other"
-type = "ID<Shift>"
+type = "ID<T>"
 doc = "The ID to compare with"
 
 [types.EventCtx]

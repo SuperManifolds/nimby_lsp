@@ -1,6 +1,74 @@
 use serde::Deserialize;
 use std::collections::HashMap;
 
+/// Parse a generic type name into base name and type arguments.
+/// E.g., `ID<Signal>` -> `("ID", vec!["Signal"])`
+/// E.g., `&Vec<ID<Train>>` -> `("&Vec", vec!["ID<Train>"])`
+fn parse_generic_type_name(name: &str) -> Option<(&str, Vec<&str>)> {
+    let open = name.find('<')?;
+    let close = name.rfind('>')?;
+    if close <= open {
+        return None;
+    }
+    let base = &name[..open];
+    let args_str = &name[open + 1..close];
+    // Simple split - works for single type arg like ID<Signal>
+    // For nested generics, this gives the whole inner part
+    let args: Vec<&str> = args_str.split(',').map(str::trim).collect();
+    Some((base, args))
+}
+
+/// Substitute type parameters in a string.
+/// E.g., substitute_in_type_str("ID<T>", &[("T", "Signal")]) -> "ID<Signal>"
+fn substitute_in_type_str(ty: &str, subs: &[(&str, &str)]) -> String {
+    let mut result = ty.to_string();
+    for (param, arg) in subs {
+        result = result.replace(*param, arg);
+    }
+    result
+}
+
+/// Substitute type parameters in a FunctionDef, returning a new FunctionDef.
+pub fn substitute_type_params_in_method(
+    method: &FunctionDef,
+    type_params: &[String],
+    type_args: &[String],
+) -> FunctionDef {
+    if type_params.is_empty() || type_args.is_empty() {
+        return method.clone();
+    }
+
+    // Build substitution pairs: [("T", "Signal")]
+    let subs: Vec<(&str, &str)> = type_params
+        .iter()
+        .zip(type_args.iter())
+        .map(|(p, a)| (p.as_str(), a.as_str()))
+        .collect();
+
+    let mut result = method.clone();
+
+    // Substitute in return type
+    if let Some(ref ret) = result.return_type {
+        result.return_type = Some(substitute_in_type_str(ret, &subs));
+    }
+
+    // Substitute in parameter types
+    for param in &mut result.params {
+        param.ty = substitute_in_type_str(&param.ty, &subs);
+    }
+
+    // Substitute in doc string (for "{T}" placeholders)
+    if let Some(ref doc) = result.doc {
+        let mut new_doc = doc.clone();
+        for (param, arg) in &subs {
+            new_doc = new_doc.replace(&format!("{{{param}}}"), arg);
+        }
+        result.doc = Some(new_doc);
+    }
+
+    result
+}
+
 /// API definitions loaded from external TOML files
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct ApiDefinitions {
@@ -34,6 +102,9 @@ pub struct TypeDef {
     pub fields: HashMap<String, FieldDef>,
     #[serde(default)]
     pub methods: Vec<FunctionDef>,
+    /// Type parameters for generic types (e.g., `["T"]` for `ID<T>`)
+    #[serde(default)]
+    pub type_params: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -144,9 +215,63 @@ impl ApiDefinitions {
         self.functions.iter().find(|f| f.name == name)
     }
 
-    /// Get type by name
+    /// Get type by name.
+    /// Supports generic types: if "ID<Signal>" is not found, falls back to "ID<T>".
     pub fn get_type(&self, name: &str) -> Option<&TypeDef> {
-        self.types.get(name)
+        // Try exact match first
+        if let Some(def) = self.types.get(name) {
+            return Some(def);
+        }
+
+        // Try generic pattern match (e.g., "ID<Signal>" -> "ID<T>")
+        if let Some((base, _)) = parse_generic_type_name(name) {
+            let generic_key = format!("{base}<T>");
+            return self.types.get(&generic_key);
+        }
+
+        None
+    }
+
+    /// Get type by name, returning the type parameters if matched against a generic.
+    /// Returns (type_def, type_params) where type_params contains the actual type arguments
+    /// (e.g., for `ID<Signal>` matched against `ID<T>`, returns `vec!["Signal"]`).
+    pub fn get_type_with_params(&self, name: &str) -> Option<(&TypeDef, Vec<String>)> {
+        // Try exact match first
+        if let Some(def) = self.types.get(name) {
+            return Some((def, vec![]));
+        }
+
+        // Try generic pattern match (e.g., "ID<Signal>" -> "ID<T>")
+        if let Some((base, args)) = parse_generic_type_name(name) {
+            let generic_key = format!("{base}<T>");
+            if let Some(def) = self.types.get(&generic_key) {
+                return Some((def, args.into_iter().map(String::from).collect()));
+            }
+        }
+
+        None
+    }
+
+    /// Get a method on a type by name, with type parameter substitution for generics.
+    /// For generic types like "ID<Signal>", returns a method with T substituted to Signal.
+    pub fn get_type_method_substituted(
+        &self,
+        type_name: &str,
+        method_name: &str,
+    ) -> Option<FunctionDef> {
+        let (type_def, type_args) = self.get_type_with_params(type_name)?;
+        let method = type_def.methods.iter().find(|m| m.name == method_name)?;
+
+        // If we matched against a generic type, substitute the type parameters
+        if !type_def.type_params.is_empty() && !type_args.is_empty() {
+            Some(substitute_type_params_in_method(
+                method,
+                &type_def.type_params,
+                &type_args,
+            ))
+        } else {
+            Some(method.clone())
+        }
     }
 
     /// Get enum by name
