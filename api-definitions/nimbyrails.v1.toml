@@ -34,6 +34,7 @@ return_type = "f64"
 [[functions.params]]
 name = "value"
 type = "f64"
+doc = "The number to get the absolute value of"
 
 [[functions]]
 name = "ceil"
@@ -42,6 +43,7 @@ return_type = "f64"
 [[functions.params]]
 name = "value"
 type = "f64"
+doc = "The number to round up"
 
 [[functions]]
 name = "floor"
@@ -50,6 +52,7 @@ return_type = "f64"
 [[functions.params]]
 name = "value"
 type = "f64"
+doc = "The number to round down"
 
 [[functions]]
 name = "round"
@@ -58,6 +61,7 @@ return_type = "f64"
 [[functions.params]]
 name = "value"
 type = "f64"
+doc = "The number to round"
 
 [[functions]]
 name = "sqrt"
@@ -66,6 +70,7 @@ return_type = "f64"
 [[functions.params]]
 name = "value"
 type = "f64"
+doc = "The number to get the square root of"
 
 [[functions]]
 name = "pow"
@@ -74,9 +79,11 @@ return_type = "f64"
 [[functions.params]]
 name = "base"
 type = "f64"
+doc = "The base value"
 [[functions.params]]
 name = "exponent"
 type = "f64"
+doc = "The exponent to raise the base to"
 
 [[functions]]
 name = "exp"
@@ -85,6 +92,7 @@ return_type = "f64"
 [[functions.params]]
 name = "value"
 type = "f64"
+doc = "The exponent"
 
 [[functions]]
 name = "log10"
@@ -93,6 +101,7 @@ return_type = "f64"
 [[functions.params]]
 name = "value"
 type = "f64"
+doc = "The number to get the logarithm of"
 
 [[functions]]
 name = "loge"
@@ -101,6 +110,7 @@ return_type = "f64"
 [[functions.params]]
 name = "value"
 type = "f64"
+doc = "The number to get the natural logarithm of"
 
 [[functions]]
 name = "min"
@@ -109,9 +119,11 @@ return_type = "f64"
 [[functions.params]]
 name = "a"
 type = "f64"
+doc = "First value to compare"
 [[functions.params]]
 name = "b"
 type = "f64"
+doc = "Second value to compare"
 
 [[functions]]
 name = "max"
@@ -120,9 +132,11 @@ return_type = "f64"
 [[functions.params]]
 name = "a"
 type = "f64"
+doc = "First value to compare"
 [[functions.params]]
 name = "b"
 type = "f64"
+doc = "Second value to compare"
 
 [[functions]]
 name = "zdiv"
@@ -131,9 +145,11 @@ return_type = "i64"
 [[functions.params]]
 name = "numerator"
 type = "i64"
+doc = "The dividend"
 [[functions.params]]
 name = "denominator"
 type = "i64"
+doc = "The divisor (returns 0 if zero)"
 
 [[functions]]
 name = "zmod"
@@ -142,9 +158,11 @@ return_type = "i64"
 [[functions.params]]
 name = "value"
 type = "i64"
+doc = "The dividend"
 [[functions.params]]
 name = "divisor"
 type = "i64"
+doc = "The divisor (returns 0 if zero)"
 
 [[functions]]
 name = "is_nan"
@@ -153,6 +171,7 @@ return_type = "bool"
 [[functions.params]]
 name = "value"
 type = "f64"
+doc = "The floating-point number to check"
 
 [[functions]]
 name = "is_inf"
@@ -161,6 +180,7 @@ return_type = "bool"
 [[functions.params]]
 name = "value"
 type = "f64"
+doc = "The floating-point number to check"
 
 [[functions]]
 name = "is_normal"
@@ -169,6 +189,7 @@ return_type = "bool"
 [[functions.params]]
 name = "value"
 type = "f64"
+doc = "The floating-point number to check"
 
 [[functions]]
 name = "iround"
@@ -177,6 +198,7 @@ return_type = "i64"
 [[functions.params]]
 name = "value"
 type = "f64"
+doc = "The floating-point number to round"
 
 [[functions]]
 name = "is_valid"
@@ -186,6 +208,7 @@ type_params = ["T"]
 [[functions.params]]
 name = "id"
 type = "ID<T>"
+doc = "The ID to check for validity"
 
 [[functions]]
 name = "is_valid"
@@ -195,6 +218,7 @@ type_params = ["T"]
 [[functions.params]]
 name = "ptr"
 type = "*T"
+doc = "The pointer to check for validity"
 
 [[functions]]
 name = "as_i64"
@@ -203,6 +227,7 @@ return_type = "i64"
 [[functions.params]]
 name = "value"
 type = "f64"
+doc = "The floating-point number to convert"
 
 [[functions]]
 name = "as_f64"
@@ -211,6 +236,7 @@ return_type = "f64"
 [[functions.params]]
 name = "value"
 type = "i64"
+doc = "The integer to convert"
 
 [[functions]]
 name = "log"
@@ -218,6 +244,7 @@ doc = "Log a formatted message for debugging"
 [[functions.params]]
 name = "format"
 type = "string"
+doc = "The message to log"
 
 # ============================================
 # Context Types (DB, Sim, Extrapolator, ControlCtx)
@@ -243,6 +270,7 @@ type_params = ["T"]
 [[types.DB.methods.params]]
 name = "id"
 type = "ID<T>"
+doc = "The ID of the entity to get script data for"
 
 [[types.DB.methods]]
 name = "track_pos_project"
@@ -251,9 +279,11 @@ return_type = "Pos"
 [[types.DB.methods.params]]
 name = "pos"
 type = "&Pos"
+doc = "The starting position on the track"
 [[types.DB.methods.params]]
 name = "distance"
 type = "f64"
+doc = "Distance in meters (negative for opposite direction)"
 
 [types.Sim]
 kind = "struct"
@@ -267,6 +297,7 @@ type_params = ["T"]
 [[types.Sim.methods.params]]
 name = "id"
 type = "ID<T>"
+doc = "The ID of the entity to get simulation data for"
 
 [types.Extrapolator]
 kind = "struct"
@@ -343,6 +374,7 @@ doc = "Queue a train intervention (despawn)"
 [[types.SimController.methods.params]]
 name = "train"
 type = "&Train"
+doc = "The train to despawn"
 
 [[types.SimController.methods]]
 name = "queue_train_warp"
@@ -350,9 +382,11 @@ doc = "Queue a train warp (reposition)"
 [[types.SimController.methods.params]]
 name = "train"
 type = "&Train"
+doc = "The train to reposition"
 [[types.SimController.methods.params]]
 name = "pos"
 type = "&Pos"
+doc = "The new position for the train"
 
 [[types.SimController.methods]]
 name = "queue_train_drive_to"
@@ -360,9 +394,11 @@ doc = "Queue a route modification"
 [[types.SimController.methods.params]]
 name = "train"
 type = "&Train"
+doc = "The train to route"
 [[types.SimController.methods.params]]
 name = "pos"
 type = "&Pos"
+doc = "The destination position"
 
 [[types.SimController.methods]]
 name = "queue_attach"
@@ -371,9 +407,11 @@ type_params = ["T"]
 [[types.SimController.methods.params]]
 name = "target"
 type = "ID<GameObject>"
+doc = "The entity to attach data to"
 [[types.SimController.methods.params]]
 name = "data"
 type = "T"
+doc = "The script data to attach"
 
 [[types.SimController.methods]]
 name = "queue_erase"
@@ -382,6 +420,7 @@ type_params = ["T"]
 [[types.SimController.methods.params]]
 name = "target"
 type = "ID<GameObject>"
+doc = "The entity to erase data from"
 
 [[types.SimController.methods]]
 name = "queue_task"
@@ -389,6 +428,7 @@ doc = "Queue a deferred task"
 [[types.SimController.methods.params]]
 name = "task"
 type = "Task"
+doc = "The task to queue"
 
 [[types.SimController.methods]]
 name = "queue_task_at"
@@ -396,9 +436,11 @@ doc = "Queue a deferred task at a specific time"
 [[types.SimController.methods.params]]
 name = "task"
 type = "Task"
+doc = "The task to queue"
 [[types.SimController.methods.params]]
 name = "time_us"
 type = "i64"
+doc = "Execution time in microseconds since save creation"
 
 # ============================================
 # Enums
@@ -475,6 +517,7 @@ return_type = "*Shift"
 [[types.Schedule.methods.params]]
 name = "shift_id"
 type = "ID<Shift>"
+doc = "The ID of the shift to look up"
 
 [types.Station]
 kind = "struct"
@@ -502,6 +545,7 @@ return_type = "bool"
 [[types.Tags.methods.params]]
 name = "id"
 type = "ID<Tag>"
+doc = "The tag ID to check for"
 
 [[types.Tags.methods]]
 name = "contains"
@@ -510,6 +554,7 @@ return_type = "bool"
 [[types.Tags.methods.params]]
 name = "tag"
 type = "&Tag"
+doc = "The tag to check for"
 
 # Position types
 [types.Pos]
@@ -553,6 +598,7 @@ return_type = "bool"
 [[types.TapeTrace.methods.params]]
 name = "pos"
 type = "&Pos"
+doc = "The position to check"
 
 [[types.TapeTrace.methods]]
 name = "contains"
@@ -561,6 +607,7 @@ return_type = "bool"
 [[types.TapeTrace.methods.params]]
 name = "other"
 type = "&TapeTrace"
+doc = "The trace to check for containment"
 
 [[types.TapeTrace.methods]]
 name = "hits"
@@ -569,6 +616,7 @@ return_type = "bool"
 [[types.TapeTrace.methods.params]]
 name = "trace"
 type = "&TapeTrace"
+doc = "The trace to check for intersection"
 
 # ID generic type - wrapper for referencing game objects
 [types."ID<Signal>"]
@@ -585,6 +633,7 @@ return_type = "bool"
 [[types."ID<Signal>".methods.params]]
 name = "other"
 type = "ID<Signal>"
+doc = "The ID to compare with"
 
 [types."ID<Train>"]
 kind = "struct"
@@ -600,6 +649,7 @@ return_type = "bool"
 [[types."ID<Train>".methods.params]]
 name = "other"
 type = "ID<Train>"
+doc = "The ID to compare with"
 
 [types."ID<Tag>"]
 kind = "struct"
@@ -615,6 +665,7 @@ return_type = "bool"
 [[types."ID<Tag>".methods.params]]
 name = "other"
 type = "ID<Tag>"
+doc = "The ID to compare with"
 
 [types."ID<Line>"]
 kind = "struct"
@@ -630,6 +681,7 @@ return_type = "bool"
 [[types."ID<Line>".methods.params]]
 name = "other"
 type = "ID<Line>"
+doc = "The ID to compare with"
 
 [types."ID<Schedule>"]
 kind = "struct"
@@ -645,6 +697,7 @@ return_type = "bool"
 [[types."ID<Schedule>".methods.params]]
 name = "other"
 type = "ID<Schedule>"
+doc = "The ID to compare with"
 
 [types."ID<Building>"]
 kind = "struct"
@@ -660,6 +713,7 @@ return_type = "bool"
 [[types."ID<Building>".methods.params]]
 name = "other"
 type = "ID<Building>"
+doc = "The ID to compare with"
 
 [types."ID<Station>"]
 kind = "struct"
@@ -675,6 +729,7 @@ return_type = "bool"
 [[types."ID<Station>".methods.params]]
 name = "other"
 type = "ID<Station>"
+doc = "The ID to compare with"
 
 [types."ID<Track>"]
 kind = "struct"
@@ -690,6 +745,7 @@ return_type = "bool"
 [[types."ID<Track>".methods.params]]
 name = "other"
 type = "ID<Track>"
+doc = "The ID to compare with"
 
 [types."ID<Script>"]
 kind = "struct"
@@ -705,6 +761,7 @@ return_type = "bool"
 [[types."ID<Script>".methods.params]]
 name = "other"
 type = "ID<Script>"
+doc = "The ID to compare with"
 
 [types."ID<Shift>"]
 kind = "struct"
@@ -720,6 +777,7 @@ return_type = "bool"
 [[types."ID<Shift>".methods.params]]
 name = "other"
 type = "ID<Shift>"
+doc = "The ID to compare with"
 
 [types.EventCtx]
 kind = "struct"
@@ -820,9 +878,11 @@ doc = "Queue hitching two trains together"
 [[types.SimController.methods.params]]
 name = "driver"
 type = "&Train"
+doc = "The train that will lead the coupled consist"
 [[types.SimController.methods.params]]
 name = "hitcher"
 type = "&Train"
+doc = "The train to attach to the driver"
 
 [[types.SimController.methods]]
 name = "queue_train_unhitch"
@@ -830,6 +890,7 @@ doc = "Queue unhitching a train"
 [[types.SimController.methods.params]]
 name = "hitcher"
 type = "&Train"
+doc = "The train to detach from its driver"
 
 [[types.SimController.methods]]
 name = "queue_train_set_configuration"
@@ -837,9 +898,11 @@ doc = "Queue setting train configuration"
 [[types.SimController.methods.params]]
 name = "train"
 type = "&Train"
+doc = "The train to configure"
 [[types.SimController.methods.params]]
 name = "config"
 type = "i64"
+doc = "The configuration value to set"
 
 [[types.SimController.methods]]
 name = "queue_train_run_line"
@@ -847,12 +910,15 @@ doc = "Queue a train to run a line without a schedule shift. Train must be unass
 [[types.SimController.methods.params]]
 name = "train"
 type = "&Train"
+doc = "The train to dispatch"
 [[types.SimController.methods.params]]
 name = "line"
 type = "&Line"
+doc = "The line to run"
 [[types.SimController.methods.params]]
 name = "arrival_offset_s"
 type = "i64"
+doc = "Offset in seconds to add to arrival times"
 
 # Extrapolator methods
 [[types.Extrapolator.methods]]
@@ -882,9 +948,11 @@ return_type = "*Train"
 [[types.Extrapolator.methods.params]]
 name = "pos"
 type = "&Pos"
+doc = "The position to check"
 [[types.Extrapolator.methods.params]]
 name = "ignore_train"
 type = "ID<Train>"
+doc = "Train to ignore (use empty ID to check all trains)"
 
 [[types.Extrapolator.methods]]
 name = "get_one_reservation"
@@ -893,9 +961,11 @@ return_type = "*Train"
 [[types.Extrapolator.methods.params]]
 name = "pos"
 type = "&Pos"
+doc = "The position to check"
 [[types.Extrapolator.methods.params]]
 name = "ignore_train"
 type = "ID<Train>"
+doc = "Train to ignore (use empty ID to check all trains)"
 
 [[types.Extrapolator.methods]]
 name = "is_occupying"
@@ -904,9 +974,11 @@ return_type = "bool"
 [[types.Extrapolator.methods.params]]
 name = "pos"
 type = "&Pos"
+doc = "The position to check"
 [[types.Extrapolator.methods.params]]
 name = "train"
 type = "ID<Train>"
+doc = "The train to check for"
 
 [[types.Extrapolator.methods]]
 name = "is_reserving"
@@ -915,9 +987,11 @@ return_type = "bool"
 [[types.Extrapolator.methods.params]]
 name = "pos"
 type = "&Pos"
+doc = "The position to check"
 [[types.Extrapolator.methods.params]]
 name = "train"
 type = "ID<Train>"
+doc = "The train to check for"
 
 [[types.Extrapolator.methods]]
 name = "reservation_probe"
@@ -926,6 +1000,7 @@ return_type = "ScResvProbeIt"
 [[types.Extrapolator.methods.params]]
 name = "pos"
 type = "&Pos"
+doc = "The position to probe"
 
 # Iterator types
 [types.ScResvProbeIt]
@@ -968,6 +1043,7 @@ return_type = "bool"
 [[types."&Vec<ID<Line>>".methods.params]]
 name = "value"
 type = "ID<Line>"
+doc = "The ID to search for"
 
 [[types."&Vec<ID<Line>>".methods]]
 name = "get"
@@ -976,6 +1052,7 @@ return_type = "*ID<Line>"
 [[types."&Vec<ID<Line>>".methods.params]]
 name = "idx"
 type = "i64"
+doc = "The zero-based index"
 
 [[types."&Vec<ID<Line>>".methods]]
 name = "iter"
@@ -1003,6 +1080,7 @@ return_type = "bool"
 [[types."&Vec<ID<Train>>".methods.params]]
 name = "value"
 type = "ID<Train>"
+doc = "The ID to search for"
 
 [[types."&Vec<ID<Train>>".methods]]
 name = "get"
@@ -1011,6 +1089,7 @@ return_type = "*ID<Train>"
 [[types."&Vec<ID<Train>>".methods.params]]
 name = "idx"
 type = "i64"
+doc = "The zero-based index"
 
 [[types."&Vec<ID<Train>>".methods]]
 name = "iter"
@@ -1038,6 +1117,7 @@ return_type = "bool"
 [[types."&Vec<ID<Schedule>>".methods.params]]
 name = "value"
 type = "ID<Schedule>"
+doc = "The ID to search for"
 
 [[types."&Vec<ID<Schedule>>".methods]]
 name = "get"
@@ -1046,6 +1126,7 @@ return_type = "*ID<Schedule>"
 [[types."&Vec<ID<Schedule>>".methods.params]]
 name = "idx"
 type = "i64"
+doc = "The zero-based index"
 
 [[types."&Vec<ID<Schedule>>".methods]]
 name = "iter"
@@ -1073,6 +1154,7 @@ return_type = "bool"
 [[types."&Vec<ID<Signal>>".methods.params]]
 name = "value"
 type = "ID<Signal>"
+doc = "The ID to search for"
 
 [[types."&Vec<ID<Signal>>".methods]]
 name = "get"
@@ -1081,6 +1163,7 @@ return_type = "*ID<Signal>"
 [[types."&Vec<ID<Signal>>".methods.params]]
 name = "idx"
 type = "i64"
+doc = "The zero-based index"
 
 [[types."&Vec<ID<Signal>>".methods]]
 name = "iter"
@@ -1164,18 +1247,23 @@ return_type = "SignalCheck"
 [[callbacks.params]]
 name = "self"
 type = "&Self"
+doc = "Reference to script data attached to the signal"
 [[callbacks.params]]
 name = "ctx"
 type = "&EventCtx"
+doc = "Event context providing database and extrapolator access"
 [[callbacks.params]]
 name = "train"
 type = "&Train"
+doc = "The train being evaluated"
 [[callbacks.params]]
 name = "motion"
 type = "&Motion"
+doc = "Current simulation state of the train"
 [[callbacks.params]]
 name = "signal"
 type = "&Signal"
+doc = "The signal being checked"
 
 [[callbacks]]
 name = "event_signal_lookahead"
@@ -1184,27 +1272,35 @@ for_type = "Signal"
 [[callbacks.params]]
 name = "self"
 type = "&Self"
+doc = "Reference to script data attached to the signal"
 [[callbacks.params]]
 name = "ctx"
 type = "&EventCtx"
+doc = "Event context for database access"
 [[callbacks.params]]
 name = "train"
 type = "&Train"
+doc = "The train being evaluated"
 [[callbacks.params]]
 name = "motion"
 type = "&Motion"
+doc = "Train's simulation state"
 [[callbacks.params]]
 name = "signal"
 type = "&Signal"
+doc = "The signal performing lookahead"
 [[callbacks.params]]
 name = "train_distance"
 type = "f64"
+doc = "Distance from train to this signal in meters"
 [[callbacks.params]]
 name = "check"
 type = "SignalCheck"
+doc = "Result of the signal's path check (Pass/Stop)"
 [[callbacks.params]]
 name = "result"
 type = "&mut SignalLookaheadResult"
+doc = "Output parameter for setting maximum speed constraint"
 
 [[callbacks]]
 name = "event_signal_change_path"
@@ -1214,24 +1310,31 @@ return_type = "SignalChangePath"
 [[callbacks.params]]
 name = "self"
 type = "&Self"
+doc = "Reference to script data attached to the signal"
 [[callbacks.params]]
 name = "ctx"
 type = "&EventCtx"
+doc = "Event context for game state access"
 [[callbacks.params]]
 name = "train"
 type = "&Train"
+doc = "The train whose path may change"
 [[callbacks.params]]
 name = "motion"
 type = "&Motion"
+doc = "Train's current motion state"
 [[callbacks.params]]
 name = "signal"
 type = "&Signal"
+doc = "The signal initiating path change"
 [[callbacks.params]]
 name = "check"
 type = "SignalCheck"
+doc = "Current path check result for this signal"
 [[callbacks.params]]
 name = "result"
 type = "&mut SignalChangePathResult"
+doc = "Output parameter containing new destination position"
 
 [[callbacks]]
 name = "event_signal_pass_by"
@@ -1240,21 +1343,27 @@ for_type = "Signal"
 [[callbacks.params]]
 name = "self"
 type = "&Self"
+doc = "Reference to script data attached to the signal"
 [[callbacks.params]]
 name = "ctx"
 type = "&EventCtx"
+doc = "Event context providing full game access"
 [[callbacks.params]]
 name = "train"
 type = "&Train"
+doc = "The passing train"
 [[callbacks.params]]
 name = "motion"
 type = "&Motion"
+doc = "Train's motion state"
 [[callbacks.params]]
 name = "signal"
 type = "&Signal"
+doc = "The signal being passed"
 [[callbacks.params]]
 name = "sc"
 type = "&mut SimController"
+doc = "Simulation controller for queuing commands"
 
 [[callbacks]]
 name = "event_signal_marker_reserved"
@@ -1264,12 +1373,15 @@ return_type = "ID<Train>"
 [[callbacks.params]]
 name = "self"
 type = "&Self"
+doc = "Reference to script data attached to the signal"
 [[callbacks.params]]
 name = "db"
 type = "&DB"
+doc = "Database for querying game objects"
 [[callbacks.params]]
 name = "signal"
 type = "&Signal"
+doc = "The marker signal being checked"
 
 [[callbacks]]
 name = "event_signal_texture_state"
@@ -1279,12 +1391,15 @@ return_type = "i64"
 [[callbacks.params]]
 name = "self"
 type = "&Self"
+doc = "Reference to script data attached to the signal"
 [[callbacks.params]]
 name = "db"
 type = "&DB"
+doc = "Database access"
 [[callbacks.params]]
 name = "signal"
 type = "&Signal"
+doc = "The signal needing texture state"
 
 [[callbacks]]
 name = "event_train_shift_setup"
@@ -1293,18 +1408,23 @@ for_type = "Train"
 [[callbacks.params]]
 name = "self"
 type = "&Self"
+doc = "Reference to script data attached to the train"
 [[callbacks.params]]
 name = "ctx"
 type = "&EventCtx"
+doc = "Event context for game state access"
 [[callbacks.params]]
 name = "train"
 type = "&Train"
+doc = "The train seeking a shift assignment"
 [[callbacks.params]]
 name = "motion"
 type = "&Motion"
+doc = "Train's current motion state"
 [[callbacks.params]]
 name = "ss"
 type = "&mut ShiftSetup"
+doc = "Shift setup parameters to modify (position, time, occupation check flags)"
 
 [[callbacks]]
 name = "event_train_shift_allow"
@@ -1314,33 +1434,43 @@ return_type = "ShiftAllow"
 [[callbacks.params]]
 name = "self"
 type = "&Self"
+doc = "Reference to script data attached to the train"
 [[callbacks.params]]
 name = "ctx"
 type = "&EventCtx"
+doc = "Event context for database access"
 [[callbacks.params]]
 name = "train"
 type = "&Train"
+doc = "The train being assigned"
 [[callbacks.params]]
 name = "motion"
 type = "&Motion"
+doc = "Train's motion state"
 [[callbacks.params]]
 name = "sched"
 type = "&Schedule"
+doc = "The schedule containing the shift"
 [[callbacks.params]]
 name = "shift"
 type = "&Shift"
+doc = "The potential shift assignment"
 [[callbacks.params]]
 name = "run"
 type = "&Run"
+doc = "The run projection for this schedule"
 [[callbacks.params]]
 name = "stop_idx"
 type = "i64"
+doc = "Index of the stop within the run"
 [[callbacks.params]]
 name = "arrival_us"
 type = "i64"
+doc = "Arrival time in microseconds since save creation"
 [[callbacks.params]]
 name = "pose"
 type = "&Pose"
+doc = "Station position (head and tail locations)"
 
 [[callbacks]]
 name = "control_train"
@@ -1349,18 +1479,23 @@ for_type = "Controller"
 [[callbacks.params]]
 name = "self"
 type = "&Self"
+doc = "Reference to the controller script instance"
 [[callbacks.params]]
 name = "ctx"
 type = "&ControlCtx"
+doc = "Control context with database, simulation, and extrapolator access"
 [[callbacks.params]]
 name = "train"
 type = "&Train"
+doc = "The train being controlled"
 [[callbacks.params]]
 name = "motion"
 type = "&Motion"
+doc = "Train's current motion state"
 [[callbacks.params]]
 name = "sc"
 type = "&mut SimController"
+doc = "Simulation controller for queuing commands"
 
 [[callbacks]]
 name = "task_run"
@@ -1369,9 +1504,12 @@ for_type = "Controller"
 [[callbacks.params]]
 name = "self"
 type = "&Self"
+doc = "Reference to the controller script instance"
 [[callbacks.params]]
 name = "ctx"
 type = "&ControlCtx"
+doc = "Control context with database, simulation, and extrapolator access"
 [[callbacks.params]]
 name = "sc"
 type = "&mut SimController"
+doc = "Simulation controller for queuing commands"
