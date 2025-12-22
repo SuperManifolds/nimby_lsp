@@ -400,19 +400,7 @@ impl<'a> RenameEngine<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn make_doc(source: &str) -> Document {
-        Document::new(source.to_string(), None)
-    }
-
-    fn make_uri() -> Url {
-        Url::parse("file:///test.nimbyscript").expect("valid url")
-    }
-
-    fn load_api() -> ApiDefinitions {
-        let toml = include_str!("../../../api-definitions/nimbyrails.v1.toml");
-        ApiDefinitions::load_from_str(toml).expect("should parse")
-    }
+    use crate::test_helpers::{load_api, make_doc, make_uri};
 
     #[test]
     fn test_prepare_rename_local_variable() {
@@ -442,7 +430,7 @@ mod tests {
 }";
         let doc = make_doc(source);
         let api = load_api();
-        let uri = make_uri();
+        let uri = make_uri("test");
         // Position on "x" in let statement
         let position = Position::new(1, 8);
         let result = rename(&doc, position, &uri, "newName", &api);
@@ -465,7 +453,7 @@ pub fn Foo::method(self: &Foo): i64 {
 }";
         let doc = make_doc(source);
         let api = load_api();
-        let uri = make_uri();
+        let uri = make_uri("test");
         // Position on "Foo" in struct definition
         let position = Position::new(0, 11);
         let result = rename(&doc, position, &uri, "Bar", &api);
@@ -499,7 +487,7 @@ pub fn Foo::method(self: &Foo): i64 {
 }";
         let doc = make_doc(source);
         let api = load_api();
-        let uri = make_uri();
+        let uri = make_uri("test");
         // Position on "value" in parameter
         let position = Position::new(0, 8);
         let result = rename(&doc, position, &uri, "x", &api);

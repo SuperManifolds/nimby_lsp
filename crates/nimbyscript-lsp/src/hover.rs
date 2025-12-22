@@ -925,16 +925,7 @@ impl<'a> HoverEngine<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn make_api() -> ApiDefinitions {
-        let api_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .expect("should have parent dir")
-            .parent()
-            .expect("should have grandparent dir")
-            .join("api-definitions/nimbyrails.v1.toml");
-        ApiDefinitions::load_from_file(&api_path).expect("Failed to load API")
-    }
+    use crate::test_helpers::load_api;
 
     fn extract_hover_content(hover: Option<Hover>) -> String {
         match hover.expect("hover should exist").contents {
@@ -945,7 +936,7 @@ mod tests {
 
     #[test]
     fn test_hover_on_type_annotation() {
-        let api = make_api();
+        let api = load_api();
 
         let code = r"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub struct Test extend Signal {
@@ -971,7 +962,7 @@ pub struct Test extend Signal {
 
     #[test]
     fn test_hover_on_api_field_method() {
-        let api = make_api();
+        let api = load_api();
 
         // Verify the API has the types we need
         assert!(api.get_type("Motion").is_some(), "Motion type should exist");
@@ -1034,7 +1025,7 @@ pub fn Test::control_train(
 
     #[test]
     fn test_hover_on_user_struct_definition() {
-        let api = make_api();
+        let api = load_api();
 
         let code = r#"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub struct MySignal extend Signal {
@@ -1071,7 +1062,7 @@ pub struct MySignal extend Signal {
 
     #[test]
     fn test_hover_on_user_enum_definition() {
-        let api = make_api();
+        let api = load_api();
 
         let code = r"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 enum Status {
@@ -1098,7 +1089,7 @@ enum Status {
 
     #[test]
     fn test_hover_on_local_variable() {
-        let api = make_api();
+        let api = load_api();
 
         // Test hover on `self` parameter which is a local variable/parameter
         let code = r"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
@@ -1130,7 +1121,7 @@ pub fn Test::event_signal_check(
 
     #[test]
     fn test_hover_on_callback_definition() {
-        let api = make_api();
+        let api = load_api();
 
         let code = r"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub struct MySignal extend Signal {}
@@ -1168,7 +1159,7 @@ pub fn MySignal::event_signal_check(
 
     #[test]
     fn test_hover_on_user_struct_field_access() {
-        let api = make_api();
+        let api = load_api();
 
         let code = r"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub struct MySignal extend Signal {
@@ -1210,7 +1201,7 @@ pub fn MySignal::event_signal_check(
 
     #[test]
     fn test_hover_on_api_enum_variant() {
-        let api = make_api();
+        let api = load_api();
 
         let code = r"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub struct MySignal extend Signal {}
@@ -1247,7 +1238,7 @@ pub fn MySignal::event_signal_check(
 
     #[test]
     fn test_hover_on_user_enum_variant() {
-        let api = make_api();
+        let api = load_api();
 
         let code = r"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 enum Status {
@@ -1297,7 +1288,7 @@ pub fn MySignal::event_signal_check(
 
     #[test]
     fn test_hover_on_api_function() {
-        let api = make_api();
+        let api = load_api();
 
         // Test hover on abs which is a simpler function
         let code = r"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
@@ -1328,7 +1319,7 @@ pub fn MySignal::event_signal_check(
 
     #[test]
     fn test_hover_on_api_type() {
-        let api = make_api();
+        let api = load_api();
 
         let code = r"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub struct MySignal extend Signal {}
@@ -1354,7 +1345,7 @@ pub struct MySignal extend Signal {}
 
     #[test]
     fn test_hover_on_function_parameter() {
-        let api = make_api();
+        let api = load_api();
 
         let code = r"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub struct MySignal extend Signal {}
@@ -1391,7 +1382,7 @@ pub fn MySignal::event_signal_check(
 
     #[test]
     fn test_hover_on_db_view_method() {
-        let api = make_api();
+        let api = load_api();
 
         let code = r"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub struct MySignal extend Signal {

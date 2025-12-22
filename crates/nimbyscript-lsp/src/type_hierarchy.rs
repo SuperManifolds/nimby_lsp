@@ -415,25 +415,12 @@ impl TryFrom<serde_json::Value> for TypeHierarchyData {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn make_api() -> ApiDefinitions {
-        let api_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .expect("should have parent dir")
-            .parent()
-            .expect("should have grandparent dir")
-            .join("api-definitions/nimbyrails.v1.toml");
-        ApiDefinitions::load_from_file(&api_path).expect("Failed to load API")
-    }
-
-    fn make_uri() -> Url {
-        Url::parse("file:///test.nimbyscript").expect("valid url")
-    }
+    use crate::test_helpers::{load_api, make_uri};
 
     #[test]
     fn test_prepare_on_struct_definition() {
-        let api = make_api();
-        let uri = make_uri();
+        let api = load_api();
+        let uri = make_uri("test");
 
         let code = r"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub struct ProbeCheck extend Signal { }
@@ -460,8 +447,8 @@ pub struct ProbeCheck extend Signal { }
 
     #[test]
     fn test_supertypes_for_user_struct() {
-        let api = make_api();
-        let uri = make_uri();
+        let api = load_api();
+        let uri = make_uri("test");
 
         let code = r"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub struct ProbeCheck extend Signal { }
@@ -482,8 +469,8 @@ pub struct ProbeCheck extend Signal { }
 
     #[test]
     fn test_subtypes_for_game_type() {
-        let api = make_api();
-        let uri = make_uri();
+        let api = load_api();
+        let uri = make_uri("test");
 
         let code = r"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub struct ProbeCheck extend Signal { }
@@ -524,8 +511,8 @@ pub struct MyTrain extend Train { }
 
     #[test]
     fn test_prepare_on_type_reference() {
-        let api = make_api();
-        let uri = make_uri();
+        let api = load_api();
+        let uri = make_uri("test");
 
         let code = r"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub struct Test extend Signal {
@@ -551,8 +538,8 @@ pub struct Test extend Signal {
 
     #[test]
     fn test_no_supertypes_for_struct_without_extends() {
-        let api = make_api();
-        let uri = make_uri();
+        let api = load_api();
+        let uri = make_uri("test");
 
         let code = r"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub struct Task { }
@@ -574,8 +561,8 @@ pub struct Task { }
 
     #[test]
     fn test_enum_has_no_hierarchy() {
-        let api = make_api();
-        let uri = make_uri();
+        let api = load_api();
+        let uri = make_uri("test");
 
         let code = r"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub enum Color { Red, Green, Blue, }
