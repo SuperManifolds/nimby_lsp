@@ -63,7 +63,7 @@ An unofficial Language Server Protocol (LSP) implementation for [NimbyScript](ht
 | `typeHierarchy/supertypes` | ✅ |
 | `typeHierarchy/subtypes` | ✅ |
 | `textDocument/inlayHint` | ✅ |
-| `workspace/symbol` | ❌ |
+| `workspace/symbol` | ✅ |
 
 ## Installation
 
