@@ -19,6 +19,11 @@ An unofficial Language Server Protocol (LSP) implementation for [NimbyScript](ht
 - **Type Hierarchy** - Navigate supertype/subtype relationships
 - **Inlay Hints** - Show inferred types and parameter names inline
 - **Document Formatting** - Format documents, selections, and on-type formatting
+- **Symbol Rename** - Rename symbols with F2
+- **Code Folding** - Collapse structs, enums, functions, and blocks
+- **Smart Selection** - Expand selection progressively
+- **Linked Editing** - Rename struct and its method prefixes together
+- **Workspace Symbols** - Search symbols across all files
 
 ## Editor Support
 

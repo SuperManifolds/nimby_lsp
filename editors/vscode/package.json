@@ -2,7 +2,7 @@
   "name": "nimbyscript",
   "displayName": "NimbyScript",
   "description": "Unofficial language support for NimbyScript - NIMBY Rails modding language. Provides syntax highlighting, diagnostics, completions, and hover information.",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "publisher": "supermanifolds",
   "author": {
     "name": "Alex Sørlie"
