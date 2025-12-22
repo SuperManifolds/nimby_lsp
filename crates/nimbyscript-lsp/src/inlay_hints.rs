@@ -853,16 +853,7 @@ impl<'a> InlayHintEngine<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn make_api() -> ApiDefinitions {
-        let api_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .expect("should have parent dir")
-            .parent()
-            .expect("should have grandparent dir")
-            .join("api-definitions/nimbyrails.v1.toml");
-        ApiDefinitions::load_from_file(&api_path).expect("Failed to load API")
-    }
+    use crate::test_helpers::load_api;
 
     fn full_range() -> Range {
         Range {
@@ -879,7 +870,7 @@ mod tests {
 
     #[test]
     fn test_type_hint_for_literal() {
-        let api = make_api();
+        let api = load_api();
         let code = r"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub fn test() {
     let x = 42;
@@ -913,7 +904,7 @@ pub fn test() {
 
     #[test]
     fn test_no_type_hint_when_explicit() {
-        let api = make_api();
+        let api = load_api();
         let code = r"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub fn test() {
     let x: i64 = 42;
@@ -935,7 +926,7 @@ pub fn test() {
 
     #[test]
     fn test_param_hints_for_global_function() {
-        let api = make_api();
+        let api = load_api();
         let code = r"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub fn test() {
     let x = pow(2.0, 3.0);
@@ -972,7 +963,7 @@ pub fn test() {
 
     #[test]
     fn test_skip_hint_when_arg_matches_param() {
-        let api = make_api();
+        let api = load_api();
         let code = r"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub fn test() {
     let base = 2.0;
@@ -999,7 +990,7 @@ pub fn test() {
 
     #[test]
     fn test_type_hint_from_method_call() {
-        let api = make_api();
+        let api = load_api();
         let code = r"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub struct Test extend Signal {}
 pub fn Test::event_signal_check(
@@ -1040,7 +1031,7 @@ pub fn Test::event_signal_check(
 
     #[test]
     fn test_range_filtering() {
-        let api = make_api();
+        let api = load_api();
         let code = r"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub fn test() {
     let x = 42;
@@ -1072,7 +1063,7 @@ pub fn test() {
 
     #[test]
     fn test_type_hint_resolves_generic_return_type() {
-        let api = make_api();
+        let api = load_api();
         // motion.drive is std::optional<Motion::Drive>
         // .get() returns *T, which should resolve to *Motion::Drive
         let code = r"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
@@ -1114,7 +1105,7 @@ pub fn Test::control_train(self: &Test, ctx: &ControlCtx, train: &Train, motion:
 
     #[test]
     fn test_type_hint_resolves_generic_with_let_else() {
-        let api = make_api();
+        let api = load_api();
         // Test with let-else syntax (&=)
         let code = r"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub struct Test extend Signal {}
@@ -1157,7 +1148,7 @@ pub fn Test::control_train(self: &Test, ctx: &ControlCtx, train: &Train, motion:
 
     #[test]
     fn test_example_file_inlay_hints() {
-        let api = make_api();
+        let api = load_api();
         let example_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .parent()
             .expect("should have parent dir")
@@ -1215,7 +1206,7 @@ pub fn Test::control_train(self: &Test, ctx: &ControlCtx, train: &Train, motion:
 
     #[test]
     fn test_type_hint_for_user_struct_field() {
-        let api = make_api();
+        let api = load_api();
         // Access a field of a user struct to ensure field type inference works
         let code = r"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub struct MySignal extend Signal {
@@ -1254,7 +1245,7 @@ pub fn MySignal::event_signal_check(
 
     #[test]
     fn test_type_hint_for_api_field() {
-        let api = make_api();
+        let api = load_api();
         // Access an API type field
         let code = r"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub struct Test extend Signal {}
@@ -1291,7 +1282,7 @@ pub fn Test::event_signal_check(
 
     #[test]
     fn test_param_hints_for_method_call() {
-        let api = make_api();
+        let api = load_api();
         let code = r"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub struct Test extend Signal {
     target: ID<Signal>,
@@ -1324,7 +1315,7 @@ pub fn Test::event_signal_check(
 
     #[test]
     fn test_no_hints_for_empty_function() {
-        let api = make_api();
+        let api = load_api();
         let code = r"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub fn test() {
 }
@@ -1337,7 +1328,7 @@ pub fn test() {
 
     #[test]
     fn test_type_hint_for_binary_expression() {
-        let api = make_api();
+        let api = load_api();
         // Test binary expression type inference in a callback context
         let code = r"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub struct Test extend Signal {}
@@ -1377,7 +1368,7 @@ pub fn Test::event_signal_check(
 
     #[test]
     fn test_type_hint_for_unary_expression() {
-        let api = make_api();
+        let api = load_api();
         let code = r"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub fn test() {
     let neg = -42;
@@ -1402,7 +1393,7 @@ pub fn test() {
 
     #[test]
     fn test_type_hint_for_string_literal() {
-        let api = make_api();
+        let api = load_api();
         // Need function context for type inference
         let code = r#"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub struct Test extend Signal {}
@@ -1437,7 +1428,7 @@ pub fn Test::event_signal_check(
 
     #[test]
     fn test_param_hints_for_abs_function() {
-        let api = make_api();
+        let api = load_api();
         // abs function takes a "value" parameter
         let code = r"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub struct Test extend Signal {}

@@ -12,8 +12,8 @@ use nimbyscript_parser::{kind, Node, NodeExt};
 
 use crate::document::Document;
 use crate::type_inference::{
-    base_type_name, cursor_in_node, find_ancestor_of_kind, find_deepest_node_at,
-    find_enclosing_function, infer_node_type, node_to_range, parse_type_string,
+    base_type_name, collect_local_types_in_function, cursor_in_node, find_ancestor_of_kind,
+    find_deepest_node_at, find_enclosing_function, infer_node_type, node_to_range,
     unwrap_to_type_name, TypeContext,
 };
 
@@ -509,13 +509,15 @@ impl<'a> NavigationEngine<'a> {
     // Definition Location Finders
     // ========================================================================
 
-    fn find_struct_definition_location(&self, name: &str, uri: &Url) -> Option<Location> {
-        let root = self.doc.tree().root_node();
-        self.find_struct_in_node(root, name, uri)
-    }
-
-    fn find_struct_in_node(&self, node: Node, name: &str, uri: &Url) -> Option<Location> {
-        if node.kind() == kind::STRUCT_DEFINITION {
+    /// Generic helper to find a definition by node kind and name.
+    fn find_definition_by_kind(
+        &self,
+        node: Node,
+        node_kind: &str,
+        name: &str,
+        uri: &Url,
+    ) -> Option<Location> {
+        if node.kind() == node_kind {
             if let Some(name_node) = node.child_by_field("name") {
                 if name_node.text(self.content) == name {
                     return Some(Location {
@@ -528,66 +530,27 @@ impl<'a> NavigationEngine<'a> {
 
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
-            if let Some(loc) = self.find_struct_in_node(child, name, uri) {
+            if let Some(loc) = self.find_definition_by_kind(child, node_kind, name, uri) {
                 return Some(loc);
             }
         }
 
         None
+    }
+
+    fn find_struct_definition_location(&self, name: &str, uri: &Url) -> Option<Location> {
+        let root = self.doc.tree().root_node();
+        self.find_definition_by_kind(root, kind::STRUCT_DEFINITION, name, uri)
     }
 
     fn find_enum_definition_location(&self, name: &str, uri: &Url) -> Option<Location> {
         let root = self.doc.tree().root_node();
-        self.find_enum_in_node(root, name, uri)
-    }
-
-    fn find_enum_in_node(&self, node: Node, name: &str, uri: &Url) -> Option<Location> {
-        if node.kind() == kind::ENUM_DEFINITION {
-            if let Some(name_node) = node.child_by_field("name") {
-                if name_node.text(self.content) == name {
-                    return Some(Location {
-                        uri: uri.clone(),
-                        range: node_to_range(self.doc, name_node),
-                    });
-                }
-            }
-        }
-
-        let mut cursor = node.walk();
-        for child in node.children(&mut cursor) {
-            if let Some(loc) = self.find_enum_in_node(child, name, uri) {
-                return Some(loc);
-            }
-        }
-
-        None
+        self.find_definition_by_kind(root, kind::ENUM_DEFINITION, name, uri)
     }
 
     fn find_function_definition_location(&self, name: &str, uri: &Url) -> Option<Location> {
         let root = self.doc.tree().root_node();
-        self.find_function_in_node(root, name, uri)
-    }
-
-    fn find_function_in_node(&self, node: Node, name: &str, uri: &Url) -> Option<Location> {
-        if node.kind() == kind::FUNCTION_DEFINITION {
-            if let Some(name_node) = node.child_by_field("name") {
-                if name_node.text(self.content) == name {
-                    return Some(Location {
-                        uri: uri.clone(),
-                        range: node_to_range(self.doc, name_node),
-                    });
-                }
-            }
-        }
-
-        let mut cursor = node.walk();
-        for child in node.children(&mut cursor) {
-            if let Some(loc) = self.find_function_in_node(child, name, uri) {
-                return Some(loc);
-            }
-        }
-
-        None
+        self.find_definition_by_kind(root, kind::FUNCTION_DEFINITION, name, uri)
     }
 
     fn find_field_definition_location(
@@ -774,83 +737,11 @@ impl<'a> NavigationEngine<'a> {
 
     fn collect_local_types(&mut self) {
         let root = self.doc.tree().root_node();
-        let Some(func_node) = find_enclosing_function(root, self.offset) else {
-            return;
-        };
-
-        // Extract parameters
-        if let Some(params_node) = func_node.child_by_kind(kind::PARAMETERS) {
-            self.collect_params_from_node(params_node);
-        }
-
-        // Extract let bindings (only those before cursor)
-        if let Some(body) = func_node.child_by_kind(kind::BLOCK) {
-            self.collect_bindings_from_block(body);
-        }
-    }
-
-    fn collect_params_from_node(&mut self, params_node: Node) {
-        let mut cursor = params_node.walk();
-        for param in params_node.children(&mut cursor) {
-            if param.kind() != kind::PARAMETER {
-                continue;
+        if let Some(func) = find_enclosing_function(root, self.offset) {
+            let types = collect_local_types_in_function(func, self.content, Some(self.offset));
+            for (name, ty) in types {
+                self.local_types.insert(name, ty);
             }
-            let Some(name_node) = param.child_by_field("name") else {
-                continue;
-            };
-            let Some(type_node) = param.child_by_field("type") else {
-                continue;
-            };
-            let name = name_node.text(self.content).to_string();
-            let type_info = parse_type_string(type_node.text(self.content));
-            self.local_types.insert(name, type_info);
-        }
-    }
-
-    fn collect_binding_from_let(&mut self, node: Node) {
-        let Some(binding) = node.child_by_kind(kind::BINDING) else {
-            return;
-        };
-        let Some(name_node) = binding.child_by_field("name") else {
-            return;
-        };
-        let name = name_node.text(self.content).to_string();
-        let type_info = binding
-            .child_by_field("type")
-            .map_or(TypeInfo::Unknown, |t| {
-                parse_type_string(t.text(self.content))
-            });
-        self.local_types.insert(name, type_info);
-    }
-
-    fn collect_bindings_from_block(&mut self, node: Node) {
-        // Only process nodes before the cursor
-        if node.start_byte() > self.offset {
-            return;
-        }
-
-        if node.kind() == kind::LET_STATEMENT || node.kind() == kind::LET_ELSE_STATEMENT {
-            self.collect_binding_from_let(node);
-        }
-
-        if node.kind() == kind::FOR_STATEMENT {
-            if let Some(var_node) = node.child_by_field("variable") {
-                let name = var_node.text(self.content).to_string();
-                // For-loop variable type is typically the element type of the iterator
-                self.local_types.insert(name, TypeInfo::Unknown);
-            }
-        }
-
-        if node.kind() == kind::IF_LET_STATEMENT {
-            if let Some(name_node) = node.child_by_field("name") {
-                let name = name_node.text(self.content).to_string();
-                self.local_types.insert(name, TypeInfo::Unknown);
-            }
-        }
-
-        let mut cursor = node.walk();
-        for child in node.children(&mut cursor) {
-            self.collect_bindings_from_block(child);
         }
     }
 }
@@ -862,14 +753,7 @@ impl<'a> NavigationEngine<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn make_doc(content: &str) -> Document {
-        Document::new(content.to_string(), None)
-    }
-
-    fn pos(line: u32, character: u32) -> Position {
-        Position { line, character }
-    }
+    use crate::test_helpers::{make_doc, pos};
 
     #[test]
     fn test_definition_struct() {

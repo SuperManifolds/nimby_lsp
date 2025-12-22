@@ -15,10 +15,9 @@ use nimbyscript_analyzer::{
 use nimbyscript_parser::{kind, parse, Node, NodeExt, Tree};
 
 use crate::document::Document;
-use crate::type_inference::{extract_params, format_signature, parse_type_string};
-
-/// Type alias for (name, type) pairs used for params and bindings
-type NameTypePairs = Vec<(String, TypeInfo)>;
+use crate::type_inference::{
+    collect_local_types_in_function, find_enclosing_function, format_signature, parse_type_string,
+};
 
 /// Create Documentation::MarkupContent from a string.
 fn make_markdown_doc(doc: &str) -> Documentation {
@@ -38,14 +37,6 @@ const KEYWORDS: &[&str] = &[
 const PRIMITIVE_TYPES: &[&str] = &[
     "i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64", "f32", "f64", "bool",
 ];
-
-/// Collect all blocks from a control flow statement's children.
-fn collect_child_blocks(node: Node) -> Vec<Node> {
-    let mut cursor = node.walk();
-    node.children(&mut cursor)
-        .filter(|child| child.kind() == kind::BLOCK)
-        .collect()
-}
 
 // ============================================================================
 // Completion Engine
@@ -415,127 +406,19 @@ impl<'a> CompletionEngine<'a> {
 
     /// Collect local variable types from the enclosing function.
     fn collect_local_types(&mut self) {
-        // Find the function containing the cursor position
-        // We need to collect the info we need before mutating self
         let root = self.tree.root_node();
-        let Some((params_info, body_info, return_type)) = self.find_function_info(root) else {
-            return;
-        };
+        if let Some(func) = find_enclosing_function(root, self.offset) {
+            // Extract return type for smart return completions
+            self.current_return_type = func
+                .child_by_field("return_type")
+                .map(|rt| parse_type_string(rt.text(self.content)));
 
-        // Set current return type for smart return completions
-        self.current_return_type = return_type;
-
-        // Process parameters
-        for (name, type_info) in params_info {
-            self.local_types.insert(name, type_info);
-        }
-
-        // Process let bindings
-        for (name, type_info) in body_info {
-            self.local_types.insert(name, type_info);
-        }
-    }
-
-    /// Find function info at cursor position, extracting parameters, let bindings, and return type.
-    fn find_function_info(
-        &self,
-        node: Node,
-    ) -> Option<(NameTypePairs, NameTypePairs, Option<TypeInfo>)> {
-        // Check if this is a function containing our position
-        if node.kind() == kind::FUNCTION_DEFINITION {
-            let start = node.start_byte();
-            let end = node.end_byte();
-            if start <= self.offset && self.offset <= end {
-                let mut params = Vec::new();
-                let mut bindings = Vec::new();
-
-                // Extract return type
-                let return_type = node
-                    .child_by_field("return_type")
-                    .map(|rt| parse_type_string(rt.text(self.content)));
-
-                // Extract parameters
-                if let Some(params_node) = node.child_by_kind(kind::PARAMETERS) {
-                    params = extract_params(params_node, self.content);
-                }
-
-                // Extract let bindings from body
-                if let Some(body) = node.child_by_field("body") {
-                    self.collect_bindings_from_block(body, &mut bindings);
-                }
-
-                return Some((params, bindings, return_type));
+            // Use shared function to collect local variable types
+            let types = collect_local_types_in_function(func, self.content, Some(self.offset));
+            for (name, ty) in types {
+                self.local_types.insert(name, ty);
             }
         }
-
-        // Search children
-        let mut cursor = node.walk();
-        for child in node.children(&mut cursor) {
-            if let Some(info) = self.find_function_info(child) {
-                return Some(info);
-            }
-        }
-
-        None
-    }
-
-    /// Collect let binding types from a block (only those before cursor).
-    fn collect_bindings_from_block(
-        &self,
-        block_node: Node,
-        bindings: &mut Vec<(String, TypeInfo)>,
-    ) {
-        let mut cursor = block_node.walk();
-        for child in block_node.children(&mut cursor) {
-            // Only process bindings before the cursor
-            if child.start_byte() >= self.offset {
-                break;
-            }
-
-            match child.kind() {
-                kind::LET_STATEMENT | kind::LET_ELSE_STATEMENT => {
-                    if let Some((name, type_info)) = self.extract_binding_info(child) {
-                        bindings.push((name, type_info));
-                    }
-                }
-                kind::IF_STATEMENT | kind::IF_LET_STATEMENT | kind::FOR_STATEMENT => {
-                    // Recurse into nested blocks
-                    for block in collect_child_blocks(child) {
-                        self.collect_bindings_from_block(block, bindings);
-                    }
-                }
-                _ => {}
-            }
-        }
-    }
-
-    /// Extract variable name and type from a let statement.
-    fn extract_binding_info(&self, let_node: Node) -> Option<(String, TypeInfo)> {
-        // Find the binding node
-        let binding = let_node.child_by_kind("binding")?;
-
-        let name_node = binding.child_by_field("name")?;
-        let name = name_node.text(self.content).to_string();
-
-        // Try to get explicit type annotation
-        let mut cursor = binding.walk();
-        for child in binding.children(&mut cursor) {
-            if child.kind() == "type_pattern" || child.kind() == kind::TYPE {
-                let type_str = child.text(self.content);
-                let type_info = parse_type_string(type_str);
-                return Some((name, type_info));
-            }
-        }
-
-        // If no explicit type, try to infer from the value expression
-        if let Some(value_node) = binding.child_by_field("value") {
-            let text = value_node.text(self.content);
-            if let Some(type_info) = self.infer_expression_type_from_text(text) {
-                return Some((name, type_info));
-            }
-        }
-
-        None
     }
 
     // ========================================================================
@@ -1552,11 +1435,7 @@ pub fn resolve_completion(data: &Value, api: &ApiDefinitions) -> Option<Document
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn load_api() -> ApiDefinitions {
-        let toml = include_str!("../../../api-definitions/nimbyrails.v1.toml");
-        ApiDefinitions::load_from_str(toml).expect("should parse")
-    }
+    use crate::test_helpers::load_api;
 
     // Context detection tests
 

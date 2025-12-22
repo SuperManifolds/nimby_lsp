@@ -51,14 +51,7 @@ pub fn search_workspace_symbols(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn make_doc(source: &str) -> Document {
-        Document::new(source.to_string(), None)
-    }
-
-    fn make_uri(name: &str) -> Url {
-        Url::parse(&format!("file:///{name}.nimbyscript")).expect("valid url")
-    }
+    use crate::test_helpers::{make_doc, make_uri};
 
     #[test]
     fn test_search_empty_query_returns_all() {

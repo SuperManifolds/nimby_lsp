@@ -27,3 +27,6 @@ mod type_hierarchy;
 mod type_inference;
 mod validation;
 mod workspace_symbol;
+
+#[cfg(test)]
+mod test_helpers;

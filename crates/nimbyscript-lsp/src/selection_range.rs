@@ -80,10 +80,7 @@ fn build_parent_chain(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn make_doc(source: &str) -> Document {
-        Document::new(source.to_string(), None)
-    }
+    use crate::test_helpers::make_doc;
 
     #[test]
     fn test_single_position() {

@@ -707,13 +707,9 @@ fn validate_meta_keys(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_helpers::load_api;
     use nimbyscript_analyzer::diagnostics::Severity;
     use nimbyscript_parser::parse;
-
-    fn load_api() -> ApiDefinitions {
-        let toml = include_str!("../../../api-definitions/nimbyrails.v1.toml");
-        ApiDefinitions::load_from_str(toml).expect("should parse")
-    }
 
     fn get_diagnostics(content: &str) -> Vec<Diagnostic> {
         let tree = parse(content);

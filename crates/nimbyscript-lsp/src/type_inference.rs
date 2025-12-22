@@ -528,12 +528,13 @@ pub fn extract_params_strings(params_node: Node, content: &str) -> Vec<(String, 
 
 /// Extract binding name and type from a LET_STATEMENT node.
 ///
-/// Returns the binding name and its explicit type annotation (if present).
+/// Returns the binding name and its type annotation if present, or Unknown if not.
 pub fn extract_binding(let_node: Node, content: &str) -> Option<(String, TypeInfo)> {
     let binding = let_node.child_by_kind(kind::BINDING)?;
     let name = binding.child_by_field("name")?.text(content).to_string();
-    let ty = binding.child_by_field("type")?;
-    let type_info = parse_type_string(ty.text(content));
+    let type_info = binding
+        .child_by_field("type")
+        .map_or(TypeInfo::Unknown, |ty| parse_type_string(ty.text(content)));
     Some((name, type_info))
 }
 
@@ -723,15 +724,7 @@ pub fn get_enclosing_struct_name(func_node: Node, content: &str) -> Option<Strin
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn make_doc(source: &str) -> Document {
-        Document::new(source.to_string(), None)
-    }
-
-    fn load_api() -> ApiDefinitions {
-        let toml = include_str!("../../../api-definitions/nimbyrails.v1.toml");
-        ApiDefinitions::load_from_str(toml).expect("should parse")
-    }
+    use crate::test_helpers::{load_api, make_doc};
 
     // ========================================================================
     // find_deepest_node_at tests

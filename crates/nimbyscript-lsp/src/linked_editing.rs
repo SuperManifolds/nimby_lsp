@@ -170,10 +170,7 @@ fn collect_struct_name_ranges_recursive(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn make_doc(source: &str) -> Document {
-        Document::new(source.to_string(), None)
-    }
+    use crate::test_helpers::make_doc;
 
     #[test]
     fn test_struct_definition_links_to_methods() {
