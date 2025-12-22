@@ -20,6 +20,7 @@ use crate::inlay_hints::get_inlay_hints;
 use crate::navigation::{
     find_references, get_definition, get_implementations, get_type_definition,
 };
+use crate::selection_range::get_selection_ranges;
 use crate::semantic_tokens::{compute_semantic_tokens, semantic_token_legend};
 use crate::signature_help::get_signature_help;
 use crate::type_hierarchy::{get_subtypes, get_supertypes, prepare_type_hierarchy};
@@ -238,6 +239,7 @@ impl LanguageServer for Backend {
                     more_trigger_character: Some(vec![";".to_string()]),
                 }),
                 folding_range_provider: Some(FoldingRangeProviderCapability::Simple(true)),
+                selection_range_provider: Some(SelectionRangeProviderCapability::Simple(true)),
                 // Note: type_hierarchy_provider is not yet in lsp-types 0.94.1
                 // The handlers are implemented and will respond if clients send requests
                 ..Default::default()
@@ -629,6 +631,19 @@ impl LanguageServer for Backend {
 
         if let Some(doc) = self.documents.get(uri) {
             Ok(Some(get_folding_ranges(&doc)))
+        } else {
+            Ok(None)
+        }
+    }
+
+    async fn selection_range(
+        &self,
+        params: SelectionRangeParams,
+    ) -> Result<Option<Vec<SelectionRange>>> {
+        let uri = &params.text_document.uri;
+
+        if let Some(doc) = self.documents.get(uri) {
+            Ok(Some(get_selection_ranges(&doc, params.positions)))
         } else {
             Ok(None)
         }
