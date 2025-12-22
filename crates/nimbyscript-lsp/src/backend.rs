@@ -17,6 +17,7 @@ use crate::folding_range::get_folding_ranges;
 use crate::formatting::{format_document, format_on_type, format_range, FormattingConfig};
 use crate::hover::get_hover;
 use crate::inlay_hints::get_inlay_hints;
+use crate::linked_editing::get_linked_editing_ranges;
 use crate::navigation::{
     find_references, get_definition, get_implementations, get_type_definition,
 };
@@ -240,6 +241,9 @@ impl LanguageServer for Backend {
                 }),
                 folding_range_provider: Some(FoldingRangeProviderCapability::Simple(true)),
                 selection_range_provider: Some(SelectionRangeProviderCapability::Simple(true)),
+                linked_editing_range_provider: Some(
+                    LinkedEditingRangeServerCapabilities::Simple(true),
+                ),
                 // Note: type_hierarchy_provider is not yet in lsp-types 0.94.1
                 // The handlers are implemented and will respond if clients send requests
                 ..Default::default()
@@ -644,6 +648,20 @@ impl LanguageServer for Backend {
 
         if let Some(doc) = self.documents.get(uri) {
             Ok(Some(get_selection_ranges(&doc, params.positions)))
+        } else {
+            Ok(None)
+        }
+    }
+
+    async fn linked_editing_range(
+        &self,
+        params: LinkedEditingRangeParams,
+    ) -> Result<Option<LinkedEditingRanges>> {
+        let uri = &params.text_document_position_params.text_document.uri;
+        let position = params.text_document_position_params.position;
+
+        if let Some(doc) = self.documents.get(uri) {
+            Ok(get_linked_editing_ranges(&doc, position))
         } else {
             Ok(None)
         }

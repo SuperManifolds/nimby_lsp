@@ -17,6 +17,7 @@ mod folding_range;
 mod formatting;
 mod hover;
 mod inlay_hints;
+mod linked_editing;
 mod navigation;
 mod selection_range;
 mod semantic_tokens;
