@@ -249,6 +249,7 @@ impl LanguageServer for Backend {
                     prepare_provider: Some(true),
                     work_done_progress_options: WorkDoneProgressOptions::default(),
                 })),
+                workspace_symbol_provider: Some(OneOf::Left(true)),
                 // Note: type_hierarchy_provider is not yet in lsp-types 0.94.1
                 // The handlers are implemented and will respond if clients send requests
                 ..Default::default()
@@ -443,6 +444,33 @@ impl LanguageServer for Backend {
         } else {
             Ok(None)
         }
+    }
+
+    async fn symbol(
+        &self,
+        params: WorkspaceSymbolParams,
+    ) -> Result<Option<Vec<SymbolInformation>>> {
+        use crate::workspace_symbol::search_workspace_symbols;
+
+        let matches = search_workspace_symbols(&self.documents, &params.query);
+
+        let results: Vec<SymbolInformation> = matches
+            .into_iter()
+            .map(|m| {
+                let range = self.offset_to_range(&m.uri, m.span.start, m.span.end);
+                #[allow(deprecated)]
+                SymbolInformation {
+                    name: m.name,
+                    kind: m.kind,
+                    tags: None,
+                    deprecated: None,
+                    location: Location { uri: m.uri, range },
+                    container_name: None,
+                }
+            })
+            .collect();
+
+        Ok(Some(results))
     }
 
     async fn prepare_type_hierarchy(
