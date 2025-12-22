@@ -359,7 +359,8 @@ presence = { type = "std::optional<Motion::Presence>", doc = "Presence state", r
 drive = { type = "std::optional<Motion::Drive>", doc = "Drive state", readonly = true }
 timed_stop = { type = "std::optional<Motion::TimedStop>", doc = "Timed stop state", readonly = true }
 schedule_stop = { type = "std::optional<Motion::ScheduleStop>", doc = "Schedule stop state", readonly = true }
-schedule_station_event = { type = "std::optional<Motion::ScheduleStationEvent>", doc = "Schedule station event state", readonly = true }
+station_stop = { type = "std::optional<Motion::StationStop>", doc = "Station stop state", readonly = true }
+run_stop = { type = "std::optional<Motion::RunStop>", doc = "Run stop state", readonly = true }
 schedule_dispatch = { type = "std::optional<Motion::ScheduleDispatch>", doc = "Schedule dispatch state", readonly = true }
 run_dispatch = { type = "std::optional<Motion::RunDispatch>", doc = "Run dispatch state (for shift-less line running)", readonly = true }
 hitch = { type = "std::optional<Motion::Hitch>", doc = "Hitch state", readonly = true }
@@ -486,6 +487,20 @@ variants = [
     { name = "Deny", doc = "Deny shift" },
 ]
 
+[enums.ShiftEvent]
+doc = "Type of shift event"
+variants = [
+    { name = "Assign", doc = "Train was assigned to the shift" },
+    { name = "Unassign", doc = "Train was unassigned from the shift" },
+]
+
+[enums.LineStopEvent]
+doc = "Type of line stop event"
+variants = [
+    { name = "Arrive", doc = "Train arrived at the stop" },
+    { name = "Depart", doc = "Train departed from the stop" },
+]
+
 # ============================================
 # Additional Game Types
 # ============================================
@@ -502,6 +517,10 @@ doc = "A transit line"
 [types.Line.fields]
 id = { type = "ID<Line>", doc = "Unique identifier", readonly = true }
 tags = { type = "Tags", doc = "Tags attached to this line", readonly = true }
+
+[types."Line::Stop"]
+kind = "struct"
+doc = "A stop on a transit line. Can be extended to receive train arrival/departure events."
 
 [types.Schedule]
 kind = "struct"
@@ -672,8 +691,7 @@ kind = "struct"
 doc = "Schedule stop state"
 [types."Motion::ScheduleStop".fields]
 sched_id = { type = "ID<Schedule>", doc = "Schedule ID", readonly = true }
-line_id = { type = "ID<Line>", doc = "Line ID", readonly = true }
-station_id = { type = "ID<Station>", doc = "Station ID", readonly = true }
+shift_id = { type = "ID<Shift>", doc = "Shift ID", readonly = true }
 
 [types."Motion::Hitch"]
 kind = "struct"
@@ -681,9 +699,13 @@ doc = "Hitch state"
 [types."Motion::Hitch".fields]
 driver_train_id = { type = "ID<Train>", doc = "Driver train ID", readonly = true }
 
-[types."Motion::ScheduleStationEvent"]
+[types."Motion::StationStop"]
 kind = "struct"
-doc = "Schedule station event state"
+doc = "Station stop state"
+
+[types."Motion::RunStop"]
+kind = "struct"
+doc = "Run stop state"
 
 [types."Motion::ScheduleDispatch"]
 kind = "struct"
@@ -691,8 +713,6 @@ doc = "Schedule dispatch state"
 [types."Motion::ScheduleDispatch".fields]
 sched_id = { type = "ID<Schedule>", doc = "Schedule ID", readonly = true }
 shift_id = { type = "ID<Shift>", doc = "Shift ID", readonly = true }
-run = { type = "Run", doc = "Current run", readonly = true }
-run_epoch_start = { type = "i64", doc = "Run epoch start time", readonly = true }
 
 [types."Motion::RunDispatch"]
 kind = "struct"
@@ -1367,6 +1387,80 @@ doc = "Reference to the controller script instance"
 name = "ctx"
 type = "&ControlCtx"
 doc = "Control context with database, simulation, and extrapolator access"
+[[callbacks.params]]
+name = "sc"
+type = "&mut SimController"
+doc = "Simulation controller for queuing commands"
+
+[[callbacks]]
+name = "event_shift"
+doc = "Called when a train is assigned or unassigned to this shift"
+for_type = "Shift"
+[[callbacks.params]]
+name = "self"
+type = "&Self"
+doc = "Reference to script data attached to the shift"
+[[callbacks.params]]
+name = "ctx"
+type = "&EventCtx"
+doc = "Event context providing database and extrapolator access"
+[[callbacks.params]]
+name = "sched"
+type = "&Schedule"
+doc = "The schedule containing this shift"
+[[callbacks.params]]
+name = "shift"
+type = "&Shift"
+doc = "The shift"
+[[callbacks.params]]
+name = "train"
+type = "&Train"
+doc = "The train being assigned or unassigned"
+[[callbacks.params]]
+name = "motion"
+type = "&Motion"
+doc = "Current motion state of the train"
+[[callbacks.params]]
+name = "ev"
+type = "ShiftEvent"
+doc = "Whether the train was assigned or unassigned"
+[[callbacks.params]]
+name = "sc"
+type = "&mut SimController"
+doc = "Simulation controller for queuing commands"
+
+[[callbacks]]
+name = "event_line_stop"
+doc = "Called when a train arrives at or departs from this line stop"
+for_type = "Line::Stop"
+[[callbacks.params]]
+name = "self"
+type = "&Self"
+doc = "Reference to script data attached to the line stop"
+[[callbacks.params]]
+name = "ctx"
+type = "&EventCtx"
+doc = "Event context providing database and extrapolator access"
+[[callbacks.params]]
+name = "line"
+type = "&Line"
+doc = "The line this stop belongs to"
+[[callbacks.params]]
+name = "stop"
+type = "&Line::Stop"
+doc = "The line stop"
+[[callbacks.params]]
+name = "train"
+type = "&Train"
+doc = "The train arriving or departing"
+[[callbacks.params]]
+name = "motion"
+type = "&Motion"
+doc = "Current motion state of the train"
+[[callbacks.params]]
+name = "ev"
+type = "LineStopEvent"
+doc = "Whether the train arrived or departed"
 [[callbacks.params]]
 name = "sc"
 type = "&mut SimController"

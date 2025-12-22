@@ -585,4 +585,62 @@ mod tests {
         assert!(cb.return_type.is_some());
         assert_eq!(cb.return_type.as_deref(), Some("SignalCheck"));
     }
+
+    // Line::Stop and Shift extension tests
+
+    #[test]
+    fn test_get_type_line_stop() {
+        let api = load_api();
+        let line_stop = api.get_type("Line::Stop");
+        assert!(line_stop.is_some(), "Line::Stop type should exist");
+    }
+
+    #[test]
+    fn test_get_enum_shift_event() {
+        let api = load_api();
+        let shift_event = api.get_enum("ShiftEvent").expect("ShiftEvent should exist");
+        let variant_names: Vec<_> = shift_event
+            .variants
+            .iter()
+            .map(|v| v.name.as_str())
+            .collect();
+        assert!(variant_names.contains(&"Assign"));
+        assert!(variant_names.contains(&"Unassign"));
+    }
+
+    #[test]
+    fn test_get_enum_line_stop_event() {
+        let api = load_api();
+        let event = api
+            .get_enum("LineStopEvent")
+            .expect("LineStopEvent should exist");
+        let variant_names: Vec<_> = event.variants.iter().map(|v| v.name.as_str()).collect();
+        assert!(variant_names.contains(&"Arrive"));
+        assert!(variant_names.contains(&"Depart"));
+    }
+
+    #[test]
+    fn test_callbacks_for_type_shift() {
+        let api = load_api();
+        let callbacks = api.callbacks_for_type("Shift");
+        assert!(!callbacks.is_empty(), "Shift should have callbacks");
+        let names: Vec<_> = callbacks.iter().map(|c| c.name.as_str()).collect();
+        assert!(names.contains(&"event_shift"));
+    }
+
+    #[test]
+    fn test_callbacks_for_type_line_stop() {
+        let api = load_api();
+        let callbacks = api.callbacks_for_type("Line::Stop");
+        assert!(!callbacks.is_empty(), "Line::Stop should have callbacks");
+        let names: Vec<_> = callbacks.iter().map(|c| c.name.as_str()).collect();
+        assert!(names.contains(&"event_line_stop"));
+    }
+
+    #[test]
+    fn test_is_valid_callback_event_shift() {
+        let api = load_api();
+        assert!(api.is_valid_callback("event_shift"));
+        assert!(api.is_valid_callback("event_line_stop"));
+    }
 }
