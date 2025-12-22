@@ -13,6 +13,7 @@ use tower_lsp::{Client, LanguageServer};
 
 use crate::completions::{get_completions, resolve_completion};
 use crate::document::Document;
+use crate::folding_range::get_folding_ranges;
 use crate::formatting::{format_document, format_on_type, format_range, FormattingConfig};
 use crate::hover::get_hover;
 use crate::inlay_hints::get_inlay_hints;
@@ -236,6 +237,7 @@ impl LanguageServer for Backend {
                     first_trigger_character: "}".to_string(),
                     more_trigger_character: Some(vec![";".to_string()]),
                 }),
+                folding_range_provider: Some(FoldingRangeProviderCapability::Simple(true)),
                 // Note: type_hierarchy_provider is not yet in lsp-types 0.94.1
                 // The handlers are implemented and will respond if clients send requests
                 ..Default::default()
@@ -617,6 +619,16 @@ impl LanguageServer for Backend {
 
         if let Some(doc) = self.documents.get(uri) {
             Ok(Some(format_on_type(&doc, position, &params.ch, &config)))
+        } else {
+            Ok(None)
+        }
+    }
+
+    async fn folding_range(&self, params: FoldingRangeParams) -> Result<Option<Vec<FoldingRange>>> {
+        let uri = &params.text_document.uri;
+
+        if let Some(doc) = self.documents.get(uri) {
+            Ok(Some(get_folding_ranges(&doc)))
         } else {
             Ok(None)
         }

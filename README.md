@@ -54,7 +54,7 @@ An unofficial Language Server Protocol (LSP) implementation for [NimbyScript](ht
 | `textDocument/onTypeFormatting` | ✅ |
 | `textDocument/rename` | ❌ |
 | `textDocument/prepareRename` | ❌ |
-| `textDocument/foldingRange` | ❌ |
+| `textDocument/foldingRange` | ✅ |
 | `textDocument/selectionRange` | ❌ |
 | `textDocument/linkedEditingRange` | ❌ |
 | `callHierarchy/incomingCalls` | ❌ |
