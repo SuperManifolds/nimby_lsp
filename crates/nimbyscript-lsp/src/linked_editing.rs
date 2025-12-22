@@ -16,7 +16,10 @@ use crate::type_inference::{find_ancestor_of_kind, find_deepest_node_at, node_to
 /// - Struct definition name
 /// - Method name prefixes (`StructName::method_name`)
 /// - Self parameter type annotations (`self: &StructName`)
-pub fn get_linked_editing_ranges(doc: &Document, position: Position) -> Option<LinkedEditingRanges> {
+pub fn get_linked_editing_ranges(
+    doc: &Document,
+    position: Position,
+) -> Option<LinkedEditingRanges> {
     let offset = doc.position_to_offset(position);
     let root = doc.tree().root_node();
     let content = &doc.content;

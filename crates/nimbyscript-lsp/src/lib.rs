@@ -19,6 +19,7 @@ mod hover;
 mod inlay_hints;
 mod linked_editing;
 mod navigation;
+mod rename;
 mod selection_range;
 mod semantic_tokens;
 mod signature_help;

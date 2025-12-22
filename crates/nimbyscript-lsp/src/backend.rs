@@ -21,6 +21,7 @@ use crate::linked_editing::get_linked_editing_ranges;
 use crate::navigation::{
     find_references, get_definition, get_implementations, get_type_definition,
 };
+use crate::rename::{prepare_rename, rename};
 use crate::selection_range::get_selection_ranges;
 use crate::semantic_tokens::{compute_semantic_tokens, semantic_token_legend};
 use crate::signature_help::get_signature_help;
@@ -241,9 +242,13 @@ impl LanguageServer for Backend {
                 }),
                 folding_range_provider: Some(FoldingRangeProviderCapability::Simple(true)),
                 selection_range_provider: Some(SelectionRangeProviderCapability::Simple(true)),
-                linked_editing_range_provider: Some(
-                    LinkedEditingRangeServerCapabilities::Simple(true),
-                ),
+                linked_editing_range_provider: Some(LinkedEditingRangeServerCapabilities::Simple(
+                    true,
+                )),
+                rename_provider: Some(OneOf::Right(RenameOptions {
+                    prepare_provider: Some(true),
+                    work_done_progress_options: WorkDoneProgressOptions::default(),
+                })),
                 // Note: type_hierarchy_provider is not yet in lsp-types 0.94.1
                 // The handlers are implemented and will respond if clients send requests
                 ..Default::default()
@@ -662,6 +667,37 @@ impl LanguageServer for Backend {
 
         if let Some(doc) = self.documents.get(uri) {
             Ok(get_linked_editing_ranges(&doc, position))
+        } else {
+            Ok(None)
+        }
+    }
+
+    async fn prepare_rename(
+        &self,
+        params: TextDocumentPositionParams,
+    ) -> Result<Option<PrepareRenameResponse>> {
+        let uri = &params.text_document.uri;
+        let position = params.position;
+
+        if let Some(doc) = self.documents.get(uri) {
+            Ok(prepare_rename(&doc, position, &self.api_definitions))
+        } else {
+            Ok(None)
+        }
+    }
+
+    async fn rename(&self, params: RenameParams) -> Result<Option<WorkspaceEdit>> {
+        let uri = &params.text_document_position.text_document.uri;
+        let position = params.text_document_position.position;
+
+        if let Some(doc) = self.documents.get(uri) {
+            Ok(rename(
+                &doc,
+                position,
+                uri,
+                &params.new_name,
+                &self.api_definitions,
+            ))
         } else {
             Ok(None)
         }
