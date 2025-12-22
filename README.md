@@ -52,8 +52,8 @@ An unofficial Language Server Protocol (LSP) implementation for [NimbyScript](ht
 | `textDocument/formatting` | ✅ |
 | `textDocument/rangeFormatting` | ✅ |
 | `textDocument/onTypeFormatting` | ✅ |
-| `textDocument/rename` | ❌ |
-| `textDocument/prepareRename` | ❌ |
+| `textDocument/rename` | ✅ |
+| `textDocument/prepareRename` | ✅ |
 | `textDocument/foldingRange` | ✅ |
 | `textDocument/selectionRange` | ✅ |
 | `textDocument/linkedEditingRange` | ✅ |
