@@ -18,6 +18,7 @@ mod formatting;
 mod hover;
 mod inlay_hints;
 mod navigation;
+mod selection_range;
 mod semantic_tokens;
 mod signature_help;
 mod type_hierarchy;
