@@ -66,6 +66,26 @@ See parameter names and type annotations inline in your code.
 
 Explore type relationships with the type hierarchy view.
 
+### Rename Symbol
+
+Rename any symbol with F2. All references are automatically updated.
+
+### Code Folding
+
+Collapse and expand code blocks to focus on what matters. Works on structs, enums, functions, and nested blocks.
+
+### Smart Selection
+
+Expand your selection progressively with Shift+Alt+Right. Contract with Shift+Alt+Left. Selection expands through syntax nodes (identifier → expression → statement → block → function).
+
+### Linked Editing
+
+When you rename a struct, its method prefixes (`Foo::method`) and self parameter types (`&Foo`) update together. Enable with the `editor.linkedEditing` setting.
+
+### Workspace Symbols
+
+Search for any symbol across all open files with Ctrl+T (Cmd+T on macOS).
+
 ## Requirements
 
 No additional requirements. The extension bundles the language server for your platform.
