@@ -13,6 +13,7 @@
 pub mod backend;
 mod completions;
 pub mod document;
+mod folding_range;
 mod formatting;
 mod hover;
 mod inlay_hints;
