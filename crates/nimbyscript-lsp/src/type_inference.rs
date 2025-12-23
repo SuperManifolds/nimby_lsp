@@ -526,14 +526,16 @@ pub fn extract_params_strings(params_node: Node, content: &str) -> Vec<(String, 
         .collect()
 }
 
-/// Extract binding name and type from a LET_STATEMENT node.
+/// Extract binding name and type from a LET_STATEMENT, LET_ELSE_STATEMENT, or IF_LET_STATEMENT node.
 ///
 /// Returns the binding name and its type annotation if present, or Unknown if not.
+/// For type inference from value expressions, use `extract_binding_with_inference` instead.
 pub fn extract_binding(let_node: Node, content: &str) -> Option<(String, TypeInfo)> {
     let binding = let_node.child_by_kind(kind::BINDING)?;
     let name = binding.child_by_field("name")?.text(content).to_string();
+    // Check for type_pattern (which is how the grammar stores type annotations in bindings)
     let type_info = binding
-        .child_by_field("type")
+        .child_by_kind("type_pattern")
         .map_or(TypeInfo::Unknown, |ty| parse_type_string(ty.text(content)));
     Some((name, type_info))
 }
@@ -562,10 +564,85 @@ pub fn find_enclosing_function(root: Node, offset: usize) -> Option<Node> {
     search(root, offset)
 }
 
-/// Collect local variable types from a function node.
+/// Collect local variable types from a function node with type inference.
 ///
 /// Collects parameter types and let binding types. If `cursor_offset` is provided,
-/// only collects bindings declared before that offset.
+/// only collects bindings declared before that offset. Uses the TypeContext to
+/// infer types from value expressions when no explicit annotation is present.
+pub fn collect_local_types_with_inference(
+    func_node: Node,
+    ctx: &TypeContext,
+    cursor_offset: Option<usize>,
+) -> HashMap<String, TypeInfo> {
+    let mut types = HashMap::new();
+
+    // Parameters
+    if let Some(params) = func_node.child_by_kind(kind::PARAMETERS) {
+        for (name, ty) in extract_params(params, ctx.content) {
+            types.insert(name, ty);
+        }
+    }
+
+    // Let bindings with inference
+    let body = func_node
+        .child_by_field("body")
+        .or_else(|| func_node.child_by_kind(kind::BLOCK));
+    if let Some(body) = body {
+        collect_bindings_with_inference(body, ctx, cursor_offset, &mut types);
+    }
+
+    types
+}
+
+/// Recursively collect let bindings with type inference.
+fn collect_bindings_with_inference(
+    node: Node,
+    ctx: &TypeContext,
+    cursor_offset: Option<usize>,
+    types: &mut HashMap<String, TypeInfo>,
+) {
+    // Skip if past cursor
+    if let Some(offset) = cursor_offset {
+        if node.start_byte() > offset {
+            return;
+        }
+    }
+
+    let is_binding_stmt = node.kind() == kind::LET_STATEMENT
+        || node.kind() == kind::LET_ELSE_STATEMENT
+        || node.kind() == kind::IF_LET_STATEMENT;
+
+    if is_binding_stmt {
+        if let Some(binding) = node.child_by_kind(kind::BINDING) {
+            if let Some(name_node) = binding.child_by_field("name") {
+                let name = name_node.text(ctx.content).to_string();
+
+                // First check for explicit type annotation (type_pattern)
+                let type_info = if let Some(t) = binding.child_by_kind("type_pattern") {
+                    parse_type_string(t.text(ctx.content))
+                } else if let Some(value_node) = binding.child_by_field("value") {
+                    // Infer type from the value expression
+                    infer_node_type(ctx, value_node, types, None).unwrap_or(TypeInfo::Unknown)
+                } else {
+                    TypeInfo::Unknown
+                };
+
+                types.insert(name, type_info);
+            }
+        }
+    }
+
+    // Recurse into children
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        collect_bindings_with_inference(child, ctx, cursor_offset, types);
+    }
+}
+
+/// Collect local variable types from a function node (without inference).
+///
+/// Only uses explicit type annotations. For type inference from values,
+/// use `collect_local_types_with_inference` instead.
 pub fn collect_local_types_in_function(
     func_node: Node,
     content: &str,
@@ -580,7 +657,7 @@ pub fn collect_local_types_in_function(
         }
     }
 
-    // Let bindings
+    // Let bindings (no inference)
     let body = func_node
         .child_by_field("body")
         .or_else(|| func_node.child_by_kind(kind::BLOCK));
@@ -591,22 +668,23 @@ pub fn collect_local_types_in_function(
     types
 }
 
-/// Recursively collect let bindings from a node.
+/// Recursively collect let bindings from a node (no inference).
 fn collect_bindings_recursive(
     node: Node,
     content: &str,
     cursor_offset: Option<usize>,
     types: &mut HashMap<String, TypeInfo>,
 ) {
-    // Skip if past cursor
     if let Some(offset) = cursor_offset {
         if node.start_byte() > offset {
             return;
         }
     }
 
-    let is_let = node.kind() == kind::LET_STATEMENT || node.kind() == kind::LET_ELSE_STATEMENT;
-    if is_let {
+    let is_binding_stmt = node.kind() == kind::LET_STATEMENT
+        || node.kind() == kind::LET_ELSE_STATEMENT
+        || node.kind() == kind::IF_LET_STATEMENT;
+    if is_binding_stmt {
         if let Some((name, ty)) = extract_binding(node, content) {
             types.insert(name, ty);
         }

@@ -3,6 +3,7 @@
 //! This module tests that:
 //! - Valid fixtures produce no errors
 //! - Invalid fixtures produce expected errors with specific codes and messages
+//! - Valid fixtures have no Unknown types in inferred bindings
 //!
 //! Expected errors are declared in fixture files using comment annotations:
 //! ```text
@@ -16,6 +17,7 @@ use std::path::Path;
 use nimbyscript_analyzer::diagnostics::Severity;
 use nimbyscript_analyzer::{ApiDefinitions, Diagnostic};
 use nimbyscript_lsp::document::Document;
+use tower_lsp::lsp_types::{InlayHintLabel, Position, Range};
 
 /// Load the API definitions from the standard location.
 fn load_api() -> ApiDefinitions {
@@ -341,4 +343,308 @@ fn invalid_in_assignment() {
     let expected = parse_expected_diagnostics(&content);
 
     assert_diagnostics_match(&diagnostics, &expected, "invalid_in_assignment.nimbyscript");
+}
+
+// =============================================================================
+// Type Inference Quality Tests
+// =============================================================================
+
+/// Check that inlay hints don't show Unknown types (displayed as "?").
+/// If an inlay hint shows "?", it means type inference failed.
+fn check_no_unknown_inlay_hints(path: &Path) -> Vec<String> {
+    let content = fs::read_to_string(path).expect("read file");
+    let api = load_api();
+    let doc = Document::new(content.clone(), Some(&api));
+
+    // Get inlay hints for the entire document
+    let lines = content.lines().count() as u32;
+    let last_line_len = content.lines().last().map_or(0, str::len) as u32;
+    let range = Range {
+        start: Position {
+            line: 0,
+            character: 0,
+        },
+        end: Position {
+            line: lines,
+            character: last_line_len,
+        },
+    };
+
+    let hints = nimbyscript_lsp::inlay_hints::get_inlay_hints(&doc, range, &api);
+
+    let mut unknown_hints = Vec::new();
+    for hint in hints {
+        let label = match &hint.label {
+            InlayHintLabel::String(s) => s.clone(),
+            InlayHintLabel::LabelParts(parts) => parts.iter().map(|p| p.value.as_str()).collect(),
+        };
+
+        // Check for Unknown type indicators
+        if label.contains('?') || label.contains("Unknown") {
+            unknown_hints.push(format!(
+                "Line {}: inlay hint shows unknown type: {label}",
+                hint.position.line + 1,
+            ));
+        }
+    }
+
+    unknown_hints
+}
+
+/// Extract hover content as a string.
+fn extract_hover_content(hover: tower_lsp::lsp_types::Hover) -> String {
+    match hover.contents {
+        tower_lsp::lsp_types::HoverContents::Markup(m) => m.value,
+        tower_lsp::lsp_types::HoverContents::Scalar(s) => match s {
+            tower_lsp::lsp_types::MarkedString::String(s) => s,
+            tower_lsp::lsp_types::MarkedString::LanguageString(ls) => ls.value,
+        },
+        tower_lsp::lsp_types::HoverContents::Array(arr) => arr
+            .iter()
+            .map(|s| match s {
+                tower_lsp::lsp_types::MarkedString::String(s) => s.clone(),
+                tower_lsp::lsp_types::MarkedString::LanguageString(ls) => ls.value.clone(),
+            })
+            .collect::<Vec<_>>()
+            .join("\n"),
+    }
+}
+
+/// Check a single binding for unknown type in hover.
+fn check_binding_hover(
+    doc: &Document,
+    api: &ApiDefinitions,
+    line_num: usize,
+    line: &str,
+    pattern: &str,
+) -> Option<String> {
+    let pos = line.find(pattern)?;
+    let after_keyword = &line[pos + pattern.len()..];
+
+    // Extract identifier
+    let ident_end = after_keyword
+        .find(|c: char| !c.is_alphanumeric() && c != '_')
+        .unwrap_or(after_keyword.len());
+    if ident_end == 0 {
+        return None;
+    }
+
+    let ident = &after_keyword[..ident_end];
+    // Skip keywords like "mut"
+    if ident == "mut" {
+        return None;
+    }
+
+    let position = Position {
+        line: line_num as u32,
+        character: (pos + pattern.len()) as u32,
+    };
+
+    let hover = nimbyscript_lsp::hover::get_hover(doc, position, api)?;
+    let hover_content = extract_hover_content(hover);
+
+    // Check for Unknown type
+    if hover_content.contains(": ?")
+        || hover_content.contains(": Unknown")
+        || hover_content.contains("`: ?")
+        || hover_content.contains("`: Unknown")
+    {
+        let first_line = hover_content.lines().next().unwrap_or(&hover_content);
+        return Some(format!(
+            "Line {}: hover on '{ident}' shows unknown type: {first_line}",
+            line_num + 1,
+        ));
+    }
+
+    None
+}
+
+/// Check that hover on identifiers doesn't show Unknown types.
+fn check_no_unknown_hover_types(path: &Path) -> Vec<String> {
+    let content = fs::read_to_string(path).expect("read file");
+    let api = load_api();
+    let doc = Document::new(content.clone(), Some(&api));
+
+    let mut unknown_hovers = Vec::new();
+    let patterns = ["let ", "if let "];
+
+    for (line_num, line) in content.lines().enumerate() {
+        for pattern in patterns {
+            if let Some(err) = check_binding_hover(&doc, &api, line_num, line, pattern) {
+                unknown_hovers.push(err);
+            }
+        }
+    }
+
+    unknown_hovers
+}
+
+#[test]
+fn valid_fixtures_have_no_unknown_types() {
+    let valid_dir = fixtures_dir().join("valid");
+    let mut all_errors = Vec::new();
+
+    for entry in fs::read_dir(&valid_dir).expect("read valid dir") {
+        let entry = entry.expect("read entry");
+        let path = entry.path();
+        if path.extension().and_then(|s| s.to_str()) != Some("nimbyscript") {
+            continue;
+        }
+
+        let file_name = path.file_name().expect("file name").to_string_lossy();
+
+        for err in check_no_unknown_inlay_hints(&path) {
+            all_errors.push(format!("{file_name}: {err}"));
+        }
+
+        for err in check_no_unknown_hover_types(&path) {
+            all_errors.push(format!("{file_name}: {err}"));
+        }
+    }
+
+    assert!(
+        all_errors.is_empty(),
+        "Found Unknown types in valid fixtures (type inference failed):\n{}",
+        all_errors.join("\n")
+    );
+}
+
+fn find_parse_errors(node: nimbyscript_parser::Node, errors: &mut Vec<String>) {
+    if node.is_error() || node.is_missing() {
+        errors.push(format!(
+            "Parse error at byte {}: {}",
+            node.start_byte(),
+            if node.is_missing() {
+                "missing node"
+            } else {
+                "ERROR node"
+            }
+        ));
+    }
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        find_parse_errors(child, errors);
+    }
+}
+
+/// Check that a file has no tree-sitter parse errors (ERROR nodes).
+fn check_no_parse_errors(path: &Path, api: &ApiDefinitions) -> Vec<String> {
+    let content = fs::read_to_string(path).expect("read file");
+    let doc = Document::new(content, Some(api));
+
+    let mut errors = Vec::new();
+    let root = doc.tree().root_node();
+    find_parse_errors(root, &mut errors);
+    errors
+}
+
+#[test]
+fn valid_fixtures_have_no_parse_errors() {
+    let valid_dir = fixtures_dir().join("valid");
+    let api = load_api();
+    let mut all_errors = Vec::new();
+
+    for entry in fs::read_dir(&valid_dir).expect("read valid dir") {
+        let entry = entry.expect("read entry");
+        let path = entry.path();
+        if path.extension().and_then(|s| s.to_str()) != Some("nimbyscript") {
+            continue;
+        }
+
+        let file_name = path.file_name().expect("file name").to_string_lossy();
+
+        for err in check_no_parse_errors(&path, &api) {
+            all_errors.push(format!("{file_name}: {err}"));
+        }
+    }
+
+    assert!(
+        all_errors.is_empty(),
+        "Found parse errors in valid fixtures:\n{}",
+        all_errors.join("\n")
+    );
+}
+
+/// Check that semantic tokens are generated without panics and cover key constructs.
+fn check_semantic_tokens(path: &Path, api: &ApiDefinitions) -> usize {
+    let content = fs::read_to_string(path).expect("read file");
+    let doc = Document::new(content, Some(api));
+
+    // This will panic if there's an issue with semantic token generation
+    let tokens = nimbyscript_lsp::semantic_tokens::compute_semantic_tokens(&doc, api);
+
+    tokens.len()
+}
+
+#[test]
+fn valid_fixtures_generate_semantic_tokens() {
+    let valid_dir = fixtures_dir().join("valid");
+    let api = load_api();
+
+    for entry in fs::read_dir(&valid_dir).expect("read valid dir") {
+        let entry = entry.expect("read entry");
+        let path = entry.path();
+        if path.extension().and_then(|s| s.to_str()) != Some("nimbyscript") {
+            continue;
+        }
+
+        let file_name = path.file_name().expect("file name").to_string_lossy();
+        let count = check_semantic_tokens(&path, &api);
+
+        // Valid files should produce some semantic tokens
+        assert!(
+            count > 0,
+            "{file_name}: Expected semantic tokens but got none"
+        );
+    }
+}
+
+/// Check that document symbols are generated for structs and functions.
+fn check_document_symbols(path: &Path, api: &ApiDefinitions) -> Vec<String> {
+    let content = fs::read_to_string(path).expect("read file");
+    let doc = Document::new(content.clone(), Some(api));
+
+    let symbols = doc.document_symbols();
+
+    let mut errors = Vec::new();
+
+    // Count expected structs and functions from source
+    let struct_count = content.matches("struct ").count();
+    let fn_count = content.matches("fn ").count();
+
+    // We should have at least some symbols if there are structs/functions
+    if struct_count + fn_count > 0 && symbols.is_empty() {
+        errors.push(format!(
+            "Expected symbols for {struct_count} structs and {fn_count} functions, got none"
+        ));
+    }
+
+    errors
+}
+
+#[test]
+fn valid_fixtures_have_document_symbols() {
+    let valid_dir = fixtures_dir().join("valid");
+    let api = load_api();
+    let mut all_errors = Vec::new();
+
+    for entry in fs::read_dir(&valid_dir).expect("read valid dir") {
+        let entry = entry.expect("read entry");
+        let path = entry.path();
+        if path.extension().and_then(|s| s.to_str()) != Some("nimbyscript") {
+            continue;
+        }
+
+        let file_name = path.file_name().expect("file name").to_string_lossy();
+
+        for err in check_document_symbols(&path, &api) {
+            all_errors.push(format!("{file_name}: {err}"));
+        }
+    }
+
+    assert!(
+        all_errors.is_empty(),
+        "Document symbol issues in valid fixtures:\n{}",
+        all_errors.join("\n")
+    );
 }

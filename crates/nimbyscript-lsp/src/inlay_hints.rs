@@ -13,8 +13,9 @@ use nimbyscript_parser::{kind, Node, NodeExt};
 
 use crate::document::Document;
 use crate::type_inference::{
-    base_type_name, find_ancestor_of_kind, get_enclosing_struct_name, infer_node_type,
-    parse_type_string, unwrap_to_type_name, TypeContext,
+    base_type_name, collect_local_types_with_inference, find_ancestor_of_kind,
+    get_enclosing_struct_name, infer_node_type, parse_type_string, unwrap_to_type_name,
+    TypeContext,
 };
 
 // ============================================================================
@@ -87,7 +88,7 @@ impl<'a> InlayHintEngine<'a> {
         }
 
         match node.kind() {
-            kind::LET_STATEMENT | kind::LET_ELSE_STATEMENT => {
+            kind::LET_STATEMENT | kind::LET_ELSE_STATEMENT | kind::IF_LET_STATEMENT => {
                 if let Some(hint) = self.type_hint_for_let(node) {
                     hints.push(hint);
                 }
@@ -179,99 +180,12 @@ impl<'a> InlayHintEngine<'a> {
     fn infer_type_in_function(&self, let_node: Node, expr: Node) -> Option<TypeInfo> {
         // Find the enclosing function to get local variable types
         let func_node = find_ancestor_of_kind(let_node, kind::FUNCTION_DEFINITION)?;
-        let local_types = self.collect_locals_before(func_node, let_node.start_byte());
+        let ctx = self.type_context();
+        let local_types =
+            collect_local_types_with_inference(func_node, &ctx, Some(let_node.start_byte()));
         let enclosing_struct = get_enclosing_struct_name(func_node, self.content);
 
-        // Use shared type inference
-        let ctx = self.type_context();
         infer_node_type(&ctx, expr, &local_types, enclosing_struct.as_deref())
-    }
-
-    /// Collect local variable types declared before a given offset.
-    fn collect_locals_before(
-        &self,
-        func_node: Node,
-        before_offset: usize,
-    ) -> HashMap<String, TypeInfo> {
-        let mut locals = HashMap::new();
-
-        // Add function parameters
-        if let Some(params_node) = func_node.child_by_kind(kind::PARAMETERS) {
-            let mut cursor = params_node.walk();
-            for child in params_node.children(&mut cursor) {
-                if child.kind() != kind::PARAMETER {
-                    continue;
-                }
-                let Some(name) = child.child_by_field("name") else {
-                    continue;
-                };
-                let Some(ty) = child.child_by_field("type") else {
-                    continue;
-                };
-                locals.insert(
-                    name.text(self.content).to_string(),
-                    parse_type_string(ty.text(self.content)),
-                );
-            }
-        }
-
-        // Add let bindings before the current position
-        if let Some(body) = func_node.child_by_field("body") {
-            self.collect_bindings_before(body, before_offset, &mut locals);
-        }
-
-        locals
-    }
-
-    /// Recursively collect let bindings before an offset.
-    fn collect_bindings_before(
-        &self,
-        node: Node,
-        before_offset: usize,
-        locals: &mut HashMap<String, TypeInfo>,
-    ) {
-        let mut cursor = node.walk();
-        for child in node.children(&mut cursor) {
-            if child.start_byte() >= before_offset {
-                break;
-            }
-
-            // Recurse into blocks
-            if child.kind() == kind::BLOCK {
-                self.collect_bindings_before(child, before_offset, locals);
-                continue;
-            }
-
-            let is_let =
-                child.kind() == kind::LET_STATEMENT || child.kind() == kind::LET_ELSE_STATEMENT;
-            if !is_let {
-                continue;
-            }
-
-            // Get the binding node which contains name, type, and value
-            let Some(binding) = child.child_by_kind(kind::BINDING) else {
-                continue;
-            };
-
-            let Some(name_node) = binding.child_by_field("name") else {
-                continue;
-            };
-
-            let name = name_node.text(self.content).to_string();
-
-            // First check for explicit type annotation
-            let type_info = if let Some(t) = binding.child_by_field("type") {
-                parse_type_string(t.text(self.content))
-            } else if let Some(value_node) = binding.child_by_field("value") {
-                // Try to infer type from the value expression
-                self.infer_node_type(value_node, locals)
-                    .unwrap_or(TypeInfo::Unknown)
-            } else {
-                TypeInfo::Unknown
-            };
-
-            locals.insert(name, type_info);
-        }
     }
 
     // ========================================================================
@@ -398,7 +312,12 @@ impl<'a> InlayHintEngine<'a> {
 
                 // Find the enclosing function to get local types
                 let func_node = find_ancestor_of_kind(call_node, kind::FUNCTION_DEFINITION)?;
-                let local_types = self.collect_locals_before(func_node, call_node.start_byte());
+                let ctx = self.type_context();
+                let local_types = collect_local_types_with_inference(
+                    func_node,
+                    &ctx,
+                    Some(call_node.start_byte()),
+                );
 
                 let object_type = self.infer_node_type(object_node, &local_types)?;
                 let type_name = unwrap_to_type_name(&object_type)?;
