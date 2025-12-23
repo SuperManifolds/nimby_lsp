@@ -91,8 +91,10 @@ fn check_block(
             kind::LET_STATEMENT | kind::LET_ELSE_STATEMENT => {
                 // The let_statement has a binding child which contains name, type, and value
                 if let Some(binding) = child.child_by_kind("binding") {
+                    let value_node = binding.child_by_field("value");
+
                     // First check the value expression
-                    if let Some(value) = binding.child_by_field("value") {
+                    if let Some(value) = value_node {
                         check_expression(value, ctx, diagnostics, local_types);
                     }
 
@@ -100,9 +102,11 @@ fn check_block(
                     if let Some(name_node) = binding.child_by_field("name") {
                         let var_name = name_node.text(ctx.source).to_string();
                         // Look for type_pattern child (the type annotation)
-                        let var_type = binding
-                            .child_by_kind("type_pattern")
-                            .map_or(TypeInfo::Unknown, |t| ctx.resolve_type(t.text(ctx.source)));
+                        // If no annotation, infer from the value expression
+                        let var_type = binding.child_by_kind("type_pattern").map_or_else(
+                            || infer_expr_type(value_node, ctx, local_types),
+                            |t| ctx.resolve_type(t.text(ctx.source)),
+                        );
                         local_types.insert(var_name, var_type);
                     }
                 }
@@ -697,6 +701,29 @@ fn check_condition(
     // Check then block
     if let Some(then_block) = node.child_by_field("consequence") {
         let mut then_types = local_types.clone();
+
+        // For if-let statements, extract the binding and add it to the then block's scope
+        if node.kind() == kind::IF_LET_STATEMENT {
+            if let Some(binding) = node.child_by_kind(kind::BINDING) {
+                let value_node = binding.child_by_field("value");
+
+                // Check the value expression
+                if let Some(value) = value_node {
+                    check_expression(value, ctx, diagnostics, local_types);
+                }
+
+                // Extract variable name and type
+                if let Some(name_node) = binding.child_by_field("name") {
+                    let var_name = name_node.text(ctx.source).to_string();
+                    let var_type = binding.child_by_kind("type_pattern").map_or_else(
+                        || infer_expr_type(value_node, ctx, local_types),
+                        |t| ctx.resolve_type(t.text(ctx.source)),
+                    );
+                    then_types.insert(var_name, var_type);
+                }
+            }
+        }
+
         check_block(then_block, ctx, diagnostics, &mut then_types);
     }
 
@@ -747,8 +774,10 @@ fn check_return(
 
 /// Infer the return type of a method call, handling generic type parameters.
 /// For example, `ctx.db.view<Hitcher>(id)` returns `*Hitcher`.
+/// Also handles generic types like `std::optional<T>.get()` returning `*T`.
 fn infer_method_call_type(
     field_access: Node,
+    call_node: Node,
     ctx: &SemanticContext,
     local_types: &HashMap<String, TypeInfo>,
 ) -> TypeInfo {
@@ -764,9 +793,10 @@ fn infer_method_call_type(
     let object_type = infer_expr_type(Some(object), ctx, local_types);
     let base_type = object_type.unwrap_ref();
 
-    // 3. Get the type name
-    let type_name = match &base_type {
-        TypeInfo::Struct { name, .. } | TypeInfo::Generic { name, .. } => name.as_str(),
+    // 3. Get the type name and any type arguments from the base type
+    let (type_name, base_type_args) = match &base_type {
+        TypeInfo::Struct { name, .. } => (name.as_str(), Vec::new()),
+        TypeInfo::Generic { name, args, .. } => (name.as_str(), args.clone()),
         _ => return TypeInfo::Unknown,
     };
 
@@ -780,31 +810,155 @@ fn infer_method_call_type(
         return TypeInfo::Void;
     };
 
-    // 6. If the method has type parameters, substitute them with provided type arguments
+    // 6. Substitute type parameters in the return type
+    // First, check for explicit type arguments on the call (e.g., .view<Hitcher>())
     if !method_def.type_params.is_empty() {
-        // Extract type arguments from the field_access node (e.g., <Hitcher>)
         if let Some(type_args_node) = field_access.child_by_field("type_arguments") {
-            // Parse the type arguments
             let mut type_args = Vec::new();
             let mut cursor = type_args_node.walk();
             for child in type_args_node.children(&mut cursor) {
                 if child.kind() == kind::TYPE_IDENTIFIER {
                     let type_arg = child.text(ctx.source);
-                    type_args.push(type_arg.to_string());
+                    type_args.push(ctx.resolve_type(type_arg));
                 }
             }
-
-            // Substitute type parameters in the return type
+            // If any type arg is Unknown, return Unknown to avoid cascading errors
+            if type_args.iter().any(TypeInfo::is_unknown) {
+                return TypeInfo::Unknown;
+            }
             let mut substituted = return_type_str.clone();
             for (param, arg) in method_def.type_params.iter().zip(type_args.iter()) {
-                substituted = substituted.replace(param, arg);
+                substituted = substituted.replace(param, &arg.to_string());
             }
-
             return ctx.resolve_type(&substituted);
         }
+        // Infer type parameters from arguments
+        let inferred = infer_type_params_from_call_args(call_node, method_def, ctx, local_types);
+        // If any inferred type is Unknown, return Unknown to avoid cascading errors
+        if inferred.iter().any(TypeInfo::is_unknown) {
+            return TypeInfo::Unknown;
+        }
+        let mut substituted = return_type_str.clone();
+        for (param, arg) in method_def.type_params.iter().zip(inferred.iter()) {
+            substituted = substituted.replace(param, &arg.to_string());
+        }
+        return ctx.resolve_type(&substituted);
+    }
+
+    // Also substitute type parameters from the base type (e.g., std::optional<Motion::ScheduleDispatch>.get())
+    // The type definition for std::optional has type_params = ["T"], and we have base_type_args
+    if let Some(type_def) = ctx.api.get_type(type_name) {
+        // If any base type arg is Unknown, return Unknown
+        if base_type_args.iter().any(TypeInfo::is_unknown) {
+            return TypeInfo::Unknown;
+        }
+        let mut substituted = return_type_str.clone();
+        for (param, arg) in type_def.type_params.iter().zip(base_type_args.iter()) {
+            substituted = substituted.replace(param, &arg.to_string());
+        }
+        return ctx.resolve_type(&substituted);
     }
 
     ctx.resolve_type(return_type_str)
+}
+
+/// Infer type parameters from call arguments.
+/// For example, `view(id)` where `id: ID<Signal>` infers T=Signal.
+fn infer_type_params_from_call_args(
+    call_node: Node,
+    method_def: &crate::api::FunctionDef,
+    ctx: &SemanticContext,
+    local_types: &HashMap<String, TypeInfo>,
+) -> Vec<TypeInfo> {
+    let Some(args_node) = call_node.child_by_kind("arguments") else {
+        return vec![TypeInfo::Unknown; method_def.type_params.len()];
+    };
+
+    let mut cursor = args_node.walk();
+    let args: Vec<Node> = args_node
+        .children(&mut cursor)
+        .filter(|c| c.kind() != "," && c.kind() != "(" && c.kind() != ")")
+        .collect();
+
+    method_def
+        .type_params
+        .iter()
+        .map(|type_param| {
+            find_type_param_in_call_args(type_param, &args, method_def, ctx, local_types)
+                .unwrap_or(TypeInfo::Unknown)
+        })
+        .collect()
+}
+
+/// Find a type parameter value by matching against argument types.
+fn find_type_param_in_call_args(
+    type_param: &str,
+    args: &[Node],
+    method_def: &crate::api::FunctionDef,
+    ctx: &SemanticContext,
+    local_types: &HashMap<String, TypeInfo>,
+) -> Option<TypeInfo> {
+    for (i, param_def) in method_def.params.iter().enumerate() {
+        // Skip 'self' parameter
+        if param_def.name == "self" {
+            continue;
+        }
+
+        let arg_idx = if method_def.params.first().map(|p| p.name.as_str()) == Some("self") {
+            i - 1
+        } else {
+            i
+        };
+
+        if arg_idx >= args.len() {
+            continue;
+        }
+
+        // Check if param type contains this type parameter (e.g., "ID<T>")
+        if !param_def.ty.contains(type_param) {
+            continue;
+        }
+
+        // Infer the argument type
+        let arg_type = infer_expr_type(Some(args[arg_idx]), ctx, local_types);
+
+        // Extract the generic argument that corresponds to T
+        if let Some(t) = extract_type_param_from_arg(&arg_type, &param_def.ty, type_param) {
+            return Some(t);
+        }
+    }
+    None
+}
+
+/// Extract a type parameter value from an argument type given the parameter pattern.
+/// For arg_type `ID<Signal>`, param_pattern `ID<T>`, type_param `T`, returns `Signal`.
+fn extract_type_param_from_arg(
+    arg_type: &TypeInfo,
+    param_pattern: &str,
+    type_param: &str,
+) -> Option<TypeInfo> {
+    let pattern_type = crate::types::parse_type_string(param_pattern);
+
+    let TypeInfo::Generic {
+        name: _pattern_name,
+        args: pattern_args,
+    } = &pattern_type
+    else {
+        return None;
+    };
+
+    // Find which position has the type parameter
+    let position = pattern_args.iter().position(
+        |pattern_arg| matches!(pattern_arg, TypeInfo::Struct { name, .. } if name == type_param),
+    )?;
+
+    // Extract the position-th arg from the actual arg_type
+    let actual_args = match arg_type {
+        TypeInfo::Generic { args, .. } => args.clone(),
+        _ => return None,
+    };
+
+    actual_args.get(position).cloned()
 }
 
 /// Type inference for expressions with local variable tracking.
@@ -875,7 +1029,7 @@ fn infer_expr_type(
             if let Some(callee) = node.child_by_field("function") {
                 // Check if this is a method call (callee is field_access)
                 if callee.kind() == kind::FIELD_ACCESS {
-                    return infer_method_call_type(callee, ctx, local_types);
+                    return infer_method_call_type(callee, node, ctx, local_types);
                 }
 
                 let func_name = callee.text(ctx.source);
@@ -1519,6 +1673,110 @@ fn MyHandler::test(self: &MyHandler, db: &DB) {
         assert!(
             errs.iter().all(|d| d.code.as_deref() != Some("E0305")),
             "Valid DB method should not error: {errs:?}"
+        );
+    }
+
+    #[test]
+    fn test_let_infers_type_from_field_access() {
+        // Type should be inferred from motion.schedule_dispatch (std::optional<Motion::ScheduleDispatch>)
+        // Accessing invalid field should produce an error
+        let source = r"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+fn test(motion: &Motion) {
+    let sd = motion.schedule_dispatch;
+    sd.nonexistent_field;
+}
+";
+        let diags = check(source);
+        let errs = errors(&diags);
+        // E0303 = field access on non-struct type (std::optional needs .get() first)
+        assert!(
+            errs.iter()
+                .any(|d| d.code.as_deref() == Some("E0303") || d.code.as_deref() == Some("E0306")),
+            "Should error on invalid field access: {errs:?}"
+        );
+    }
+
+    #[test]
+    fn test_let_infers_type_with_annotation() {
+        // When explicit type annotation is present, type should be used
+        // Accessing invalid field should produce an error (E0303 for undefined field)
+        let source = r"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+fn test(motion: &Motion) {
+    let sd: &Motion::ScheduleDispatch = motion.schedule_dispatch.get();
+    sd.nonexistent_field;
+}
+";
+        let diags = check(source);
+        let errs = errors(&diags);
+        assert!(
+            errs.iter()
+                .any(|d| d.code.as_deref() == Some("E0303") || d.code.as_deref() == Some("E0306")),
+            "Should error on invalid field access: {errs:?}"
+        );
+    }
+
+    #[test]
+    fn test_let_inferred_valid_field_with_annotation() {
+        // Type annotation present, valid field access should not error
+        let source = r"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+fn test(motion: &Motion) {
+    let sd: &Motion::ScheduleDispatch = motion.schedule_dispatch.get();
+    sd.sched_id;
+}
+";
+        let diags = check(source);
+        let errs = errors(&diags);
+        assert!(
+            errs.iter()
+                .all(|d| d.code.as_deref() != Some("E0303") && d.code.as_deref() != Some("E0306")),
+            "Valid field access should not error: {errs:?}"
+        );
+    }
+
+    #[test]
+    fn test_if_let_binding_type_inference() {
+        // Variable bound in if-let should be available and typed in the then block
+        let source = r"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+pub struct Test extend Signal {
+    probe: ID<Signal>,
+}
+pub fn Test::tick(self: &Test, ctx: &EventCtx) {
+    if let sig &= ctx.db.view(self.probe) {
+        let x = sig.nonexistent_field;
+    }
+}
+";
+        let diags = check(source);
+        let errs = errors(&diags);
+        assert!(
+            errs.iter().any(|d| d.code.as_deref() == Some("E0303")),
+            "Should error on undefined field inside if-let block: {errs:?}"
+        );
+    }
+
+    #[test]
+    fn test_if_let_binding_valid_field() {
+        // Variable bound in if-let should allow valid field access
+        let source = r"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+pub struct Test extend Signal {
+    probe: ID<Signal>,
+}
+pub fn Test::tick(self: &Test, ctx: &EventCtx) {
+    if let sig &= ctx.db.view(self.probe) {
+        let x = sig.id;
+    }
+}
+";
+        let diags = check(source);
+        let errs = errors(&diags);
+        assert!(
+            errs.iter().all(|d| d.code.as_deref() != Some("E0303")),
+            "Valid field access inside if-let should not error: {errs:?}"
         );
     }
 }

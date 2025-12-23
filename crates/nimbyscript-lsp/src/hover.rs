@@ -14,9 +14,9 @@ use nimbyscript_parser::{kind, Node, NodeExt};
 
 use crate::document::Document;
 use crate::type_inference::{
-    collect_local_types_in_function, cursor_in_node, extract_params_strings, find_ancestor_of_kind,
-    find_deepest_node_at, find_enclosing_function, format_callback_signature, format_signature,
-    infer_node_type, unwrap_to_type_name, TypeContext,
+    collect_local_types_with_inference, cursor_in_node, extract_params_strings,
+    find_ancestor_of_kind, find_deepest_node_at, find_enclosing_function,
+    format_callback_signature, format_signature, infer_node_type, unwrap_to_type_name, TypeContext,
 };
 
 // ============================================================================
@@ -575,7 +575,8 @@ impl<'a> HoverEngine<'a> {
     fn collect_local_types(&mut self) {
         let root = self.doc.tree().root_node();
         if let Some(func) = find_enclosing_function(root, self.offset) {
-            let types = collect_local_types_in_function(func, self.content, Some(self.offset));
+            let ctx = self.type_context();
+            let types = collect_local_types_with_inference(func, &ctx, Some(self.offset));
             for (name, ty) in types {
                 self.local_types.insert(name, ty);
             }
@@ -1412,5 +1413,83 @@ pub fn MySignal::event_signal_check(
         let content = extract_hover_content(hover);
 
         assert!(content.contains("DB.view"), "Should mention DB.view method");
+    }
+
+    #[test]
+    fn test_hover_on_if_let_binding_infers_type() {
+        let api = load_api();
+
+        // This test verifies that variables bound in if-let without explicit
+        // type annotations still get their types inferred from the value expression.
+        let code = r"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+pub struct MySignal extend Signal {
+    target: ID<Signal>,
+}
+pub fn MySignal::tick(self: &MySignal, ctx: &EventCtx) {
+    if let sig &= ctx.db.view(self.target) {
+        let x = sig;
+    }
+}
+";
+        let doc = Document::new(code.to_string(), Some(&api));
+
+        // Find position of "sig" in "let x = sig" - this is inside the if-let block
+        let offset = code.find("let x = sig").expect("usage should exist") + "let x = ".len();
+        let pos = doc.offset_to_position(offset);
+
+        let hover = get_hover(&doc, pos, &api);
+        assert!(
+            hover.is_some(),
+            "Should have hover info for if-let bound variable"
+        );
+        let content = extract_hover_content(hover);
+
+        // The variable 'sig' should be inferred as *Signal (pointer to Signal)
+        // from ctx.db.view(self.target) where self.target is ID<Signal>
+        assert!(
+            content.contains("sig"),
+            "Should contain variable name 'sig'"
+        );
+        assert!(
+            content.contains("Signal"),
+            "Should infer type as Signal (not '?' or 'Unknown'): got {content}"
+        );
+    }
+
+    #[test]
+    fn test_hover_on_let_else_binding_infers_type() {
+        let api = load_api();
+
+        // Similar test for let-else bindings
+        let code = r"script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+pub struct MySignal extend Signal {
+    target: ID<Signal>,
+}
+pub fn MySignal::tick(self: &MySignal, ctx: &EventCtx) {
+    let sig &= ctx.db.view(self.target) else { return; };
+    let x = sig;
+}
+";
+        let doc = Document::new(code.to_string(), Some(&api));
+
+        // Find position of "sig" in "let x = sig"
+        let offset = code.find("let x = sig").expect("usage should exist") + "let x = ".len();
+        let pos = doc.offset_to_position(offset);
+
+        let hover = get_hover(&doc, pos, &api);
+        assert!(
+            hover.is_some(),
+            "Should have hover info for let-else bound variable"
+        );
+        let content = extract_hover_content(hover);
+
+        assert!(
+            content.contains("sig"),
+            "Should contain variable name 'sig'"
+        );
+        assert!(
+            content.contains("Signal"),
+            "Should infer type as Signal (not '?' or 'Unknown'): got {content}"
+        );
     }
 }
