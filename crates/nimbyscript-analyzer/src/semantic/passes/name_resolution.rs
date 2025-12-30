@@ -615,7 +615,9 @@ fn resolve_identifier(node: Node, ctx: &SemanticContext, diagnostics: &mut Vec<D
             | kind::ENUM_VARIANT
             | kind::PARAMETER
             | kind::FUNCTION_NAME
-            | kind::FOR_STATEMENT => return,
+            | kind::FOR_STATEMENT
+            // Skip identifiers inside type_identifier (e.g., Line::Stop)
+            | kind::TYPE_IDENTIFIER => return,
             // Skip binding names (let x = ..., if let x = ...)
             // The binding contains name/value fields; skip the name identifier
             "binding" => {

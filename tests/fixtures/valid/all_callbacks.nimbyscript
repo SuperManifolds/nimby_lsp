@@ -122,3 +122,39 @@ pub fn MyTask::task_run(
 ) {
     // No-op
 }
+
+// Line::Stop callback (tests namespaced type in extends clause)
+pub struct LineStopHandler extend Line::Stop {
+    meta { label: "Line Stop Handler" },
+}
+
+pub fn LineStopHandler::event_line_stop(
+    self: &LineStopHandler,
+    ctx: &EventCtx,
+    line: &Line,
+    stop: &Line::Stop,
+    train: &Train,
+    motion: &Motion,
+    ev: LineStopEvent,
+    sc: &mut SimController
+) {
+    // No-op
+}
+
+// Shift callback
+pub struct ShiftHandler extend Shift {
+    meta { label: "Shift Handler" },
+}
+
+pub fn ShiftHandler::event_shift(
+    self: &ShiftHandler,
+    ctx: &EventCtx,
+    sched: &Schedule,
+    shift: &Shift,
+    train: &Train,
+    motion: &Motion,
+    ev: ShiftEvent,
+    sc: &mut SimController
+) {
+    // No-op
+}
