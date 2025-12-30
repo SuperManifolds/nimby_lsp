@@ -105,6 +105,9 @@ pub struct TypeDef {
     /// Type parameters for generic types (e.g., `["T"]` for `ID<T>`)
     #[serde(default)]
     pub type_params: Vec<String>,
+    /// Whether user structs can extend this type
+    #[serde(default)]
+    pub extendable: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]

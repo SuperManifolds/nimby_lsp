@@ -129,7 +129,7 @@ pub struct YeetAtSignal extend Train {
 
 pub fn YeetAtSignal::control_train(
     self: &YeetAtSignal,
-    ctx: &ControlCtx,
+    ctx: &EventCtx,
     train: &Train,
     motion: &Motion,
     sc: &mut SimController
@@ -161,7 +161,7 @@ pub struct HateDepots extend Train {
 
 pub fn HateDepots::control_train(
     self: &HateDepots,
-    ctx: &ControlCtx,
+    ctx: &EventCtx,
     train: &Train,
     motion: &Motion,
     sc: &mut SimController

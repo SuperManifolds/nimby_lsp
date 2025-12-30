@@ -120,11 +120,7 @@ impl<'a> SemanticContext<'a> {
 
     /// Check if a type name is a valid game type that can be extended
     pub fn is_extendable_game_type(&self, name: &str) -> bool {
-        // These are the valid game types that can be extended
-        matches!(
-            name,
-            "Signal" | "Train" | "Script" | "Station" | "Line" | "Schedule" | "Tag"
-        )
+        self.api.get_type(name).is_some_and(|t| t.extendable)
     }
 
     /// Check if a type name is a valid game type (including non-extendable ones)

@@ -12,9 +12,41 @@ pub struct Driver extend Train {
     driver_detector: ID<Signal>,
 }
 
+// Task struct to perform the hitch check with access to ctx.sim
+struct HitchCheckTask {
+    driver_id: ID<Train>,
+    hitcher_id: ID<Train>,
+    hitcher_detector: ID<Signal>,
+    driver_detector: ID<Signal>,
+}
+
+pub fn HitchCheckTask::task_run(
+    self: &HitchCheckTask,
+    ctx: &ControlCtx,
+    sc: &mut SimController
+) {
+    // In task context, we have access to ctx.sim for motion lookups
+    let driver &= ctx.db.view(self.driver_id) else { return; }
+    let hitcher &= ctx.db.view(self.hitcher_id) else { return; }
+    let hitcher_setup &= ctx.db.view<Hitcher>(hitcher) else { return; }
+    let hitcher_motion &= ctx.sim.view<Motion>(hitcher.id) else { return; }
+
+    // Check hitcher state
+    if is_valid(hitcher_motion.schedule_dispatch.get()) {
+        return;
+    }
+    if is_valid(hitcher_motion.drive.get()) {
+        return;
+    }
+
+    // Hitcher is in a valid state, perform the hitch
+    sc.queue_train_set_configuration(hitcher, hitcher_setup.config);
+    sc.queue_train_hitch(driver, hitcher);
+}
+
 pub fn Driver::control_train(
     self: &Driver,
-    ctx: &ControlCtx,
+    ctx: &EventCtx,
     train: &Train,
     motion: &Motion,
     sc: &mut SimController
@@ -44,20 +76,16 @@ pub fn Driver::control_train(
         return;
     }
 
-    // check for a train on the hitch area, similar checks for valid configuration of the train
+    // check for a train on the hitch area
     let hitcher &= ctx.extrapolator.get_one_occupation(hitcher_detector_pos, train.id) else { return; }
-    let hitcher_setup &= ctx.db.view<Hitcher>(hitcher) else { return; }
-    let hitcher_motion &= ctx.sim.view<Motion>(hitcher.id) else { return; }
-    if is_valid(hitcher_motion.schedule_dispatch.get()) {
-        return;
-    }
-    if is_valid(hitcher_motion.drive.get()) {
-        return;
-    }
 
-    // we are stopped, the hitcher is configured, stopped and in a valid state, therefore assert the hitch
-    sc.queue_train_set_configuration(hitcher, hitcher_setup.config);
-    sc.queue_train_hitch(train, hitcher);
+    // Queue a task to check hitcher motion state (requires ControlCtx with ctx.sim)
+    let task = HitchCheckTask::new();
+    task.driver_id = train.id;
+    task.hitcher_id = hitcher.id;
+    task.hitcher_detector = self.hitcher_detector;
+    task.driver_detector = self.driver_detector;
+    sc.queue_task(task);
 
     // exercise for the reader: the unhitch script. ideas to keep in mind:
     // the hitcher train can also have a control_train()
