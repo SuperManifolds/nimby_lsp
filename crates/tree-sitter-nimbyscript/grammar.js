@@ -123,7 +123,7 @@ module.exports = grammar({
       '}',
     ),
 
-    extends_clause: $ => seq('extend', field('type', $.identifier)),
+    extends_clause: $ => seq('extend', field('type', $.type_identifier)),
 
     _struct_item: $ => choice(
       $.struct_field,
