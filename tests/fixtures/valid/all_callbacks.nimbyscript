@@ -102,7 +102,7 @@ pub fn TrainHandler::event_train_shift_allow(
 
 pub fn TrainHandler::control_train(
     self: &TrainHandler,
-    ctx: &ControlCtx,
+    ctx: &EventCtx,
     train: &Train,
     motion: &Motion,
     sc: &mut SimController

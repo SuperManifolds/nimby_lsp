@@ -309,12 +309,14 @@ doc = "The simulation system tasked with train motion and scheduling"
 
 [types.Script]
 kind = "struct"
+extendable = true
 doc = "Base type for script instances attached to game objects"
 [types.Script.fields]
 id = { type = "ID<Script>", doc = "Unique identifier", readonly = true }
 
 [types.Signal]
 kind = "struct"
+extendable = true
 doc = "A railway signal that controls train movement"
 [types.Signal.fields]
 id = { type = "ID<Signal>", doc = "Unique identifier", readonly = true }
@@ -338,6 +340,7 @@ return_type = "SignalKind"
 
 [types.Train]
 kind = "struct"
+extendable = true
 doc = "A train entity in the simulation"
 [types.Train.fields]
 id = { type = "ID<Train>", doc = "Unique identifier", readonly = true }
@@ -345,6 +348,7 @@ tags = { type = "Tags", doc = "Tags attached to this train", readonly = true }
 
 [types.Tag]
 kind = "struct"
+extendable = true
 doc = "A tag that can be attached to game objects for grouping"
 [types.Tag.fields]
 id = { type = "ID<Tag>", doc = "Unique identifier", readonly = true }
@@ -443,6 +447,22 @@ name = "time_us"
 type = "i64"
 doc = "Execution time in microseconds since save creation"
 
+[[types.SimController.methods]]
+name = "queue_task_event_train"
+doc = "Queue an event task to run when a train event occurs. Event tasks are lightweight tasks that execute in EventCtx when triggered by the specified event."
+[[types.SimController.methods.params]]
+name = "task"
+type = "Task"
+doc = "The task to queue"
+[[types.SimController.methods.params]]
+name = "train"
+type = "&Train"
+doc = "The train to watch for events"
+[[types.SimController.methods.params]]
+name = "ev"
+type = "TaskEventTrain"
+doc = "The event type to trigger on"
+
 # ============================================
 # Enums
 # ============================================
@@ -501,6 +521,15 @@ variants = [
     { name = "Depart", doc = "Train departed from the stop" },
 ]
 
+[enums.TaskEventTrain]
+doc = "Type of train event for task triggering"
+variants = [
+    { name = "StopArrive", doc = "Train arrives at a stop" },
+    { name = "StopDepart", doc = "Train departs from a stop" },
+    { name = "ShiftAssign", doc = "Train is assigned to a shift" },
+    { name = "ShiftUnassign", doc = "Train is unassigned from a shift" },
+]
+
 # ============================================
 # Additional Game Types
 # ============================================
@@ -513,6 +542,7 @@ id = { type = "ID<Building>", doc = "Unique identifier", readonly = true }
 
 [types.Line]
 kind = "struct"
+extendable = true
 doc = "A transit line"
 [types.Line.fields]
 id = { type = "ID<Line>", doc = "Unique identifier", readonly = true }
@@ -520,10 +550,12 @@ tags = { type = "Tags", doc = "Tags attached to this line", readonly = true }
 
 [types."Line::Stop"]
 kind = "struct"
+extendable = true
 doc = "A stop on a transit line. Can be extended to receive train arrival/departure events."
 
 [types.Schedule]
 kind = "struct"
+extendable = true
 doc = "A schedule definition"
 [types.Schedule.fields]
 id = { type = "ID<Schedule>", doc = "Unique identifier", readonly = true }
@@ -540,6 +572,7 @@ doc = "The ID of the shift to look up"
 
 [types.Station]
 kind = "struct"
+extendable = true
 doc = "A station entity"
 [types.Station.fields]
 id = { type = "ID<Station>", doc = "Unique identifier", readonly = true }
@@ -723,6 +756,15 @@ station_id = { type = "ID<Station>", doc = "Current/next station", readonly = tr
 run = { type = "Run", doc = "The run projection", readonly = true }
 run_epoch_start = { type = "i64", doc = "Run epoch start time", readonly = true }
 
+[[types."Motion::RunDispatch".methods]]
+name = "current_stop"
+doc = "Returns the current stop of the train on this line"
+return_type = "*Line::Stop"
+[[types."Motion::RunDispatch".methods.params]]
+name = "line"
+type = "&Line"
+doc = "The line to get the current stop for"
+
 # std::optional
 [types."std::optional"]
 kind = "struct"
@@ -744,6 +786,7 @@ line_id = { type = "ID<Line>", doc = "Line ID", readonly = true }
 # Shift type
 [types.Shift]
 kind = "struct"
+extendable = true
 doc = "A schedule shift"
 [types.Shift.fields]
 id = { type = "ID<Shift>", doc = "Unique identifier", readonly = true }
@@ -1360,8 +1403,8 @@ type = "&Self"
 doc = "Reference to the controller script instance"
 [[callbacks.params]]
 name = "ctx"
-type = "&ControlCtx"
-doc = "Control context with database, simulation, and extrapolator access"
+type = "&EventCtx"
+doc = "Event context with database and extrapolator access"
 [[callbacks.params]]
 name = "train"
 type = "&Train"
