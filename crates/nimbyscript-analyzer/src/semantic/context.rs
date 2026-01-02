@@ -209,6 +209,41 @@ impl<'a> SemanticContext<'a> {
         matches!(inner.as_str(), "Line" | "Train" | "Schedule" | "Signal")
     }
 
+    /// Check if a type is valid for a private struct field.
+    /// Per NimbyScript spec: bool, i64, f64, script enums, ID<T> for various types
+    /// Private structs can use all pub ID types PLUS Track, Building, Station
+    pub fn is_valid_private_struct_field_type(&self, type_info: &TypeInfo) -> bool {
+        match type_info {
+            TypeInfo::Bool | TypeInfo::I64 | TypeInfo::F64 => true,
+
+            // User-defined enums are allowed
+            TypeInfo::Enum { name } | TypeInfo::Struct { name, .. } => self.is_user_enum(name),
+
+            // ID<T> is allowed for all pub types PLUS Track, Building, Station
+            TypeInfo::Generic { name, args } if name == "ID" => {
+                Self::is_valid_private_id_inner_type(args)
+            }
+
+            _ => false,
+        }
+    }
+
+    /// Check if the inner type of ID<T> is valid for private struct fields
+    /// Private structs can use all pub ID types (Line, Train, etc.) PLUS Track, Building, Station
+    fn is_valid_private_id_inner_type(args: &[TypeInfo]) -> bool {
+        if args.len() != 1 {
+            return false;
+        }
+        let TypeInfo::Struct { name: inner, .. } = &args[0] else {
+            return false;
+        };
+        // All pub types plus private-only types
+        matches!(
+            inner.as_str(),
+            "Line" | "Train" | "Schedule" | "Signal" | "Tag" | "Track" | "Building" | "Station"
+        )
+    }
+
     /// Get the fields of a struct (user-defined or game type)
     pub fn get_struct_fields(&self, name: &str) -> Option<HashMap<String, TypeInfo>> {
         // Check user-defined structs first

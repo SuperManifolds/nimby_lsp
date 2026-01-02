@@ -8,6 +8,7 @@
 //! - E0504: Duplicate field in struct
 //! - E0505: Duplicate variant in enum
 //! - E0506: Duplicate function definition
+//! - E0507: Invalid field type for private struct
 
 use std::collections::HashSet;
 
@@ -104,8 +105,11 @@ fn validate_struct(node: Node, ctx: &SemanticContext, diagnostics: &mut Vec<Diag
                 }
 
                 // E0501: Validate field type for pub structs
+                // E0507: Validate field type for private structs
                 if is_pub {
                     validate_pub_field_type(child, ctx, diagnostics);
+                } else {
+                    validate_private_field_type(child, ctx, diagnostics);
                 }
             }
         }
@@ -130,6 +134,32 @@ fn validate_pub_field_type(field: Node, ctx: &SemanticContext, diagnostics: &mut
                 Span::new(type_node.start_byte(), type_node.end_byte()),
             )
             .with_code("E0501"),
+        );
+    }
+}
+
+fn validate_private_field_type(
+    field: Node,
+    ctx: &SemanticContext,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    let Some(type_node) = field.child_by_field("type") else {
+        return;
+    };
+    let type_str = type_node.text(ctx.source);
+    let type_info = parse_type_string(type_str);
+
+    if !ctx.is_valid_private_struct_field_type(&type_info) {
+        diagnostics.push(
+            Diagnostic::error(
+                format!(
+                    "Invalid field type '{type_str}' for private struct. \
+                    Allowed types: bool, i64, f64, script enums, \
+                    ID<Line/Train/Schedule/Signal/Tag/Track/Building/Station>"
+                ),
+                Span::new(type_node.start_byte(), type_node.end_byte()),
+            )
+            .with_code("E0507"),
         );
     }
 }
@@ -416,6 +446,164 @@ pub enum Status { Active, Inactive, }
         assert!(
             errs.iter().all(|d| d.code.as_deref() != Some("E0505")),
             "Unique variants should not error: {errs:?}"
+        );
+    }
+
+    // E0507 tests - invalid field types for private structs
+
+    #[test]
+    fn test_private_struct_direct_game_type_invalid() {
+        // Direct game types like Train are not allowed - must use ID<Train>
+        let source = r"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+struct HitchInfo {
+    hitched_train: Train,
+}
+";
+        let diags = check(source);
+        let errs = errors(&diags);
+        assert!(
+            errs.iter().any(|d| d.code.as_deref() == Some("E0507")),
+            "Direct Train type should be invalid for private struct"
+        );
+    }
+
+    #[test]
+    fn test_private_struct_id_train_valid() {
+        // ID<Train> is valid for private structs (same as pub structs)
+        let source = r"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+struct HitchInfo {
+    train_id: ID<Train>,
+}
+";
+        let diags = check(source);
+        let errs = errors(&diags);
+        assert!(
+            errs.iter().all(|d| d.code.as_deref() != Some("E0507")),
+            "ID<Train> should be valid for private struct: {errs:?}"
+        );
+    }
+
+    #[test]
+    fn test_private_struct_id_track_valid() {
+        // ID<Track> is allowed in private structs
+        let source = r"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+struct TrackInfo {
+    track: ID<Track>,
+}
+";
+        let diags = check(source);
+        let errs = errors(&diags);
+        assert!(
+            errs.iter().all(|d| d.code.as_deref() != Some("E0507")),
+            "ID<Track> should be valid for private struct: {errs:?}"
+        );
+    }
+
+    #[test]
+    fn test_private_struct_id_building_valid() {
+        // ID<Building> is allowed in private structs
+        let source = r"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+struct BuildingInfo {
+    building: ID<Building>,
+}
+";
+        let diags = check(source);
+        let errs = errors(&diags);
+        assert!(
+            errs.iter().all(|d| d.code.as_deref() != Some("E0507")),
+            "ID<Building> should be valid for private struct: {errs:?}"
+        );
+    }
+
+    #[test]
+    fn test_private_struct_id_station_valid() {
+        // ID<Station> is allowed in private structs
+        let source = r"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+struct StationInfo {
+    station: ID<Station>,
+}
+";
+        let diags = check(source);
+        let errs = errors(&diags);
+        assert!(
+            errs.iter().all(|d| d.code.as_deref() != Some("E0507")),
+            "ID<Station> should be valid for private struct: {errs:?}"
+        );
+    }
+
+    #[test]
+    fn test_private_struct_primitives_valid() {
+        // Primitives are allowed in private structs
+        let source = r"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+struct Data {
+    flag: bool,
+    count: i64,
+    value: f64,
+}
+";
+        let diags = check(source);
+        let errs = errors(&diags);
+        assert!(
+            errs.iter().all(|d| d.code.as_deref() != Some("E0507")),
+            "Primitives should be valid for private struct: {errs:?}"
+        );
+    }
+
+    #[test]
+    fn test_private_struct_user_enum_valid() {
+        // User-defined enums are allowed in private structs
+        let source = r"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+enum Status { Active, Inactive, }
+struct Data {
+    status: Status,
+}
+";
+        let diags = check(source);
+        let errs = errors(&diags);
+        assert!(
+            errs.iter().all(|d| d.code.as_deref() != Some("E0507")),
+            "User enum should be valid for private struct: {errs:?}"
+        );
+    }
+
+    #[test]
+    fn test_private_struct_vec_invalid() {
+        // &Vec<ID<T>> is pub-only
+        let source = r"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+struct Data {
+    tracks: &Vec<ID<Track>>,
+}
+";
+        let diags = check(source);
+        let errs = errors(&diags);
+        assert!(
+            errs.iter().any(|d| d.code.as_deref() == Some("E0507")),
+            "&Vec<ID<T>> should be invalid for private struct"
+        );
+    }
+
+    #[test]
+    fn test_private_struct_string_invalid() {
+        // String is not a valid field type
+        let source = r"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+struct Data {
+    name: String,
+}
+";
+        let diags = check(source);
+        let errs = errors(&diags);
+        assert!(
+            errs.iter().any(|d| d.code.as_deref() == Some("E0507")),
+            "String should be invalid for private struct"
         );
     }
 }
