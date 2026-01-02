@@ -22,7 +22,11 @@ pub struct Document {
 }
 
 impl Document {
-    pub fn new(content: String, api: Option<&ApiDefinitions>) -> Self {
+    pub fn new(content: impl Into<String>, api: Option<&ApiDefinitions>) -> Self {
+        // Normalize line endings to LF (Unix-style) for consistent position handling.
+        // Windows files use CRLF (\r\n) which would otherwise cause position mismatches
+        // between VS Code's view (LF-normalized) and our byte offsets.
+        let content = content.into().replace("\r\n", "\n").replace('\r', "\n");
         let line_offsets = compute_line_offsets(&content);
         let tree = parse(&content);
         let (diagnostics, symbols, struct_extends) = analyze(&content, &tree, api);
@@ -437,6 +441,45 @@ pub fn Test::
         // Position beyond available lines should return content length
         let offset = doc.position_to_offset(Position::new(10, 0));
         assert_eq!(offset, 5); // content length
+    }
+
+    #[test]
+    fn test_crlf_normalization() {
+        // Windows-style CRLF line endings should be normalized to LF
+        let doc = Document::new("hello\r\nworld".to_string(), None);
+        // After normalization, content should be "hello\nworld" (11 chars)
+        assert_eq!(doc.content, "hello\nworld");
+        assert_eq!(doc.content.len(), 11);
+    }
+
+    #[test]
+    fn test_crlf_position_handling() {
+        // Windows-style CRLF line endings should work correctly with positions
+        let doc = Document::new("hello\r\nworld".to_string(), None);
+        // Line 1, column 0 should be at offset 6 (after the normalized \n)
+        let offset = doc.position_to_offset(Position::new(1, 0));
+        assert_eq!(offset, 6);
+        // The 'w' in world
+        assert_eq!(&doc.content[offset..=offset], "w");
+    }
+
+    #[test]
+    fn test_crlf_multiline() {
+        // Multiple CRLF lines
+        let doc = Document::new("line1\r\nline2\r\nline3".to_string(), None);
+        assert_eq!(doc.content, "line1\nline2\nline3");
+
+        // Check each line start
+        assert_eq!(doc.position_to_offset(Position::new(0, 0)), 0);
+        assert_eq!(doc.position_to_offset(Position::new(1, 0)), 6);
+        assert_eq!(doc.position_to_offset(Position::new(2, 0)), 12);
+    }
+
+    #[test]
+    fn test_standalone_cr_normalization() {
+        // Old Mac-style CR-only line endings should also be normalized
+        let doc = Document::new("hello\rworld".to_string(), None);
+        assert_eq!(doc.content, "hello\nworld");
     }
 
     // Symbol extraction tests
