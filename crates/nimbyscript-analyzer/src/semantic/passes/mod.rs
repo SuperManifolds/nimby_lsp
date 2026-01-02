@@ -14,7 +14,7 @@ pub use name_resolution::NameResolutionPass;
 pub use nimbyscript_rules::NimbyScriptRulesPass;
 pub use scope_analysis::ScopeAnalysisPass;
 pub use struct_validation::StructValidationPass;
-pub use type_checking::TypeCheckingPass;
+pub use type_checking::{collect_params_types, infer_expr_type, TypeCheckingPass};
 
 use crate::semantic::{SemanticContext, SemanticPass};
 use crate::Diagnostic;

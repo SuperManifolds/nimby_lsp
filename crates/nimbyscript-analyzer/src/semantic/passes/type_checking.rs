@@ -57,7 +57,8 @@ fn check_types(node: Node, ctx: &SemanticContext, diagnostics: &mut Vec<Diagnost
     }
 }
 
-fn collect_params_types(
+/// Collect parameter types from a function's parameter list into a local types map.
+pub fn collect_params_types(
     params: Node,
     ctx: &SemanticContext,
     local_types: &mut HashMap<String, TypeInfo>,
@@ -962,7 +963,7 @@ fn extract_type_param_from_arg(
 }
 
 /// Type inference for expressions with local variable tracking.
-fn infer_expr_type(
+pub fn infer_expr_type(
     node: Option<Node>,
     ctx: &SemanticContext,
     local_types: &HashMap<String, TypeInfo>,
