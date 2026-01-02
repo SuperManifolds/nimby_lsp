@@ -9,6 +9,7 @@
 //! - E0505: Duplicate variant in enum
 //! - E0506: Duplicate function definition
 //! - E0507: Invalid field type for private struct
+//! - E0508: Method defined on private struct
 
 use std::collections::HashSet;
 
@@ -37,6 +38,7 @@ fn validate_definitions(node: Node, ctx: &SemanticContext, diagnostics: &mut Vec
     match node.kind() {
         kind::STRUCT_DEFINITION => validate_struct(node, ctx, diagnostics),
         kind::ENUM_DEFINITION => validate_enum(node, ctx, diagnostics),
+        kind::FUNCTION_DEFINITION => validate_function(node, ctx, diagnostics),
         _ => {
             let mut cursor = node.walk();
             for child in node.children(&mut cursor) {
@@ -161,6 +163,36 @@ fn validate_private_field_type(
             )
             .with_code("E0507"),
         );
+    }
+}
+
+fn validate_function(node: Node, ctx: &SemanticContext, diagnostics: &mut Vec<Diagnostic>) {
+    let Some(name_node) = node.child_by_field("name") else {
+        return;
+    };
+    let name = name_node.text(ctx.source);
+
+    // Check if this is a method (contains ::)
+    if let Some(sep_pos) = name.find("::") {
+        let struct_name = &name[..sep_pos];
+
+        // Check if the function is public
+        let is_pub = node.child_by_kind(kind::VISIBILITY_MODIFIER).is_some();
+
+        // E0508: Private functions on private structs are not allowed
+        // (pub fn on private structs is allowed for task callbacks)
+        if !is_pub && ctx.is_user_struct(struct_name) && !ctx.is_pub_struct(struct_name) {
+            diagnostics.push(
+                Diagnostic::error(
+                    format!(
+                        "Cannot define private method on private struct '{struct_name}'. \
+                         Use 'pub fn' for task callbacks, or define methods on pub structs."
+                    ),
+                    Span::new(name_node.start_byte(), name_node.end_byte()),
+                )
+                .with_code("E0508"),
+            );
+        }
     }
 }
 
@@ -604,6 +636,68 @@ struct Data {
         assert!(
             errs.iter().any(|d| d.code.as_deref() == Some("E0507")),
             "String should be invalid for private struct"
+        );
+    }
+
+    // E0508 tests - private method on private struct
+
+    #[test]
+    fn test_private_method_on_private_struct_error() {
+        let source = r"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+struct MyData { x: i64, }
+fn MyData::foobar() { }
+";
+        let diags = check(source);
+        let errs = errors(&diags);
+        assert!(
+            errs.iter().any(|d| d.code.as_deref() == Some("E0508")),
+            "Private method on private struct should error: {errs:?}"
+        );
+    }
+
+    #[test]
+    fn test_pub_method_on_private_struct_ok() {
+        // pub fn on private struct is allowed for task callbacks
+        let source = r"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+struct MyTask { x: i64, }
+pub fn MyTask::task_run(self: &MyTask, ctx: &ControlCtx, sc: &mut SimController) { }
+";
+        let diags = check(source);
+        let errs = errors(&diags);
+        assert!(
+            errs.iter().all(|d| d.code.as_deref() != Some("E0508")),
+            "Pub method on private struct should be ok (task callback): {errs:?}"
+        );
+    }
+
+    #[test]
+    fn test_method_on_pub_struct_ok() {
+        let source = r"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+pub struct MySignal extend Signal { }
+fn MySignal::foobar() { }
+";
+        let diags = check(source);
+        let errs = errors(&diags);
+        assert!(
+            errs.iter().all(|d| d.code.as_deref() != Some("E0508")),
+            "Method on pub struct should be ok: {errs:?}"
+        );
+    }
+
+    #[test]
+    fn test_plain_function_ok() {
+        let source = r"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+fn helper() { }
+";
+        let diags = check(source);
+        let errs = errors(&diags);
+        assert!(
+            errs.iter().all(|d| d.code.as_deref() != Some("E0508")),
+            "Plain function should not get E0508: {errs:?}"
         );
     }
 }
