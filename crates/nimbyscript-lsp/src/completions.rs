@@ -1926,4 +1926,57 @@ MySignal::
         // Verify data field is also set for resolve fallback
         assert!(abs_item.data.is_some(), "function should have resolve data");
     }
+
+    #[test]
+    fn test_field_access_with_partial_prefix() {
+        let api = load_api();
+        // Reproducing: ctx.d should offer ctx.db
+        let content = r"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+fn test(ctx: &ControlCtx) {
+    ctx.d
+}
+";
+        // Position after 'd' - line 3, column 9 (after "    ctx.d")
+        let engine = CompletionEngine::new(content, &api, Position::new(3, 9));
+        let items = engine.completions();
+        assert!(
+            items.iter().any(|i| i.label == "db"),
+            "should have db field when typing 'd'. Got: {:?}",
+            items.iter().map(|i| &i.label).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn test_field_access_with_partial_prefix_event_ctx() {
+        let api = load_api();
+        // Reproducing the exact issue: EventCtx in event_line_stop
+        let content = r#"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+pub struct LineStopHandler extend Line::Stop {
+    meta { label: "Line Stop Handler" },
+}
+
+pub fn LineStopHandler::event_line_stop(
+    self: &LineStopHandler,
+    ctx: &EventCtx,
+    line: &Line,
+    stop: &Line::Stop,
+    train: &Train,
+    motion: &Motion,
+    ev: LineStopEvent,
+    sc: &mut SimController
+) {
+    ctx.d
+}
+"#;
+        // Position after 'd' - line 16, column 9 (after "    ctx.d")
+        let engine = CompletionEngine::new(content, &api, Position::new(16, 9));
+        let items = engine.completions();
+        assert!(
+            items.iter().any(|i| i.label == "db"),
+            "EventCtx should have db field when typing 'd'. Got: {:?}",
+            items.iter().map(|i| &i.label).collect::<Vec<_>>()
+        );
+    }
 }
