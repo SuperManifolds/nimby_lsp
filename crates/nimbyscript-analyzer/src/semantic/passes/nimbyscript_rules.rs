@@ -30,12 +30,12 @@ fn check_rules(node: Node, ctx: &SemanticContext, diagnostics: &mut Vec<Diagnost
     match node.kind() {
         kind::CONST_DECLARATION => check_const(node, ctx, diagnostics),
         kind::ASSIGNMENT_STATEMENT => check_assignment(node, ctx, diagnostics),
-        _ => {
-            let mut cursor = node.walk();
-            for child in node.children(&mut cursor) {
-                check_rules(child, ctx, diagnostics);
-            }
-        }
+        _ => {}
+    }
+    // Always recurse to check nested nodes
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        check_rules(child, ctx, diagnostics);
     }
 }
 

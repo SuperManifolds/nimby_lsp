@@ -14,9 +14,9 @@ use nimbyscript_parser::{kind, Node, NodeExt};
 
 use crate::document::Document;
 use crate::type_inference::{
-    collect_local_types_with_inference, cursor_in_node, extract_params_strings,
-    find_ancestor_of_kind, find_deepest_node_at, find_enclosing_function,
-    format_callback_signature, format_signature, infer_node_type, unwrap_to_type_name, TypeContext,
+    cursor_in_node, extract_params_strings, find_ancestor_of_kind, find_deepest_node_at,
+    find_enclosing_function, format_callback_signature, format_signature, infer_node_type,
+    unwrap_to_type_name, TypeContext,
 };
 
 // ============================================================================
@@ -576,7 +576,7 @@ impl<'a> HoverEngine<'a> {
         let root = self.doc.tree().root_node();
         if let Some(func) = find_enclosing_function(root, self.offset) {
             let ctx = self.type_context();
-            let types = collect_local_types_with_inference(func, &ctx, Some(self.offset));
+            let types = ctx.collect_local_types_with_inference(func, Some(self.offset));
             for (name, ty) in types {
                 self.local_types.insert(name, ty);
             }

@@ -13,9 +13,8 @@ use nimbyscript_parser::{kind, Node, NodeExt};
 
 use crate::document::Document;
 use crate::type_inference::{
-    base_type_name, collect_local_types_with_inference, find_ancestor_of_kind,
-    get_enclosing_struct_name, infer_node_type, parse_type_string, unwrap_to_type_name,
-    TypeContext,
+    base_type_name, find_ancestor_of_kind, get_enclosing_struct_name, infer_node_type,
+    parse_type_string, transform_type_by_binding_operator, unwrap_to_type_name, TypeContext,
 };
 
 // ============================================================================
@@ -151,8 +150,16 @@ impl<'a> InlayHintEngine<'a> {
         let name_node = binding.child_by_field("name")?;
         let value_node = binding.child_by_field("value")?;
 
+        // Get the binding operator to determine type transformation
+        let operator = binding
+            .child_by_field("operator")
+            .map_or("=", |op| op.text(self.content));
+
         // Infer type from the initializer
-        let type_info = self.infer_type_in_function(node, value_node)?;
+        let inferred_type = self.infer_type_in_function(node, value_node)?;
+
+        // Apply binding operator transformation (e.g., &= converts pointer to reference)
+        let type_info = transform_type_by_binding_operator(inferred_type, operator);
 
         // Skip if type is unknown
         if matches!(type_info, TypeInfo::Unknown) {
@@ -182,7 +189,7 @@ impl<'a> InlayHintEngine<'a> {
         let func_node = find_ancestor_of_kind(let_node, kind::FUNCTION_DEFINITION)?;
         let ctx = self.type_context();
         let local_types =
-            collect_local_types_with_inference(func_node, &ctx, Some(let_node.start_byte()));
+            ctx.collect_local_types_with_inference(func_node, Some(let_node.start_byte()));
         let enclosing_struct = get_enclosing_struct_name(func_node, self.content);
 
         infer_node_type(&ctx, expr, &local_types, enclosing_struct.as_deref())
@@ -313,11 +320,8 @@ impl<'a> InlayHintEngine<'a> {
                 // Find the enclosing function to get local types
                 let func_node = find_ancestor_of_kind(call_node, kind::FUNCTION_DEFINITION)?;
                 let ctx = self.type_context();
-                let local_types = collect_local_types_with_inference(
-                    func_node,
-                    &ctx,
-                    Some(call_node.start_byte()),
-                );
+                let local_types =
+                    ctx.collect_local_types_with_inference(func_node, Some(call_node.start_byte()));
 
                 let object_type = self.infer_node_type(object_node, &local_types)?;
                 let type_name = unwrap_to_type_name(&object_type)?;
