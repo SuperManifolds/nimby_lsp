@@ -170,6 +170,13 @@ fn track_block(node: Node, ctx: &mut SemanticContext) {
                     track_usage(value, ctx);
                 }
 
+                // Track the else block for let-else statements
+                if child.kind() == kind::LET_ELSE_STATEMENT {
+                    if let Some(else_block) = child.child_by_kind(kind::BLOCK) {
+                        track_block(else_block, ctx);
+                    }
+                }
+
                 // Then add the variable
                 if let Some(name_node) = child.child_by_field("name") {
                     let var_name = name_node.text(ctx.source);
@@ -623,6 +630,46 @@ fn MyStruct::helper_method(self: &Self) {
         assert!(
             warns.iter().all(|d| d.code.as_deref() != Some("W0607")),
             "Private non-callback method should not warn: {warns:?}"
+        );
+    }
+
+    // W0602 - Unused function (false positive tests)
+
+    #[test]
+    fn test_function_used_in_let_else_block() {
+        // Function called in the else block of a let-else should be marked as used
+        let source = r"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+fn helper() { }
+fn main() {
+    let x &= get_ptr() else { helper(); return; };
+}
+";
+        let diags = check(source);
+        let warns = warnings(&diags);
+        assert!(
+            warns
+                .iter()
+                .all(|d| { !(d.code.as_deref() == Some("W0602") && d.message.contains("helper")) }),
+            "Function used in let-else else block should not get unused warning: {warns:?}"
+        );
+    }
+
+    #[test]
+    fn test_function_used_before_declaration() {
+        // Function called before its declaration should still be marked as used
+        let source = r"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+fn a() { b(); }
+fn b() { }
+";
+        let diags = check(source);
+        let warns = warnings(&diags);
+        assert!(
+            warns
+                .iter()
+                .all(|d| { !(d.code.as_deref() == Some("W0602") && d.message.contains("'b'")) }),
+            "Function used before declaration should not get unused warning: {warns:?}"
         );
     }
 }
