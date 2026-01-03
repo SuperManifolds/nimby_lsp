@@ -41,7 +41,7 @@ pub fn HitchCheckTask::task_run(
 
     // Hitcher is in a valid state, perform the hitch
     sc.queue_train_set_configuration(hitcher, hitcher_setup.config);
-    sc.queue_train_hitch(driver, hitcher);
+    sc.queue_train_hitch(driver, hitcher, 1);
 }
 
 pub fn Driver::control_train(
