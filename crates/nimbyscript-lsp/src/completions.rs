@@ -346,17 +346,23 @@ impl<'a> CompletionEngine<'a> {
 
     /// Get the type of a field on a given type.
     fn get_field_type(&self, base_type: &TypeInfo, field_name: &str) -> Option<TypeInfo> {
-        let type_name = Self::unwrap_to_type_name(base_type)?;
+        let unwrapped_name = Self::unwrap_to_type_name(base_type)?;
+        let full_type_name = Self::type_info_to_api_name(base_type);
 
         // Check user-defined struct fields
-        if let Some(fields) = self.struct_fields.get(&type_name) {
+        if let Some(fields) = self.struct_fields.get(&unwrapped_name) {
             if let Some(field_type) = fields.get(field_name) {
                 return Some(field_type.clone());
             }
         }
 
-        // Check game type fields
-        if let Some(type_def) = self.api.get_type(&type_name) {
+        // Check game type fields - try full name first (e.g., &Vec<T>), then unwrapped
+        let type_def = full_type_name
+            .as_ref()
+            .and_then(|n| self.api.get_type(n))
+            .or_else(|| self.api.get_type(&unwrapped_name));
+
+        if let Some(type_def) = type_def {
             if let Some(field) = type_def.fields.get(field_name) {
                 return Some(parse_type_string(&field.ty));
             }
@@ -367,10 +373,16 @@ impl<'a> CompletionEngine<'a> {
 
     /// Get the return type of a method on a given type.
     fn get_method_return_type(&self, base_type: &TypeInfo, method_name: &str) -> Option<TypeInfo> {
-        let type_name = Self::unwrap_to_type_name(base_type)?;
+        let unwrapped_name = Self::unwrap_to_type_name(base_type)?;
+        let full_type_name = Self::type_info_to_api_name(base_type);
 
-        // Check game type methods
-        if let Some(type_def) = self.api.get_type(&type_name) {
+        // Check game type methods - try full name first (e.g., &Vec<T>), then unwrapped
+        let type_def = full_type_name
+            .as_ref()
+            .and_then(|n| self.api.get_type(n))
+            .or_else(|| self.api.get_type(&unwrapped_name));
+
+        if let Some(type_def) = type_def {
             if let Some(method) = type_def.methods.iter().find(|m| m.name == method_name) {
                 return method.return_type.as_ref().map(|t| parse_type_string(t));
             }
@@ -393,6 +405,36 @@ impl<'a> CompletionEngine<'a> {
                 } else {
                     let arg_names: Vec<_> =
                         args.iter().filter_map(Self::unwrap_to_type_name).collect();
+                    Some(format!("{}<{}>", name, arg_names.join(", ")))
+                }
+            }
+            _ => None,
+        }
+    }
+
+    /// Convert TypeInfo to API type name, preserving reference qualifiers.
+    ///
+    /// Unlike `unwrap_to_type_name()`, this keeps the `&` prefix for types that
+    /// may be defined with it in the API (e.g., `&Vec<T>`).
+    fn type_info_to_api_name(ty: &TypeInfo) -> Option<String> {
+        match ty {
+            TypeInfo::Struct { name, .. } | TypeInfo::Enum { name } => Some(name.clone()),
+            TypeInfo::Reference { inner, .. } => {
+                let inner_name = Self::type_info_to_api_name(inner)?;
+                Some(format!("&{inner_name}"))
+            }
+            TypeInfo::Pointer { inner, .. } => {
+                let inner_name = Self::type_info_to_api_name(inner)?;
+                Some(format!("*{inner_name}"))
+            }
+            TypeInfo::Generic { name, args } => {
+                if args.is_empty() {
+                    Some(name.clone())
+                } else {
+                    let arg_names: Vec<_> = args
+                        .iter()
+                        .filter_map(Self::type_info_to_api_name)
+                        .collect();
                     Some(format!("{}<{}>", name, arg_names.join(", ")))
                 }
             }
@@ -429,15 +471,19 @@ impl<'a> CompletionEngine<'a> {
     fn complete_field_access(&self, base_type: &TypeInfo, prefix: &str) -> Vec<CompletionItem> {
         let mut items = Vec::new();
 
-        let Some(type_name) = Self::unwrap_to_type_name(base_type) else {
+        // Get unwrapped type name for user struct lookup
+        let Some(unwrapped_name) = Self::unwrap_to_type_name(base_type) else {
             return items;
         };
 
+        // Get full type name (with & prefix) for API lookup
+        let full_type_name = Self::type_info_to_api_name(base_type);
+
         // Handle generic types like ID<Train>
-        let base_type_name = if type_name.contains('<') {
-            type_name.split('<').next().unwrap_or(&type_name)
+        let base_type_name = if unwrapped_name.contains('<') {
+            unwrapped_name.split('<').next().unwrap_or(&unwrapped_name)
         } else {
-            &type_name
+            &unwrapped_name
         };
 
         // Add fields from user-defined structs
@@ -459,8 +505,13 @@ impl<'a> CompletionEngine<'a> {
             }
         }
 
-        // Add fields from game types
-        if let Some(type_def) = self.api.get_type(base_type_name) {
+        // Add fields from game types - try full name first (e.g., &Vec<T>), then base name
+        let api_type_name = full_type_name
+            .as_ref()
+            .filter(|n| self.api.get_type(n).is_some())
+            .map_or(base_type_name, String::as_str);
+
+        if let Some(type_def) = self.api.get_type(api_type_name) {
             for (field_name, field) in &type_def.fields {
                 if field_name.starts_with(prefix) {
                     items.push(CompletionItem {
@@ -469,7 +520,7 @@ impl<'a> CompletionEngine<'a> {
                         detail: Some(field.ty.clone()),
                         documentation: field.doc.as_ref().map(|d| make_markdown_doc(d)),
                         data: make_resolve_data(CompletionResolveData::Field {
-                            type_name: base_type_name.to_string(),
+                            type_name: api_type_name.to_string(),
                             field_name: field_name.clone(),
                         }),
                         ..Default::default()
@@ -488,7 +539,7 @@ impl<'a> CompletionEngine<'a> {
                         insert_text: Some(format_snippet(&method.name, method)),
                         insert_text_format: Some(InsertTextFormat::SNIPPET),
                         data: make_resolve_data(CompletionResolveData::Method {
-                            type_name: base_type_name.to_string(),
+                            type_name: api_type_name.to_string(),
                             method_name: method.name.clone(),
                         }),
                         ..Default::default()
@@ -2145,5 +2196,38 @@ fn test(motion: &Motion) {
         assert_eq!(method.params[0].name, "driver");
         assert_eq!(method.params[1].name, "hitcher");
         assert_eq!(method.params[2].name, "order");
+    }
+
+    #[test]
+    fn test_chained_field_access_completion() {
+        let api = load_api();
+        // Test chained field access: motion.hitched_by. should complete Vec methods
+        let content = r"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+pub fn Driver::control_train(self: &Driver, ctx: &EventCtx, train: &Train, motion: &Motion, sc: &mut SimController) {
+    motion.hitched_by.
+}
+";
+        let engine = CompletionEngine::new(content, &api, Position::new(3, 22));
+        let items = engine.completions();
+        let names: Vec<_> = items.iter().map(|i| i.label.as_str()).collect();
+
+        // Should get Vec methods from &Vec<Motion::CachedHitcher>
+        assert!(
+            names.contains(&"len"),
+            "Expected 'len' method for chained field access. Got: {names:?}"
+        );
+        assert!(
+            names.contains(&"is_empty"),
+            "Expected 'is_empty' method for chained field access. Got: {names:?}"
+        );
+        assert!(
+            names.contains(&"get"),
+            "Expected 'get' method for chained field access. Got: {names:?}"
+        );
+        assert!(
+            names.contains(&"iter"),
+            "Expected 'iter' method for chained field access. Got: {names:?}"
+        );
     }
 }
