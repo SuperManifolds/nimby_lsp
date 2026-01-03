@@ -1979,4 +1979,171 @@ pub fn LineStopHandler::event_line_stop(
             items.iter().map(|i| &i.label).collect::<Vec<_>>()
         );
     }
+
+    // Tests for NimbyRails 1.18.10 API additions
+
+    #[test]
+    fn test_motion_new_fields_completion() {
+        let api = load_api();
+        let content = r"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+fn test(motion: &Motion) {
+    motion.
+}
+";
+        let engine = CompletionEngine::new(content, &api, Position::new(3, 11));
+        let items = engine.completions();
+
+        // New fields added in 1.18.10
+        assert!(
+            items.iter().any(|i| i.label == "dynamics"),
+            "Motion should have dynamics field. Got: {:?}",
+            items.iter().map(|i| &i.label).collect::<Vec<_>>()
+        );
+        assert!(
+            items.iter().any(|i| i.label == "cars_config"),
+            "Motion should have cars_config field"
+        );
+        assert!(
+            items.iter().any(|i| i.label == "hitched_by"),
+            "Motion should have hitched_by field"
+        );
+
+        // Existing fields should still be present
+        assert!(
+            items.iter().any(|i| i.label == "train_id"),
+            "Motion should have train_id field"
+        );
+        assert!(
+            items.iter().any(|i| i.label == "presence"),
+            "Motion should have presence field"
+        );
+    }
+
+    #[test]
+    fn test_train_dynamics_fields_completion() {
+        let api = load_api();
+        let content = r"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+fn test(motion: &Motion) {
+    motion.dynamics.
+}
+";
+        let engine = CompletionEngine::new(content, &api, Position::new(3, 20));
+        let items = engine.completions();
+
+        // Train::Dynamics fields
+        assert!(
+            items.iter().any(|i| i.label == "max_speed"),
+            "Train::Dynamics should have max_speed field. Got: {:?}",
+            items.iter().map(|i| &i.label).collect::<Vec<_>>()
+        );
+        assert!(
+            items.iter().any(|i| i.label == "max_acceleration"),
+            "Train::Dynamics should have max_acceleration field"
+        );
+        assert!(
+            items.iter().any(|i| i.label == "max_regular_braking"),
+            "Train::Dynamics should have max_regular_braking field"
+        );
+        assert!(
+            items.iter().any(|i| i.label == "max_emergency_braking"),
+            "Train::Dynamics should have max_emergency_braking field"
+        );
+        assert!(
+            items.iter().any(|i| i.label == "total_power"),
+            "Train::Dynamics should have total_power field"
+        );
+        assert!(
+            items.iter().any(|i| i.label == "empty_mass"),
+            "Train::Dynamics should have empty_mass field"
+        );
+        assert!(
+            items.iter().any(|i| i.label == "length"),
+            "Train::Dynamics should have length field"
+        );
+        assert!(
+            items.iter().any(|i| i.label == "max_pax"),
+            "Train::Dynamics should have max_pax field"
+        );
+    }
+
+    #[test]
+    fn test_hitched_by_vec_type_exists() {
+        let api = load_api();
+
+        // Verify the Vec type for CachedHitcher exists in the API
+        let vec_type = api.get_type("&Vec<Motion::CachedHitcher>");
+        assert!(
+            vec_type.is_some(),
+            "&Vec<Motion::CachedHitcher> type should exist in API"
+        );
+
+        let vt = vec_type.expect("vec type should exist");
+        // Check it has the expected methods
+        assert!(
+            vt.methods.iter().any(|m| m.name == "len"),
+            "&Vec<Motion::CachedHitcher> should have len method. Methods: {:?}",
+            vt.methods.iter().map(|m| &m.name).collect::<Vec<_>>()
+        );
+        assert!(
+            vt.methods.iter().any(|m| m.name == "is_empty"),
+            "&Vec<Motion::CachedHitcher> should have is_empty method"
+        );
+        assert!(
+            vt.methods.iter().any(|m| m.name == "get"),
+            "&Vec<Motion::CachedHitcher> should have get method"
+        );
+        assert!(
+            vt.methods.iter().any(|m| m.name == "iter"),
+            "&Vec<Motion::CachedHitcher> should have iter method"
+        );
+    }
+
+    #[test]
+    fn test_cached_hitcher_type_exists() {
+        let api = load_api();
+
+        // Verify Motion::CachedHitcher exists
+        let hitcher_type = api.get_type("Motion::CachedHitcher");
+        assert!(
+            hitcher_type.is_some(),
+            "Motion::CachedHitcher type should exist in API"
+        );
+
+        let ht = hitcher_type.expect("Motion::CachedHitcher should exist");
+        // Check it has the train_id field
+        assert!(
+            ht.fields.contains_key("train_id"),
+            "Motion::CachedHitcher should have train_id field. Fields: {:?}",
+            ht.fields.keys().collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn test_queue_train_hitch_has_order_param() {
+        let api = load_api();
+        // Check that queue_train_hitch exists and has 3 parameters (self excluded)
+        let sim_controller = api.get_type("SimController");
+        assert!(sim_controller.is_some(), "SimController type should exist");
+
+        let sc = sim_controller.expect("SimController type should exist");
+        let hitch_method = sc.methods.iter().find(|m| m.name == "queue_train_hitch");
+        assert!(
+            hitch_method.is_some(),
+            "queue_train_hitch method should exist"
+        );
+
+        let method = hitch_method.expect("queue_train_hitch should exist");
+        // Should have 3 params: driver, hitcher, order
+        assert_eq!(
+            method.params.len(),
+            3,
+            "queue_train_hitch should have 3 parameters (driver, hitcher, order), got: {:?}",
+            method.params.iter().map(|p| &p.name).collect::<Vec<_>>()
+        );
+        assert_eq!(method.params[0].name, "driver");
+        assert_eq!(method.params[1].name, "hitcher");
+        assert_eq!(method.params[2].name, "order");
+    }
 }

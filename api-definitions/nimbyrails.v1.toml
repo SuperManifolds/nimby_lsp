@@ -346,6 +346,20 @@ doc = "A train entity in the simulation"
 id = { type = "ID<Train>", doc = "Unique identifier", readonly = true }
 tags = { type = "Tags", doc = "Tags attached to this train", readonly = true }
 
+[types."Train::Dynamics"]
+kind = "struct"
+doc = "Dynamic configuration of a train based on its current cars"
+[types."Train::Dynamics".fields]
+max_speed = { type = "f64", doc = "Maximum achievable velocity", readonly = true }
+max_acceleration = { type = "f64", doc = "Acceleration rate limit", readonly = true }
+max_regular_braking = { type = "f64", doc = "Standard deceleration capability", readonly = true }
+max_emergency_braking = { type = "f64", doc = "Maximum deceleration under emergency", readonly = true }
+max_tractive_effort = { type = "f64", doc = "Force generation capacity", readonly = true }
+total_power = { type = "f64", doc = "Power output", readonly = true }
+empty_mass = { type = "f64", doc = "Vehicle mass without passengers", readonly = true }
+length = { type = "f64", doc = "Vehicle length measurement", readonly = true }
+max_pax = { type = "i64", doc = "Passenger capacity", readonly = true }
+
 [types.Tag]
 kind = "struct"
 extendable = true
@@ -356,9 +370,12 @@ parent_id = { type = "ID<Tag>", doc = "Parent tag ID", readonly = true }
 
 [types.Motion]
 kind = "struct"
-doc = "Motion state of a train"
+doc = "Simulation state of a train"
 [types.Motion.fields]
 train_id = { type = "ID<Train>", doc = "Train ID", readonly = true }
+cars_config = { type = "i64", doc = "Current car configuration of the train, as set by queue_train_set_configuration()", readonly = true }
+dynamics = { type = "Train::Dynamics", doc = "Dynamic configuration values like max speed, based on current cars", readonly = true }
+hitched_by = { type = "&Vec<Motion::CachedHitcher>", doc = "Cached vector of hitched trains (from driver's perspective). Hitched trains have empty vector.", readonly = true }
 presence = { type = "std::optional<Motion::Presence>", doc = "Presence state", readonly = true }
 drive = { type = "std::optional<Motion::Drive>", doc = "Drive state", readonly = true }
 timed_stop = { type = "std::optional<Motion::TimedStop>", doc = "Timed stop state", readonly = true }
@@ -728,9 +745,15 @@ shift_id = { type = "ID<Shift>", doc = "Shift ID", readonly = true }
 
 [types."Motion::Hitch"]
 kind = "struct"
-doc = "Hitch state"
+doc = "Train is being hitched by a driver train"
 [types."Motion::Hitch".fields]
 driver_train_id = { type = "ID<Train>", doc = "Driver train ID", readonly = true }
+
+[types."Motion::CachedHitcher"]
+kind = "struct"
+doc = "Cached information about a hitched train"
+[types."Motion::CachedHitcher".fields]
+train_id = { type = "ID<Train>", doc = "ID of the hitched train", readonly = true }
 
 [types."Motion::StationStop"]
 kind = "struct"
@@ -795,15 +818,19 @@ tags = { type = "Tags", doc = "Tags attached to this shift", readonly = true }
 # Additional SimController methods
 [[types.SimController.methods]]
 name = "queue_train_hitch"
-doc = "Queue hitching two trains together"
+doc = "Hitch a train to a driver train. The hitched train is emptied of pax and removed from the sim, while its cars are appended to the driver. The order parameter (from -1000 to 1000) determines the hitched train cars position: the driver train is always order 0, so negative values will put the hitch in front of the driver, and positive values behind it."
 [[types.SimController.methods.params]]
 name = "driver"
 type = "&Train"
-doc = "The train that will lead the coupled consist"
+doc = "The train performing the hitching operation"
 [[types.SimController.methods.params]]
 name = "hitcher"
 type = "&Train"
-doc = "The train to attach to the driver"
+doc = "The train being hitched"
+[[types.SimController.methods.params]]
+name = "order"
+type = "i64"
+doc = "Position placement (-1000 to 1000; 0 is driver, negative = front, positive = behind)"
 
 [[types.SimController.methods]]
 name = "queue_train_unhitch"
@@ -1127,6 +1154,44 @@ doc = "Iterator for Vec<ID<Signal>>, used in for-in loops"
 name = "next"
 doc = "Get next element"
 return_type = "*ID<Signal>"
+
+# Vec type for Motion::CachedHitcher (hitched_by field)
+[types."&Vec<Motion::CachedHitcher>"]
+kind = "struct"
+doc = "Reference to a vector of cached hitcher information"
+
+[[types."&Vec<Motion::CachedHitcher>".methods]]
+name = "len"
+doc = "Returns the number of elements"
+return_type = "i64"
+
+[[types."&Vec<Motion::CachedHitcher>".methods]]
+name = "is_empty"
+doc = "Returns true if the vector contains no elements"
+return_type = "bool"
+
+[[types."&Vec<Motion::CachedHitcher>".methods]]
+name = "get"
+doc = "Returns a pointer to the element at the given index, or null if out of bounds"
+return_type = "*Motion::CachedHitcher"
+[[types."&Vec<Motion::CachedHitcher>".methods.params]]
+name = "idx"
+type = "i64"
+doc = "The zero-based index"
+
+[[types."&Vec<Motion::CachedHitcher>".methods]]
+name = "iter"
+doc = "Returns an iterator for use in for-in loops"
+return_type = "VecIter<Motion::CachedHitcher>"
+
+[types."VecIter<Motion::CachedHitcher>"]
+kind = "struct"
+doc = "Iterator for Vec<Motion::CachedHitcher>, used in for-in loops"
+
+[[types."VecIter<Motion::CachedHitcher>".methods]]
+name = "next"
+doc = "Get next element"
+return_type = "*Motion::CachedHitcher"
 
 # Signal result types
 [types.SignalLookaheadResult]
