@@ -2186,16 +2186,17 @@ fn test(motion: &Motion) {
         );
 
         let method = hitch_method.expect("queue_train_hitch should exist");
-        // Should have 3 params: driver, hitcher, order
+        // Should have 4 params: driver, hitcher, order, flip
         assert_eq!(
             method.params.len(),
-            3,
-            "queue_train_hitch should have 3 parameters (driver, hitcher, order), got: {:?}",
+            4,
+            "queue_train_hitch should have 4 parameters (driver, hitcher, order, flip), got: {:?}",
             method.params.iter().map(|p| &p.name).collect::<Vec<_>>()
         );
         assert_eq!(method.params[0].name, "driver");
         assert_eq!(method.params[1].name, "hitcher");
         assert_eq!(method.params[2].name, "order");
+        assert_eq!(method.params[3].name, "flip");
     }
 
     #[test]
