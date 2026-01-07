@@ -285,6 +285,11 @@ name = "distance"
 type = "f64"
 doc = "Distance in meters (negative for opposite direction)"
 
+[[types.DB.methods]]
+name = "view_self"
+doc = "Returns a reference to the Script object for the current script instance"
+return_type = "&Script"
+
 [types.Sim]
 kind = "struct"
 doc = "The database of the simulation state"
@@ -720,6 +725,7 @@ doc = "Train presence state"
 [types."Motion::Presence".fields]
 pos = { type = "Pos", doc = "Current position", readonly = true }
 speed = { type = "f64", doc = "Current speed in m/s", readonly = true }
+flip = { type = "bool", doc = "Current flip flag. For push-pull trains, indicates the graphical flip state. Always false for non-push-pull trains.", readonly = true }
 
 [types."Motion::Drive"]
 kind = "struct"
@@ -831,6 +837,10 @@ doc = "The train being hitched"
 name = "order"
 type = "i64"
 doc = "Position placement (-1000 to 1000; 0 is driver, negative = front, positive = behind)"
+[[types.SimController.methods.params]]
+name = "flip"
+type = "bool"
+doc = "Whether to flip the hitched train's orientation while hitched"
 
 [[types.SimController.methods]]
 name = "queue_train_unhitch"
@@ -867,6 +877,30 @@ doc = "The line to run"
 name = "arrival_offset_s"
 type = "i64"
 doc = "Offset in seconds to add to arrival times"
+
+[[types.SimController.methods]]
+name = "queue_train_stop_delay"
+doc = "Add extra delay time to a train in timed_stop state. Ignored if the train is not in timed_stop."
+[[types.SimController.methods.params]]
+name = "train"
+type = "&Train"
+doc = "The train to add delay to"
+[[types.SimController.methods.params]]
+name = "delay_s"
+type = "i64"
+doc = "Delay to add in seconds"
+
+[[types.SimController.methods]]
+name = "queue_train_set_presence_flip"
+doc = "Set the flip flag in Motion::Presence. Ignored if the train is not push-pull or equivalent capable."
+[[types.SimController.methods.params]]
+name = "train"
+type = "&Train"
+doc = "The train to set flip for"
+[[types.SimController.methods.params]]
+name = "flip"
+type = "bool"
+doc = "The new flip state"
 
 # Extrapolator methods
 [[types.Extrapolator.methods]]
@@ -1569,6 +1603,71 @@ doc = "Current motion state of the train"
 name = "ev"
 type = "LineStopEvent"
 doc = "Whether the train arrived or departed"
+[[callbacks.params]]
+name = "sc"
+type = "&mut SimController"
+doc = "Simulation controller for queuing commands"
+
+# Global callbacks (top-level functions without self parameter)
+[[callbacks]]
+name = "global_event_line_stop"
+doc = "Called when any train arrives at or departs from any line stop. Unlike event_line_stop, this is a top-level function without self parameter and is called unconditionally for all line stop events."
+[[callbacks.params]]
+name = "ctx"
+type = "&EventCtx"
+doc = "Event context providing database and extrapolator access"
+[[callbacks.params]]
+name = "line"
+type = "&Line"
+doc = "The line this stop belongs to"
+[[callbacks.params]]
+name = "stop"
+type = "&Line::Stop"
+doc = "The line stop"
+[[callbacks.params]]
+name = "train"
+type = "&Train"
+doc = "The train arriving or departing"
+[[callbacks.params]]
+name = "motion"
+type = "&Motion"
+doc = "Current motion state of the train"
+[[callbacks.params]]
+name = "ev"
+type = "LineStopEvent"
+doc = "Whether the train arrived or departed"
+[[callbacks.params]]
+name = "sc"
+type = "&mut SimController"
+doc = "Simulation controller for queuing commands"
+
+[[callbacks]]
+name = "global_event_shift"
+doc = "Called when any train is assigned or unassigned from any shift. Unlike event_shift, this is a top-level function without self parameter and is called unconditionally for all shift events."
+[[callbacks.params]]
+name = "ctx"
+type = "&EventCtx"
+doc = "Event context providing database and extrapolator access"
+[[callbacks.params]]
+name = "sched"
+type = "&Schedule"
+doc = "The schedule containing the shift"
+[[callbacks.params]]
+name = "shift"
+type = "&Shift"
+doc = "The shift"
+[[callbacks.params]]
+name = "train"
+type = "&Train"
+doc = "The train being assigned or unassigned"
+[[callbacks.params]]
+name = "motion"
+type = "&Motion"
+doc = "Current motion state of the train"
+[[callbacks.params]]
+name = "ev"
+type = "ShiftEvent"
+doc = "Whether the train was assigned or unassigned"
 [[callbacks.params]]
 name = "sc"
 type = "&mut SimController"
