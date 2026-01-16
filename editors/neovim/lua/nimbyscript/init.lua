@@ -404,6 +404,29 @@ function M.setup(opts)
         end,
     })
 
+    -- Set up semantic token highlight groups (matches TOKEN_TYPES in semantic_tokens.rs)
+    -- Token types we emit: keyword, type, function, variable, property, string,
+    -- number, comment, operator, parameter, enumMember, struct, enum
+    -- Modifiers we emit: declaration, definition, readonly, static, defaultLibrary
+    local hl_links = {
+        ['@lsp.type.keyword.nimbyscript'] = 'Keyword',
+        ['@lsp.type.type.nimbyscript'] = 'Type',
+        ['@lsp.type.function.nimbyscript'] = 'Function',
+        ['@lsp.type.variable.nimbyscript'] = 'Identifier',
+        ['@lsp.type.property.nimbyscript'] = '@property',
+        ['@lsp.type.string.nimbyscript'] = 'String',
+        ['@lsp.type.number.nimbyscript'] = 'Number',
+        ['@lsp.type.comment.nimbyscript'] = 'Comment',
+        ['@lsp.type.operator.nimbyscript'] = 'Operator',
+        ['@lsp.type.parameter.nimbyscript'] = '@parameter',
+        ['@lsp.type.enumMember.nimbyscript'] = 'Constant',
+        ['@lsp.type.struct.nimbyscript'] = 'Structure',
+        ['@lsp.type.enum.nimbyscript'] = 'Type',
+    }
+    for group, link in pairs(hl_links) do
+        vim.api.nvim_set_hl(0, group, { link = link, default = true })
+    end
+
     -- If user specified a command, use it directly
     if M.config.cmd then
         setup_lsp(M.config.cmd)
