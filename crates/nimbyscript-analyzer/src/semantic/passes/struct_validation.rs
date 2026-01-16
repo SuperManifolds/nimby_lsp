@@ -87,6 +87,25 @@ fn validate_struct(node: Node, ctx: &SemanticContext, diagnostics: &mut Vec<Diag
                 .with_code("E0500"),
             );
         }
+    } else {
+        // W0500: Non-pub struct extending a game type
+        if let Some(extends_clause) = node.child_by_kind(kind::EXTENDS_CLAUSE) {
+            if let Some(type_node) = extends_clause.child_by_field("type") {
+                let extends_type = type_node.text(ctx.source);
+                if ctx.is_extendable_game_type(extends_type) {
+                    diagnostics.push(
+                        Diagnostic::warning(
+                            format!(
+                                "Struct '{name}' extends '{extends_type}' but is not public. \
+                                Structs extending game types must be declared with 'pub' to function correctly."
+                            ),
+                            Span::new(name_node.start_byte(), name_node.end_byte()),
+                        )
+                        .with_code("W0500"),
+                    );
+                }
+            }
+        }
     }
 
     // Check for duplicate fields (E0504)
@@ -253,6 +272,13 @@ mod tests {
             .collect()
     }
 
+    fn warnings(diags: &[Diagnostic]) -> Vec<&Diagnostic> {
+        diags
+            .iter()
+            .filter(|d| matches!(d.severity, Severity::Warning))
+            .collect()
+    }
+
     // E0500 tests - invalid extends
 
     #[test]
@@ -316,6 +342,36 @@ struct PrivateData { x: i64, }
         assert!(
             errs.iter().all(|d| d.code.as_deref() != Some("E0500")),
             "Private struct without extends should be ok: {errs:?}"
+        );
+    }
+
+    // W0500 tests - non-pub struct extending game type
+
+    #[test]
+    fn test_non_pub_struct_extending_game_type_warns() {
+        let source = r"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+struct Foo extend Signal { x: i64, }
+";
+        let diags = check(source);
+        let warns = warnings(&diags);
+        assert!(
+            warns.iter().any(|d| d.code.as_deref() == Some("W0500")),
+            "Non-pub struct extending game type should warn: {warns:?}"
+        );
+    }
+
+    #[test]
+    fn test_non_pub_struct_extending_non_game_type_no_warn() {
+        let source = r"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+struct Foo extend Motion { x: i64, }
+";
+        let diags = check(source);
+        let warns = warnings(&diags);
+        assert!(
+            warns.iter().all(|d| d.code.as_deref() != Some("W0500")),
+            "Non-pub struct extending non-game type should not warn W0500: {warns:?}"
         );
     }
 

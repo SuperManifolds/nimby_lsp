@@ -820,11 +820,11 @@ impl<'a> FormattingEngine<'a> {
             } else {
                 let _ = write!(result, "{name_str} =");
             }
-        }
 
-        if let Some(value) = node.child_by_field("value") {
-            result.push(' ');
-            result.push_str(&self.format_expression(value));
+            if let Some(value) = bind.child_by_field("value") {
+                result.push(' ');
+                result.push_str(&self.format_expression(value));
+            }
         }
 
         result.push_str(" {\n");
