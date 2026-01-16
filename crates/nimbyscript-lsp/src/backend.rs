@@ -11,6 +11,7 @@ use tower_lsp::lsp_types::request::{
 use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer};
 
+use crate::call_hierarchy::{get_incoming_calls, get_outgoing_calls, prepare_call_hierarchy};
 use crate::completions::{get_completions, resolve_completion};
 use crate::document::Document;
 use crate::folding_range::get_folding_ranges;
@@ -266,21 +267,30 @@ impl LanguageServer for Backend {
             .log_message(MessageType::INFO, "NimbyScript LSP initialized")
             .await;
 
-        // Dynamically register type hierarchy capability
+        // Dynamically register type hierarchy and call hierarchy capabilities
         // (not available in ServerCapabilities in lsp-types 0.94.1)
-        let registrations = vec![Registration {
-            id: "type-hierarchy".to_string(),
-            method: "textDocument/prepareTypeHierarchy".to_string(),
-            register_options: Some(serde_json::json!({
-                "documentSelector": [{ "language": "nimbyscript" }]
-            })),
-        }];
+        let registrations = vec![
+            Registration {
+                id: "type-hierarchy".to_string(),
+                method: "textDocument/prepareTypeHierarchy".to_string(),
+                register_options: Some(serde_json::json!({
+                    "documentSelector": [{ "language": "nimbyscript" }]
+                })),
+            },
+            Registration {
+                id: "call-hierarchy".to_string(),
+                method: "textDocument/prepareCallHierarchy".to_string(),
+                register_options: Some(serde_json::json!({
+                    "documentSelector": [{ "language": "nimbyscript" }]
+                })),
+            },
+        ];
 
         if let Err(e) = self.client.register_capability(registrations).await {
             self.client
                 .log_message(
                     MessageType::WARNING,
-                    format!("Failed to register type hierarchy capability: {e}"),
+                    format!("Failed to register capabilities: {e}"),
                 )
                 .await;
         }
@@ -513,6 +523,46 @@ impl LanguageServer for Backend {
 
         if let Some(doc) = self.documents.get(uri) {
             Ok(get_subtypes(&params.item, &doc, &self.api_definitions))
+        } else {
+            Ok(None)
+        }
+    }
+
+    async fn prepare_call_hierarchy(
+        &self,
+        params: CallHierarchyPrepareParams,
+    ) -> Result<Option<Vec<CallHierarchyItem>>> {
+        let uri = &params.text_document_position_params.text_document.uri;
+        let position = params.text_document_position_params.position;
+
+        if let Some(doc) = self.documents.get(uri) {
+            Ok(prepare_call_hierarchy(&doc, position, uri))
+        } else {
+            Ok(None)
+        }
+    }
+
+    async fn incoming_calls(
+        &self,
+        params: CallHierarchyIncomingCallsParams,
+    ) -> Result<Option<Vec<CallHierarchyIncomingCall>>> {
+        let uri = &params.item.uri;
+
+        if let Some(doc) = self.documents.get(uri) {
+            Ok(get_incoming_calls(&doc, &params.item, uri))
+        } else {
+            Ok(None)
+        }
+    }
+
+    async fn outgoing_calls(
+        &self,
+        params: CallHierarchyOutgoingCallsParams,
+    ) -> Result<Option<Vec<CallHierarchyOutgoingCall>>> {
+        let uri = &params.item.uri;
+
+        if let Some(doc) = self.documents.get(uri) {
+            Ok(get_outgoing_calls(&doc, &params.item, uri))
         } else {
             Ok(None)
         }

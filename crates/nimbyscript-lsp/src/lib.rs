@@ -11,6 +11,7 @@
 //! - Signature help
 
 pub mod backend;
+mod call_hierarchy;
 mod completions;
 pub mod document;
 mod folding_range;
