@@ -25,22 +25,12 @@ pub fn HitchCheckTask::task_run(
     ctx: &ControlCtx,
     sc: &mut SimController
 ) {
-    // In task context, we have access to ctx.sim for motion lookups
+    // In task context, we have access to ctx for db lookups
     let driver &= ctx.db.view(self.driver_id) else { return; }
     let hitcher &= ctx.db.view(self.hitcher_id) else { return; }
-    let hitcher_setup &= ctx.db.view<Hitcher>(hitcher) else { return; }
-    let hitcher_motion &= ctx.sim.view<Motion>(hitcher.id) else { return; }
 
-    // Check hitcher state
-    if is_valid(hitcher_motion.schedule_dispatch.get()) {
-        return;
-    }
-    if is_valid(hitcher_motion.drive.get()) {
-        return;
-    }
-
-    // Hitcher is in a valid state, perform the hitch
-    sc.queue_train_set_configuration(hitcher, hitcher_setup.config);
+    // Perform the hitch using train IDs
+    sc.queue_train_set_configuration(hitcher, 0);
     sc.queue_train_hitch(driver, hitcher, 1, false);
 }
 

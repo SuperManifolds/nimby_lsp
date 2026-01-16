@@ -170,6 +170,21 @@ fn check_call_expression(
     diagnostics: &mut Vec<Diagnostic>,
     local_types: &HashMap<String, TypeInfo>,
 ) {
+    // E0310: Check for explicit type arguments on method call (e.g., .view<Train>())
+    if let Some(callee) = node.child_by_field("function") {
+        if callee.kind() == kind::FIELD_ACCESS {
+            if let Some(type_args) = callee.child_by_field("type_arguments") {
+                diagnostics.push(
+                    Diagnostic::error(
+                        "Explicit type arguments are not allowed. Type parameters are inferred from arguments.",
+                        Span::new(type_args.start_byte(), type_args.end_byte()),
+                    )
+                    .with_code("E0310"),
+                );
+            }
+        }
+    }
+
     // Get the function name
     let func_name = if let Some(callee) = node.child_by_field("function") {
         let name = callee.text(ctx.source);
@@ -1778,6 +1793,50 @@ pub fn Test::tick(self: &Test, ctx: &EventCtx) {
         assert!(
             errs.iter().all(|d| d.code.as_deref() != Some("E0303")),
             "Valid field access inside if-let should not error: {errs:?}"
+        );
+    }
+
+    // E0310 - Explicit type arguments not allowed
+
+    #[test]
+    fn test_explicit_type_arguments_not_allowed() {
+        let source = r#"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+pub struct Test extend Signal {
+    probe: ID<Train>,
+}
+pub fn Test::tick(self: &Test, ctx: &EventCtx) {
+    if let train &= ctx.db.view<Train>(self.probe) {
+        log("{}", train.id);
+    }
+}
+"#;
+        let diags = check(source);
+        let errs = errors(&diags);
+        assert!(
+            errs.iter().any(|d| d.code.as_deref() == Some("E0310")),
+            "Explicit type arguments should error: {errs:?}"
+        );
+    }
+
+    #[test]
+    fn test_inferred_type_arguments_ok() {
+        let source = r#"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+pub struct Test extend Signal {
+    probe: ID<Train>,
+}
+pub fn Test::tick(self: &Test, ctx: &EventCtx) {
+    if let train &= ctx.db.view(self.probe) {
+        log("{}", train.id);
+    }
+}
+"#;
+        let diags = check(source);
+        let errs = errors(&diags);
+        assert!(
+            errs.iter().all(|d| d.code.as_deref() != Some("E0310")),
+            "Inferred type arguments should not error: {errs:?}"
         );
     }
 }
