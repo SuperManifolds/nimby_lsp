@@ -29,7 +29,7 @@ VERSION := $(shell grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1
 .PHONY: all clean install-targets build-all package-all \
         build-macos-arm64 build-macos-x64 build-windows-x64 build-linux-x64 \
         package-macos-arm64 package-macos-x64 package-windows-x64 package-linux-x64 \
-        extension-deps dev test check clippy fmt lint sync-queries
+        extension-deps dev test check clippy fmt lint sync-queries install-lsp
 
 #===============================================================================
 # Main targets
@@ -173,6 +173,12 @@ install: dev
 	rm -f $(EXTENSION_DIR)/nimbyscript-*.vsix
 	cd $(EXTENSION_DIR) && npx vsce package
 	code --install-extension $(EXTENSION_DIR)/nimbyscript-$(VERSION).vsix --force
+
+# Build and install LSP binary to ~/.cargo/bin as 'nimbyscript'
+install-lsp:
+	$(CARGO) install --path crates/nimbyscript-lsp --locked
+	rm -f $(HOME)/.cargo/bin/nimbyscript
+	mv $(HOME)/.cargo/bin/$(BINARY_NAME) $(HOME)/.cargo/bin/nimbyscript
 
 #===============================================================================
 # Neovim support
