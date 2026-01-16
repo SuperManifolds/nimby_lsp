@@ -99,6 +99,11 @@
           "type": "boolean",
           "default": true,
           "description": "Enable semantic token highlighting."
+        },
+        "nimbyscript.formatOnSave": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically format documents when saving."
         }
       }
     }

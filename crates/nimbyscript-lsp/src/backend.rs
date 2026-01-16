@@ -38,6 +38,8 @@ pub struct Settings {
     pub inlay_hints_enabled: bool,
     #[serde(default = "default_true")]
     pub semantic_tokens_enabled: bool,
+    #[serde(default)]
+    pub format_on_save: bool,
 }
 
 fn default_true() -> bool {
@@ -49,6 +51,7 @@ impl Default for Settings {
         Self {
             inlay_hints_enabled: true,
             semantic_tokens_enabled: true,
+            format_on_save: false,
         }
     }
 }
@@ -85,7 +88,10 @@ impl Backend {
         // Check if this is the nested VS Code format: { "inlayHints": { "enabled": true }, ... }
         // We check for nested format FIRST because flat format deserialization with defaults
         // would succeed even when the data is in nested format (ignoring unknown fields).
-        if value.get("inlayHints").is_some() || value.get("semanticTokens").is_some() {
+        if value.get("inlayHints").is_some()
+            || value.get("semanticTokens").is_some()
+            || value.get("formatOnSave").is_some()
+        {
             self.update_settings_nested(value);
             return;
         }
@@ -118,6 +124,10 @@ impl Backend {
             .and_then(Value::as_bool)
         {
             current.semantic_tokens_enabled = enabled;
+        }
+
+        if let Some(enabled) = value.get("formatOnSave").and_then(Value::as_bool) {
+            current.format_on_save = enabled;
         }
     }
 
@@ -204,8 +214,13 @@ impl LanguageServer for Backend {
 
         Ok(InitializeResult {
             capabilities: ServerCapabilities {
-                text_document_sync: Some(TextDocumentSyncCapability::Kind(
-                    TextDocumentSyncKind::FULL,
+                text_document_sync: Some(TextDocumentSyncCapability::Options(
+                    TextDocumentSyncOptions {
+                        open_close: Some(true),
+                        change: Some(TextDocumentSyncKind::FULL),
+                        save: Some(SaveOptions::default().into()),
+                        ..Default::default()
+                    },
                 )),
                 completion_provider: Some(CompletionOptions {
                     trigger_characters: Some(vec![".".into(), ":".into()]),
@@ -323,6 +338,31 @@ impl LanguageServer for Backend {
         self.client
             .publish_diagnostics(params.text_document.uri, vec![], None)
             .await;
+    }
+
+    async fn did_save(&self, params: DidSaveTextDocumentParams) {
+        let uri = params.text_document.uri;
+
+        // Check if format on save is enabled
+        let format_on_save = self
+            .settings
+            .read()
+            .map(|s| s.format_on_save)
+            .unwrap_or(false);
+
+        if format_on_save {
+            if let Some(doc) = self.documents.get(&uri) {
+                let config = FormattingConfig::default();
+                let edits = format_document(&doc, &config);
+                if !edits.is_empty() {
+                    let edit = WorkspaceEdit {
+                        changes: Some([(uri, edits)].into_iter().collect()),
+                        ..Default::default()
+                    };
+                    let _ = self.client.apply_edit(edit).await;
+                }
+            }
+        }
     }
 
     async fn did_change_configuration(&self, params: DidChangeConfigurationParams) {
