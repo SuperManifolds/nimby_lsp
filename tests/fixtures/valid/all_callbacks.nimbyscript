@@ -65,7 +65,8 @@ pub fn SignalHandler::event_signal_marker_reserved(
 pub fn SignalHandler::event_signal_texture_state(
     self: &SignalHandler,
     db: &DB,
-    signal: &Signal
+    signal: &Signal,
+    clock_us: i64
 ): i64 {
     return 0;
 }

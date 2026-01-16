@@ -1420,6 +1420,10 @@ doc = "Database access"
 name = "signal"
 type = "&Signal"
 doc = "The signal needing texture state"
+[[callbacks.params]]
+name = "clock_us"
+type = "i64"
+doc = "Elapsed sim-microseconds since save creation. Use with zdiv() and zmod() for animations."
 
 [[callbacks]]
 name = "event_train_shift_setup"
