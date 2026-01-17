@@ -372,7 +372,25 @@ fn check_method_call(
             };
             (name.as_str(), full_name, inner)
         }
-        _ => return, // Can't call methods on non-struct types
+        _ => {
+            // E0311: Can't call methods on primitive types
+            // Check if the "method" is actually a standalone function
+            let hint = if ctx.api.get_function(method_name).is_some() {
+                format!(
+                    ". '{method_name}' is a standalone function, use {method_name}(...) instead"
+                )
+            } else {
+                String::new()
+            };
+            diagnostics.push(
+                Diagnostic::error(
+                    format!("Cannot call method '{method_name}' on type '{base_type}'{hint}"),
+                    Span::new(method_node.start_byte(), method_node.end_byte()),
+                )
+                .with_code("E0311"),
+            );
+            return;
+        }
     };
 
     // Determine lookup strategy based on type:
@@ -1837,6 +1855,48 @@ pub fn Test::tick(self: &Test, ctx: &EventCtx) {
         assert!(
             errs.iter().all(|d| d.code.as_deref() != Some("E0310")),
             "Inferred type arguments should not error: {errs:?}"
+        );
+    }
+
+    // E0311 - Method call on primitive type
+
+    #[test]
+    fn test_method_call_on_primitive_errors() {
+        let source = r#"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+fn test() {
+    let x: f64 = 3.14;
+    let y = x.as_i64();
+}
+"#;
+        let diags = check(source);
+        let errs = errors(&diags);
+        assert!(
+            errs.iter().any(|d| d.code.as_deref() == Some("E0311")),
+            "Method call on primitive should error: {errs:?}"
+        );
+        // Should suggest standalone function syntax
+        assert!(
+            errs.iter()
+                .any(|d| d.message.contains("standalone function")),
+            "Should hint about standalone function: {errs:?}"
+        );
+    }
+
+    #[test]
+    fn test_standalone_function_call_ok() {
+        let source = r#"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+fn test() {
+    let x: f64 = 3.14;
+    let y = as_i64(x);
+}
+"#;
+        let diags = check(source);
+        let errs = errors(&diags);
+        assert!(
+            errs.iter().all(|d| d.code.as_deref() != Some("E0311")),
+            "Standalone function call should not error: {errs:?}"
         );
     }
 }
