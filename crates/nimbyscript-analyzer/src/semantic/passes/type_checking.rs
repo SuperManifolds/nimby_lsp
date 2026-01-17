@@ -116,12 +116,9 @@ fn check_block(
                 check_condition(child, ctx, diagnostics, local_types);
             }
             kind::FOR_STATEMENT => {
-                // Add loop variable to scope and check body
+                // Check iterator type and add loop variable to scope
                 let mut loop_types = local_types.clone();
-                if let Some(var_node) = child.child_by_field("variable") {
-                    let var_name = var_node.text(ctx.source).to_string();
-                    loop_types.insert(var_name, TypeInfo::Unknown);
-                }
+                check_for_statement(child, ctx, diagnostics, &mut loop_types);
                 if let Some(body) = child.child_by_kind(kind::BLOCK) {
                     check_block(body, ctx, diagnostics, &mut loop_types);
                 }
@@ -772,6 +769,71 @@ fn check_condition(
                 check_condition(child, ctx, diagnostics, local_types);
             }
         }
+    }
+}
+
+fn check_for_statement(
+    node: Node,
+    ctx: &SemanticContext,
+    diagnostics: &mut Vec<Diagnostic>,
+    local_types: &mut HashMap<String, TypeInfo>,
+) {
+    // Add loop variable to scope
+    if let Some(var_node) = node.child_by_field("variable") {
+        let var_name = var_node.text(ctx.source).to_string();
+        // Type will be inferred from iterator's next() return type, for now use Unknown
+        local_types.insert(var_name, TypeInfo::Unknown);
+    }
+
+    // E0312: Check that the iterator expression is actually an iterator
+    let Some(iter_node) = node.child_by_field("iterator") else {
+        return;
+    };
+
+    let iter_type = infer_expr_type(Some(iter_node), ctx, local_types);
+    if iter_type.is_unknown() {
+        return; // Avoid cascading errors
+    }
+
+    // Get the full type name for API lookup
+    // Use get_type_method_substituted to handle generic types like Vec<ID<Line>>
+    let type_name = iter_type.to_string();
+    // Also check the reference variant since Vec types have methods defined on &Vec
+    let ref_type_name = format!("&{type_name}");
+
+    // Check if the type has a next() method (making it an iterator)
+    let is_iterator = ctx
+        .api
+        .get_type_method_substituted(&type_name, "next")
+        .is_some()
+        || ctx
+            .api
+            .get_type_method_substituted(&ref_type_name, "next")
+            .is_some();
+
+    if !is_iterator {
+        // Check if it has an iter() method - suggest using it
+        let has_iter = ctx
+            .api
+            .get_type_method_substituted(&type_name, "iter")
+            .is_some()
+            || ctx
+                .api
+                .get_type_method_substituted(&ref_type_name, "iter")
+                .is_some();
+        let hint = if has_iter {
+            ". Call .iter() to get an iterator"
+        } else {
+            ""
+        };
+
+        diagnostics.push(
+            Diagnostic::error(
+                format!("Cannot iterate over type '{iter_type}'{hint}"),
+                Span::new(iter_node.start_byte(), iter_node.end_byte()),
+            )
+            .with_code("E0312"),
+        );
     }
 }
 
@@ -1862,13 +1924,13 @@ pub fn Test::tick(self: &Test, ctx: &EventCtx) {
 
     #[test]
     fn test_method_call_on_primitive_errors() {
-        let source = r#"
+        let source = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 fn test() {
     let x: f64 = 3.14;
     let y = x.as_i64();
 }
-"#;
+";
         let diags = check(source);
         let errs = errors(&diags);
         assert!(
@@ -1885,18 +1947,67 @@ fn test() {
 
     #[test]
     fn test_standalone_function_call_ok() {
-        let source = r#"
+        let source = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 fn test() {
     let x: f64 = 3.14;
     let y = as_i64(x);
 }
-"#;
+";
         let diags = check(source);
         let errs = errors(&diags);
         assert!(
             errs.iter().all(|d| d.code.as_deref() != Some("E0311")),
             "Standalone function call should not error: {errs:?}"
+        );
+    }
+
+    // E0312 - Iterating over non-iterator types
+
+    #[test]
+    fn test_iterate_over_vec_errors() {
+        let source = r"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+pub struct Foo extend Signal {
+    items: Vec<ID<Line>>,
+}
+pub fn Foo::foo(self: &Foo, ctx: &EventCtx) {
+    for item in self.items {
+        // ...
+    }
+}
+";
+        let diags = check(source);
+        let errs = errors(&diags);
+        assert!(
+            errs.iter().any(|d| d.code.as_deref() == Some("E0312")),
+            "Iterating over Vec should error: {errs:?}"
+        );
+        // Should suggest using .iter()
+        assert!(
+            errs.iter().any(|d| d.message.contains(".iter()")),
+            "Should hint about .iter(): {errs:?}"
+        );
+    }
+
+    #[test]
+    fn test_iterate_over_iterator_ok() {
+        let source = r"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+pub struct Foo extend Signal {
+    items: Vec<ID<Line>>,
+}
+pub fn Foo::foo(self: &Foo, ctx: &EventCtx) {
+    for item in self.items.iter() {
+        // ...
+    }
+}
+";
+        let diags = check(source);
+        let errs = errors(&diags);
+        assert!(
+            errs.iter().all(|d| d.code.as_deref() != Some("E0312")),
+            "Iterating over iterator should not error: {errs:?}"
         );
     }
 }
