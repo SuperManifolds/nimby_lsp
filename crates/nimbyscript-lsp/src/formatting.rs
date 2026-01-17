@@ -764,13 +764,13 @@ impl<'a> FormattingEngine<'a> {
     fn format_assignment_statement(&self, node: Node, indent_level: usize) -> String {
         let indent = self.indent(indent_level);
 
-        let target = node.child_by_field("target");
-        let value = node.child_by_field("value");
+        let left = node.child_by_field("left");
+        let right = node.child_by_field("right");
 
-        let target_str = target.map_or("", |t| t.text(self.content));
-        let value_str = value.map(|v| self.format_expression(v)).unwrap_or_default();
+        let left_str = left.map_or("", |t| t.text(self.content));
+        let right_str = right.map(|v| self.format_expression(v)).unwrap_or_default();
 
-        format!("{indent}{target_str} = {value_str};")
+        format!("{indent}{left_str} = {right_str};")
     }
 
     /// Format if statement.
