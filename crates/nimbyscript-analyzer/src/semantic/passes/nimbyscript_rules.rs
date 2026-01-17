@@ -27,10 +27,8 @@ impl SemanticPass for NimbyScriptRulesPass {
 }
 
 fn check_rules(node: Node, ctx: &SemanticContext, diagnostics: &mut Vec<Diagnostic>) {
-    match node.kind() {
-        kind::CONST_DECLARATION => check_const(node, ctx, diagnostics),
-        kind::ASSIGNMENT_STATEMENT => check_assignment(node, ctx, diagnostics),
-        _ => {}
+    if node.kind() == kind::CONST_DECLARATION {
+        check_const(node, ctx, diagnostics);
     }
     // Always recurse to check nested nodes
     let mut cursor = node.walk();
@@ -82,32 +80,6 @@ fn is_const_expression(node: Node, source: &str) -> bool {
                 .any(|c| is_const_expression(c, source))
         }
         _ => false,
-    }
-}
-
-fn check_assignment(node: Node, ctx: &SemanticContext, diagnostics: &mut Vec<Diagnostic>) {
-    // E0800: Cannot reassign reference variables
-    // This would require tracking which variables are references
-    // For now, we check if the assignment target is a reference-typed variable
-
-    if let Some(target) = node.child_by_field("left") {
-        let target_text = target.text(ctx.source);
-
-        // Look up the variable
-        if let Some(sym) = ctx.scopes.lookup(target_text) {
-            // Check if it's a reference type and not mutable
-            if sym.type_info.is_reference() && !sym.is_mutable {
-                diagnostics.push(
-                    Diagnostic::error(
-                        format!(
-                            "Cannot rebind reference '{target_text}' - references are immutable in NimbyScript"
-                        ),
-                        Span::new(target.start_byte(), target.end_byte()),
-                    )
-                    .with_code("E0800"),
-                );
-            }
-        }
     }
 }
 
