@@ -34,6 +34,9 @@ impl SemanticPass for ScopeAnalysisPass {
         // Second pass: check for shadowing in declarations
         check_shadowing(root, ctx, diagnostics);
 
+        // Third pass: check for assignments to immutable variables
+        check_immutable_assignments(root, ctx, diagnostics);
+
         // Report unused symbols
         report_unused(ctx, diagnostics);
 
@@ -184,13 +187,18 @@ fn track_block(node: Node, ctx: &mut SemanticContext) {
                         .child_by_field("type")
                         .map_or(TypeInfo::Unknown, |t| ctx.resolve_type(t.text(ctx.source)));
 
+                    // Check if this is a mutable binding (mut= or &mut=)
+                    let is_mutable = child
+                        .child_by_field("operator")
+                        .is_some_and(|op| op.text(ctx.source).contains("mut"));
+
                     let _ = ctx.scopes.define(
                         var_name,
                         SymbolKind::Variable,
                         var_type,
                         Span::new(child.start_byte(), child.end_byte()),
                         Span::new(name_node.start_byte(), name_node.end_byte()),
-                        false,
+                        is_mutable,
                     );
                 }
             }
@@ -337,13 +345,19 @@ fn check_block_shadowing(node: Node, ctx: &mut SemanticContext, diagnostics: &mu
                     let var_type = type_node
                         .map_or(TypeInfo::Unknown, |t| ctx.resolve_type(t.text(ctx.source)));
 
+                    // Check if this is a mutable binding (mut= or &mut=)
+                    let is_mutable = binding
+                        .and_then(|b| b.child_by_field("operator"))
+                        .or_else(|| child.child_by_field("operator"))
+                        .is_some_and(|op| op.text(ctx.source).contains("mut"));
+
                     let _ = ctx.scopes.define(
                         var_name,
                         SymbolKind::Variable,
                         var_type,
                         Span::new(child.start_byte(), child.end_byte()),
                         Span::new(name_node.start_byte(), name_node.end_byte()),
-                        false,
+                        is_mutable,
                     );
                 }
             }
@@ -393,6 +407,229 @@ fn check_block_shadowing(node: Node, ctx: &mut SemanticContext, diagnostics: &mu
             _ => {}
         }
     }
+}
+
+// E0800: Check for assignments to immutable variables
+fn check_immutable_assignments(
+    node: Node,
+    ctx: &mut SemanticContext,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    match node.kind() {
+        kind::ASSIGNMENT_STATEMENT => {
+            check_single_assignment(node, ctx, diagnostics);
+        }
+        kind::FUNCTION_DEFINITION => {
+            // Get function name and return type
+            let fn_name = node
+                .child_by_field("name")
+                .map_or(String::new(), |n| n.text(ctx.source).to_string());
+            let return_type = node
+                .child_by_field("return_type")
+                .map(|t| ctx.resolve_type(t.text(ctx.source)));
+
+            // Enter function scope
+            ctx.scopes.enter_scope(
+                ScopeKind::Function {
+                    name: fn_name,
+                    return_type,
+                },
+                Span::new(node.start_byte(), node.end_byte()),
+            );
+
+            // Add parameters to scope
+            if let Some(params) = node.child_by_kind(kind::PARAMETERS) {
+                add_params_to_scope(params, ctx);
+            }
+
+            // Check body
+            if let Some(body) = node.child_by_kind(kind::BLOCK) {
+                check_block_assignments(body, ctx, diagnostics);
+            }
+
+            ctx.scopes.exit_scope();
+        }
+        _ => {
+            // Recurse into children
+            let mut cursor = node.walk();
+            for child in node.children(&mut cursor) {
+                check_immutable_assignments(child, ctx, diagnostics);
+            }
+        }
+    }
+}
+
+fn add_params_to_scope(params: Node, ctx: &mut SemanticContext) {
+    let mut cursor = params.walk();
+    for param in params.children(&mut cursor) {
+        if param.kind() != kind::PARAMETER {
+            continue;
+        }
+        if let Some(name_node) = param.child_by_field("name") {
+            let name = name_node.text(ctx.source);
+            let param_type = param
+                .child_by_field("type")
+                .map_or(TypeInfo::Unknown, |t| ctx.resolve_type(t.text(ctx.source)));
+            let _ = ctx.scopes.define(
+                name,
+                SymbolKind::Parameter,
+                param_type,
+                Span::new(param.start_byte(), param.end_byte()),
+                Span::new(name_node.start_byte(), name_node.end_byte()),
+                false, // Parameters are not mutable
+            );
+        }
+    }
+}
+
+fn check_block_assignments(
+    node: Node,
+    ctx: &mut SemanticContext,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        match child.kind() {
+            kind::ASSIGNMENT_STATEMENT => {
+                check_single_assignment(child, ctx, diagnostics);
+            }
+            kind::LET_STATEMENT | kind::LET_ELSE_STATEMENT => {
+                // Add variable to scope
+                let binding = child.child_by_kind("binding");
+                let name_node = binding
+                    .and_then(|b| b.child_by_field("name"))
+                    .or_else(|| child.child_by_field("name"));
+
+                if let Some(name_node) = name_node {
+                    let var_name = name_node.text(ctx.source);
+                    let var_type = binding
+                        .and_then(|b| b.child_by_kind("type_pattern"))
+                        .or_else(|| child.child_by_field("type"))
+                        .map_or(TypeInfo::Unknown, |t| ctx.resolve_type(t.text(ctx.source)));
+
+                    // Check if mutable binding
+                    let is_mutable = binding
+                        .and_then(|b| b.child_by_field("operator"))
+                        .or_else(|| child.child_by_field("operator"))
+                        .is_some_and(|op| op.text(ctx.source).contains("mut"));
+
+                    let _ = ctx.scopes.define(
+                        var_name,
+                        SymbolKind::Variable,
+                        var_type,
+                        Span::new(child.start_byte(), child.end_byte()),
+                        Span::new(name_node.start_byte(), name_node.end_byte()),
+                        is_mutable,
+                    );
+                }
+            }
+            kind::FOR_STATEMENT => {
+                ctx.scopes.enter_scope(
+                    ScopeKind::Loop,
+                    Span::new(child.start_byte(), child.end_byte()),
+                );
+
+                // Add loop variable
+                if let Some(var_node) = child.child_by_field("variable") {
+                    let var_name = var_node.text(ctx.source);
+                    let _ = ctx.scopes.define(
+                        var_name,
+                        SymbolKind::Variable,
+                        TypeInfo::Unknown,
+                        Span::new(var_node.start_byte(), var_node.end_byte()),
+                        Span::new(var_node.start_byte(), var_node.end_byte()),
+                        false,
+                    );
+                }
+
+                if let Some(body) = child.child_by_kind(kind::BLOCK) {
+                    check_block_assignments(body, ctx, diagnostics);
+                }
+
+                ctx.scopes.exit_scope();
+            }
+            kind::IF_STATEMENT | kind::IF_LET_STATEMENT => {
+                check_if_assignments(child, ctx, diagnostics);
+            }
+            kind::BLOCK => {
+                ctx.scopes.enter_scope(
+                    ScopeKind::Block,
+                    Span::new(child.start_byte(), child.end_byte()),
+                );
+                check_block_assignments(child, ctx, diagnostics);
+                ctx.scopes.exit_scope();
+            }
+            _ => {}
+        }
+    }
+}
+
+fn check_if_assignments(node: Node, ctx: &mut SemanticContext, diagnostics: &mut Vec<Diagnostic>) {
+    // Check then block
+    if let Some(then_block) = node.child_by_field("consequence") {
+        ctx.scopes.enter_scope(
+            ScopeKind::Block,
+            Span::new(then_block.start_byte(), then_block.end_byte()),
+        );
+        check_block_assignments(then_block, ctx, diagnostics);
+        ctx.scopes.exit_scope();
+    }
+
+    // Check else clause
+    let Some(else_clause) = node.child_by_kind(kind::ELSE_CLAUSE) else {
+        return;
+    };
+
+    let mut else_cursor = else_clause.walk();
+    for else_child in else_clause.children(&mut else_cursor) {
+        match else_child.kind() {
+            kind::BLOCK => {
+                ctx.scopes.enter_scope(
+                    ScopeKind::Block,
+                    Span::new(else_child.start_byte(), else_child.end_byte()),
+                );
+                check_block_assignments(else_child, ctx, diagnostics);
+                ctx.scopes.exit_scope();
+            }
+            kind::IF_STATEMENT => {
+                check_if_assignments(else_child, ctx, diagnostics);
+            }
+            _ => {}
+        }
+    }
+}
+
+fn check_single_assignment(node: Node, ctx: &SemanticContext, diagnostics: &mut Vec<Diagnostic>) {
+    let Some(target) = node.child_by_field("left") else {
+        return;
+    };
+
+    // Only check simple identifiers, not field access like self.field
+    if target.kind() != kind::IDENTIFIER {
+        return;
+    }
+
+    let target_text = target.text(ctx.source);
+    let Some(sym) = ctx.scopes.lookup(target_text) else {
+        return;
+    };
+
+    if sym.is_mutable {
+        return;
+    }
+
+    let hint = if sym.type_info.is_reference() {
+        " - references cannot be rebound"
+    } else {
+        ". Use 'mut=' to create a mutable binding"
+    };
+    diagnostics.push(
+        Diagnostic::error(
+            format!("Cannot assign to immutable variable '{target_text}'{hint}"),
+            Span::new(target.start_byte(), target.end_byte()),
+        )
+        .with_code("E0800"),
+    );
 }
 
 fn report_unused(ctx: &SemanticContext, diagnostics: &mut Vec<Diagnostic>) {
@@ -491,6 +728,13 @@ mod tests {
         diags
             .iter()
             .filter(|d| matches!(d.severity, Severity::Warning))
+            .collect()
+    }
+
+    fn errors(diags: &[Diagnostic]) -> Vec<&Diagnostic> {
+        diags
+            .iter()
+            .filter(|d| matches!(d.severity, Severity::Error))
             .collect()
     }
 
@@ -670,6 +914,46 @@ fn b() { }
                 .iter()
                 .all(|d| { !(d.code.as_deref() == Some("W0602") && d.message.contains("'b'")) }),
             "Function used before declaration should not get unused warning: {warns:?}"
+        );
+    }
+
+    // E0800 - Assigning to immutable variables
+
+    #[test]
+    fn test_assign_to_immutable_variable_errors() {
+        let source = r"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+fn test() {
+    let found_any = false;
+    found_any = true;
+}
+";
+        let diags = check(source);
+        let errs = errors(&diags);
+        assert!(
+            errs.iter().any(|d| d.code.as_deref() == Some("E0800")),
+            "Assigning to immutable variable should error: {errs:?}"
+        );
+        assert!(
+            errs.iter().any(|d| d.message.contains("mut=")),
+            "Should hint about mut=: {errs:?}"
+        );
+    }
+
+    #[test]
+    fn test_assign_to_mutable_variable_ok() {
+        let source = r"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+fn test() {
+    let found_any mut= false;
+    found_any = true;
+}
+";
+        let diags = check(source);
+        let errs = errors(&diags);
+        assert!(
+            errs.iter().all(|d| d.code.as_deref() != Some("E0800")),
+            "Assigning to mutable variable should not error: {errs:?}"
         );
     }
 }
