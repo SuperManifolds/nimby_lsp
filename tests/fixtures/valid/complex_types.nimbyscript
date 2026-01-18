@@ -45,7 +45,8 @@ pub fn TypeTest::event_signal_check(
     ctx: &EventCtx,
     train: &Train,
     motion: &Motion,
-    signal: &Signal
+    signal: &Signal,
+    sc: &mut SimpleSimController
 ): SignalCheck {
     // Using ID<T>::empty() static method
     let empty_train = ID<Train>::empty();
@@ -88,7 +89,8 @@ pub fn StatusHolder::event_signal_check(
     ctx: &EventCtx,
     train: &Train,
     motion: &Motion,
-    signal: &Signal
+    signal: &Signal,
+    sc: &mut SimpleSimController
 ): SignalCheck {
     // Using optional field access
     let drive &= motion.drive.get() else {
