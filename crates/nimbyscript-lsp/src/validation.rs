@@ -858,11 +858,11 @@ pub enum Color {
 
     #[test]
     fn test_valid_callback_signature() {
-        // event_signal_check has 5 params: self, ctx, train, motion, signal
+        // event_signal_check has 6 params: self, ctx, train, motion, signal, sc
         let content = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub struct Test extend Signal { }
-pub fn Test::event_signal_check(self: &Test, ctx: &EventCtx, train: &Train, motion: &Motion, signal: &Signal): SignalCheck {
+pub fn Test::event_signal_check(self: &Test, ctx: &EventCtx, train: &Train, motion: &Motion, signal: &Signal, sc: &mut SimpleSimController): SignalCheck {
     return SignalCheck::Pass;
 }
 ";
@@ -907,7 +907,7 @@ pub fn Test::event_signal_check(self: &Test): SignalCheck {
         let content = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub struct Test extend Signal { }
-pub fn Test::event_signal_check(self: &Test, ctx: &EventCtx, train: &Train, motion: &Motion, signal: &Signal): i64 {
+pub fn Test::event_signal_check(self: &Test, ctx: &EventCtx, train: &Train, motion: &Motion, signal: &Signal, sc: &mut SimpleSimController): i64 {
     return 0;
 }
 ";
@@ -938,7 +938,7 @@ fn Test::not_a_callback(self: &Test) { }
         let content = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub struct Test extend Signal { }
-pub fn Test::event_signal_check(self: &Test, ctx: i64, train: &Train, motion: &Motion, signal: &Signal): SignalCheck {
+pub fn Test::event_signal_check(self: &Test, ctx: i64, train: &Train, motion: &Motion, signal: &Signal, sc: &mut SimpleSimController): SignalCheck {
     return SignalCheck::Pass;
 }
 ";
@@ -954,7 +954,7 @@ pub fn Test::event_signal_check(self: &Test, ctx: i64, train: &Train, motion: &M
         let content = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub struct MyHandler extend Signal { }
-pub fn MyHandler::event_signal_check(self: &MyHandler, ctx: &EventCtx, train: &Train, motion: &Motion, signal: &Signal): SignalCheck {
+pub fn MyHandler::event_signal_check(self: &MyHandler, ctx: &EventCtx, train: &Train, motion: &Motion, signal: &Signal, sc: &mut SimpleSimController): SignalCheck {
     return SignalCheck::Pass;
 }
 ";
@@ -975,7 +975,7 @@ pub fn MyHandler::event_signal_check(self: &MyHandler, ctx: &EventCtx, train: &T
         let content = r"
 script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
 pub struct Test extend Signal { }
-pub fn Test::event_signal_check(self: &Test, ctx: &EventCtx, train: &Train, motion: &Motion, signal: &Signal) {
+pub fn Test::event_signal_check(self: &Test, ctx: &EventCtx, train: &Train, motion: &Motion, signal: &Signal, sc: &mut SimpleSimController) {
     // Missing return type
 }
 ";

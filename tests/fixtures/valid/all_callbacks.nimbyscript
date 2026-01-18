@@ -13,7 +13,8 @@ pub fn SignalHandler::event_signal_check(
     ctx: &EventCtx,
     train: &Train,
     motion: &Motion,
-    signal: &Signal
+    signal: &Signal,
+    sc: &mut SimpleSimController
 ): SignalCheck {
     return SignalCheck::Pass;
 }
@@ -26,6 +27,7 @@ pub fn SignalHandler::event_signal_lookahead(
     signal: &Signal,
     train_distance: f64,
     check: SignalCheck,
+    sc: &mut SimpleSimController,
     result: &mut SignalLookaheadResult
 ) {
     // No-op
@@ -38,6 +40,7 @@ pub fn SignalHandler::event_signal_change_path(
     motion: &Motion,
     signal: &Signal,
     check: SignalCheck,
+    sc: &mut SimpleSimController,
     result: &mut SignalChangePathResult
 ): SignalChangePath {
     return SignalChangePath::Keep;

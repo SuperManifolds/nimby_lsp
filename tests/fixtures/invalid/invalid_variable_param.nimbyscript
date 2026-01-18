@@ -39,6 +39,7 @@ pub fn ProbeCheck::event_signal_lookahead(
     signal: &Signal,
     train_distance: f64,
     check: SignalCheck,
+    sc: &mut SimpleSimController,
     result: &mut SignalLookaheadResult
 ) {
     if check == SignalCheck::Stop && train_distance < 1000.0 {
@@ -80,6 +81,7 @@ pub fn UpcomingChange::event_signal_change_path(
     motion: &Motion,
     signal: &Signal,
     check: SignalCheck,
+    sc: &mut SimpleSimController,
     result: &mut SignalChangePathResult
 ): SignalChangePath {
     let probe &= ctx.db.view(self.detect_at) else { return SignalChangePath::Keep; }

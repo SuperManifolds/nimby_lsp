@@ -14,12 +14,13 @@ pub fn BadSig::event_signal_check(
     ctx: &EventCtx,
     train: &Train,
     motion: &Motion,
-    signal: &Signal
+    signal: &Signal,
+    sc: &mut SimpleSimController
 ): i64 {
     return 0;
 }
 
-// @error E0101 "expects 8 parameters, but 1 were provided"
+// @error E0101 "expects 9 parameters, but 1 were provided"
 // Wrong parameter count - missing parameters
 pub fn BadSig::event_signal_lookahead(
     self: &BadSig
