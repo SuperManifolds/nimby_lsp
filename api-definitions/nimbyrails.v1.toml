@@ -902,6 +902,32 @@ name = "flip"
 type = "bool"
 doc = "The new flip state"
 
+[types.SimpleSimController]
+kind = "struct"
+doc = "A limited API version of SimController for high-frequency signal event handlers. Only allows queue_attach() and queue_erase() operations."
+
+[[types.SimpleSimController.methods]]
+name = "queue_attach"
+doc = "Queue attaching script data to an entity"
+type_params = ["T"]
+[[types.SimpleSimController.methods.params]]
+name = "target"
+type = "ID<GameObject>"
+doc = "The entity to attach data to"
+[[types.SimpleSimController.methods.params]]
+name = "data"
+type = "T"
+doc = "The script data to attach"
+
+[[types.SimpleSimController.methods]]
+name = "queue_erase"
+doc = "Queue erasing script data from an entity"
+type_params = ["T"]
+[[types.SimpleSimController.methods.params]]
+name = "target"
+type = "ID<GameObject>"
+doc = "The entity to erase data from"
+
 # Extrapolator methods
 [[types.Extrapolator.methods]]
 name = "clock_us"
@@ -1284,6 +1310,10 @@ doc = "Current simulation state of the train"
 name = "signal"
 type = "&Signal"
 doc = "The signal being checked"
+[[callbacks.params]]
+name = "sc"
+type = "&mut SimpleSimController"
+doc = "Limited simulation controller for queuing attach/erase operations"
 
 [[callbacks]]
 name = "event_signal_lookahead"
@@ -1318,6 +1348,10 @@ name = "check"
 type = "SignalCheck"
 doc = "Result of the signal's path check (Pass/Stop)"
 [[callbacks.params]]
+name = "sc"
+type = "&mut SimpleSimController"
+doc = "Limited simulation controller for queuing attach/erase operations"
+[[callbacks.params]]
 name = "result"
 type = "&mut SignalLookaheadResult"
 doc = "Output parameter for setting maximum speed constraint"
@@ -1351,6 +1385,10 @@ doc = "The signal initiating path change"
 name = "check"
 type = "SignalCheck"
 doc = "Current path check result for this signal"
+[[callbacks.params]]
+name = "sc"
+type = "&mut SimpleSimController"
+doc = "Limited simulation controller for queuing attach/erase operations"
 [[callbacks.params]]
 name = "result"
 type = "&mut SignalChangePathResult"
