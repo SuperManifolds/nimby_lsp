@@ -646,4 +646,49 @@ mod tests {
         assert!(api.is_valid_callback("event_shift"));
         assert!(api.is_valid_callback("event_line_stop"));
     }
+
+    #[test]
+    fn test_simple_sim_controller_type() {
+        let api = load_api();
+        let ssc = api
+            .get_type("SimpleSimController")
+            .expect("SimpleSimController type should exist");
+        assert!(matches!(ssc.kind, TypeKind::Struct));
+
+        // Should have queue_attach and queue_erase methods
+        let method_names: Vec<_> = ssc.methods.iter().map(|m| m.name.as_str()).collect();
+        assert!(
+            method_names.contains(&"queue_attach"),
+            "should have queue_attach method"
+        );
+        assert!(
+            method_names.contains(&"queue_erase"),
+            "should have queue_erase method"
+        );
+    }
+
+    #[test]
+    fn test_signal_callbacks_have_simple_sim_controller_param() {
+        let api = load_api();
+
+        // All three signal event callbacks should have sc: &mut SimpleSimController
+        for cb_name in [
+            "event_signal_check",
+            "event_signal_lookahead",
+            "event_signal_change_path",
+        ] {
+            let cb = api
+                .get_callback(cb_name)
+                .unwrap_or_else(|| panic!("{cb_name} should exist"));
+            let sc_param = cb
+                .params
+                .iter()
+                .find(|p| p.name == "sc")
+                .unwrap_or_else(|| panic!("{cb_name} should have 'sc' parameter"));
+            assert_eq!(
+                sc_param.ty, "&mut SimpleSimController",
+                "{cb_name} sc param should be &mut SimpleSimController"
+            );
+        }
+    }
 }
