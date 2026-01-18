@@ -1,10 +1,9 @@
 //! NimbyScript-specific rules pass (E08xx).
 //!
 //! Validates NimbyScript-specific language rules:
-//! - E0800: Cannot rebind reference
+//! - E0800: Cannot assign to immutable variable (moved to scope_analysis)
 //! - E0801: Invalid const expression (must be literal)
-//! - E0802: Cannot use 'mut' with reference in params
-//! - W0803: Pointer without validity check
+//! - E0802: Type annotation not allowed in if-let/let-else binding
 
 use nimbyscript_parser::ast::Span;
 use nimbyscript_parser::{kind, Node, NodeExt};
@@ -27,13 +26,41 @@ impl SemanticPass for NimbyScriptRulesPass {
 }
 
 fn check_rules(node: Node, ctx: &SemanticContext, diagnostics: &mut Vec<Diagnostic>) {
-    if node.kind() == kind::CONST_DECLARATION {
-        check_const(node, ctx, diagnostics);
+    match node.kind() {
+        kind::CONST_DECLARATION => check_const(node, ctx, diagnostics),
+        kind::IF_LET_STATEMENT | kind::LET_ELSE_STATEMENT => {
+            check_binding_type_annotation(node, diagnostics);
+        }
+        _ => {}
     }
     // Always recurse to check nested nodes
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         check_rules(child, ctx, diagnostics);
+    }
+}
+
+// E0802: Type annotations are not allowed in if-let/let-else bindings
+fn check_binding_type_annotation(node: Node, diagnostics: &mut Vec<Diagnostic>) {
+    // Find the binding child
+    let Some(binding) = node.child_by_kind("binding") else {
+        return;
+    };
+
+    // Check if there's a type annotation (type_pattern child)
+    if let Some(type_node) = binding.child_by_kind("type_pattern") {
+        let stmt_type = if node.kind() == kind::IF_LET_STATEMENT {
+            "if-let"
+        } else {
+            "let-else"
+        };
+        diagnostics.push(
+            Diagnostic::error(
+                format!("Type annotations are not allowed in {stmt_type} bindings"),
+                Span::new(type_node.start_byte(), type_node.end_byte()),
+            )
+            .with_code("E0802"),
+        );
     }
 }
 
@@ -173,5 +200,59 @@ const X: i64 = Y;
         // The grammar rejects this at parse time, not semantic analysis time
         // We just ensure the pass doesn't crash
         assert!(diags.is_empty() || diags.iter().all(|d| d.code.as_deref() != Some("E0801")));
+    }
+
+    // E0802 - Type annotation not allowed in if-let/let-else
+
+    #[test]
+    fn test_if_let_type_annotation_errors() {
+        let source = r"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+fn test(ptr: *i64) {
+    if let x: i64 &= ptr {
+        // ...
+    }
+}
+";
+        let diags = check(source);
+        let errs = errors(&diags);
+        assert!(
+            errs.iter().any(|d| d.code.as_deref() == Some("E0802")),
+            "Type annotation in if-let should error: {errs:?}"
+        );
+    }
+
+    #[test]
+    fn test_let_else_type_annotation_errors() {
+        let source = r"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+fn test(ptr: *i64) {
+    let x: i64 &= ptr else { return; };
+}
+";
+        let diags = check(source);
+        let errs = errors(&diags);
+        assert!(
+            errs.iter().any(|d| d.code.as_deref() == Some("E0802")),
+            "Type annotation in let-else should error: {errs:?}"
+        );
+    }
+
+    #[test]
+    fn test_if_let_no_type_annotation_ok() {
+        let source = r"
+script meta { lang: nimbyscript.v1, api: nimbyrails.v1, }
+fn test(ptr: *i64) {
+    if let x &= ptr {
+        // ...
+    }
+}
+";
+        let diags = check(source);
+        let errs = errors(&diags);
+        assert!(
+            errs.iter().all(|d| d.code.as_deref() != Some("E0802")),
+            "if-let without type annotation should be ok: {errs:?}"
+        );
     }
 }
