@@ -607,6 +607,11 @@ doc = "A track segment"
 id = { type = "ID<Track>", doc = "Unique identifier", readonly = true }
 station_id = { type = "ID<Station>", doc = "Station ID for platform tracks (invalid if not a platform track)", readonly = true }
 
+[[types.Track.methods]]
+name = "max_speed"
+doc = "Returns the min(physical, manual setting) max speed of the track, in m/s"
+return_type = "f64"
+
 # Tags type
 [types.Tags]
 kind = "struct"
