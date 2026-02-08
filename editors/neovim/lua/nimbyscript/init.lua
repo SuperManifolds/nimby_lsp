@@ -247,7 +247,10 @@ local function setup_treesitter()
         return
     end
 
-    local parser_config = parsers.get_parser_configs()
+    local parser_config = parsers
+    if parsers.get_parser_configs ~= nil then
+      parser_config = parsers.get_parser_configs()
+    end
     if not parser_config.nimbyscript then
         parser_config.nimbyscript = {
             install_info = {
