@@ -1483,6 +1483,10 @@ doc = "The signal needing texture state"
 name = "clock_us"
 type = "i64"
 doc = "Elapsed sim-microseconds since save creation. Use with zdiv() and zmod() for animations."
+[[callbacks.params]]
+name = "core_state"
+type = "i64"
+doc = "For path signals, the current signal check result (0 = Pass, 1 = Stop). Always 0 for other signal types."
 
 [[callbacks]]
 name = "event_train_shift_setup"
