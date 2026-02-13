@@ -575,6 +575,8 @@ tags = { type = "Tags", doc = "Tags attached to this line", readonly = true }
 kind = "struct"
 extendable = true
 doc = "A stop on a transit line. Can be extended to receive train arrival/departure events."
+[types."Line::Stop".fields]
+station_id = { type = "ID<Station>", doc = "Station ID for this stop", readonly = true }
 
 [types.Schedule]
 kind = "struct"
@@ -774,6 +776,9 @@ doc = "Station stop state"
 [types."Motion::RunStop"]
 kind = "struct"
 doc = "Run stop state"
+[types."Motion::RunStop".fields]
+line_id = { type = "ID<Line>", doc = "Line being run", readonly = true }
+station_id = { type = "ID<Station>", doc = "Current station", readonly = true }
 
 [types."Motion::ScheduleDispatch"]
 kind = "struct"
