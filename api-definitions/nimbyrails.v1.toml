@@ -350,6 +350,7 @@ doc = "A train entity in the simulation"
 [types.Train.fields]
 id = { type = "ID<Train>", doc = "Unique identifier", readonly = true }
 tags = { type = "Tags", doc = "Tags attached to this train", readonly = true }
+as_purchased = { type = "Train::Dynamics", doc = "Original dynamics specifications at time of purchase", readonly = true }
 
 [types."Train::Dynamics"]
 kind = "struct"
