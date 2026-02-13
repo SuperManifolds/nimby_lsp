@@ -69,7 +69,8 @@ pub fn SignalHandler::event_signal_texture_state(
     self: &SignalHandler,
     db: &DB,
     signal: &Signal,
-    clock_us: i64
+    clock_us: i64,
+    core_state: i64
 ): i64 {
     return 0;
 }
