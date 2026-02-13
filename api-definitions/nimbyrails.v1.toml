@@ -1016,6 +1016,16 @@ name = "pos"
 type = "&Pos"
 doc = "The position to probe"
 
+[[types.Extrapolator.methods]]
+name = "view_last"
+doc = "Return the last frame Motion object associated to the train ID. Can be used as an approximation for scheduled arrival time."
+return_type = "*Motion"
+type_params = ["Motion"]
+[[types.Extrapolator.methods.params]]
+name = "train_id"
+type = "ID<Train>"
+doc = "The train ID to get last frame motion for"
+
 # Iterator types
 [types.ScResvProbeIt]
 kind = "struct"
