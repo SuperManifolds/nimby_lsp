@@ -145,10 +145,8 @@ fn all_paths_return(block: Node, source: &str) -> bool {
                     return true;
                 }
             }
-            kind::BLOCK => {
-                if all_paths_return(*child, source) {
-                    return true;
-                }
+            kind::BLOCK if all_paths_return(*child, source) => {
+                return true;
             }
             // FOR_STATEMENT: Loop might not execute, so doesn't guarantee return
             // BREAK/CONTINUE: Exit the current context but don't return

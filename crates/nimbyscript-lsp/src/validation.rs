@@ -59,10 +59,10 @@ fn parse_fn_signature(node: Node, content: &str) -> FnSignature {
             kind::PARAMETERS => {
                 sig.params = extract_params_strings(child, content);
             }
-            kind::TYPE => {
-                if node.child_by_field("return_type").map(|n| n.id()) == Some(child.id()) {
-                    sig.return_type = Some(child.text(content).to_string());
-                }
+            kind::TYPE
+                if node.child_by_field("return_type").map(|n| n.id()) == Some(child.id()) =>
+            {
+                sig.return_type = Some(child.text(content).to_string());
             }
             _ => {}
         }
@@ -596,19 +596,20 @@ fn validate_default_value(
                 );
             }
         }
-        _ if field_type.chars().next().is_some_and(char::is_uppercase) => {
+        _ if field_type.chars().next().is_some_and(char::is_uppercase)
+            && value_kind != kind::META_NAME
+            && value_kind != kind::IDENTIFIER =>
+        {
             // Enum type - default must be an identifier (enum variant name)
-            if value_kind != kind::META_NAME && value_kind != kind::IDENTIFIER {
-                diagnostics.push(
-                    Diagnostic::error(
-                        format!(
-                            "'default' for enum '{field_type}' must be a variant name, got '{value_text}'"
-                        ),
-                        span,
-                    )
-                    .with_code("E0205"),
-                );
-            }
+            diagnostics.push(
+                Diagnostic::error(
+                    format!(
+                        "'default' for enum '{field_type}' must be a variant name, got '{value_text}'"
+                    ),
+                    span,
+                )
+                .with_code("E0205"),
+            );
         }
         _ => {} // Other types - already warned by E0203
     }

@@ -421,7 +421,7 @@ mod tests {
     fn test_extract_generic_args_none() {
         let ty = TypeInfo::I64;
         let args = extract_generic_args(&ty);
-        assert!(args.is_empty());
+        assert_eq!(args, [] as [TypeInfo; 0]);
     }
 
     #[test]

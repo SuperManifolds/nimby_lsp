@@ -143,7 +143,7 @@ mod tests {
         let position = Position::new(1, 4);
         let ranges = get_selection_ranges(&doc, vec![position]);
 
-        assert!(!ranges.is_empty());
+        assert_ne!(ranges, [] as [SelectionRange; 0]);
         // Should have parent chain up to struct and source file
         assert!(ranges[0].parent.is_some());
     }

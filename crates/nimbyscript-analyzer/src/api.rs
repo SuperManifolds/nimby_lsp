@@ -387,7 +387,7 @@ mod tests {
     fn test_type_names_iterator() {
         let api = load_api();
         let names: Vec<_> = api.type_names().collect();
-        assert!(!names.is_empty());
+        assert_ne!(names, [] as [&str; 0]);
         assert!(names.contains(&"Signal"));
         assert!(names.contains(&"Train"));
     }
@@ -418,7 +418,7 @@ mod tests {
     fn test_enum_names_iterator() {
         let api = load_api();
         let names: Vec<_> = api.enum_names().collect();
-        assert!(!names.is_empty());
+        assert_ne!(names, [] as [&str; 0]);
         assert!(names.contains(&"SignalCheck"));
         assert!(names.contains(&"SignalAspect"));
     }
@@ -458,7 +458,7 @@ mod tests {
     fn test_function_names_iterator() {
         let api = load_api();
         let names: Vec<_> = api.function_names().collect();
-        assert!(!names.is_empty());
+        assert_ne!(names, [] as [&str; 0]);
         assert!(names.contains(&"abs"));
         assert!(names.contains(&"sqrt"));
     }
@@ -559,7 +559,7 @@ mod tests {
     fn test_callback_names_iterator() {
         let api = load_api();
         let names: Vec<_> = api.callback_names().collect();
-        assert!(!names.is_empty());
+        assert_ne!(names, [] as [&str; 0]);
         assert!(names.contains(&"event_signal_check"));
     }
 
@@ -574,8 +574,8 @@ mod tests {
         // Check that params have expected structure
         assert!(!cb.params.is_empty());
         for param in &cb.params {
-            assert!(!param.name.is_empty());
-            assert!(!param.ty.is_empty());
+            assert_ne!(param.name, "");
+            assert_ne!(param.ty, "");
         }
     }
 

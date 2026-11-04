@@ -151,11 +151,9 @@ fn collect_struct_name_ranges_recursive(
                 }
             }
         }
-        kind::TYPE_IDENTIFIER => {
+        kind::TYPE_IDENTIFIER if node.text(content) == struct_name => {
             // Type references (e.g., in parameters like `self: &StructName`)
-            if node.text(content) == struct_name {
-                ranges.push(node_to_range(doc, node));
-            }
+            ranges.push(node_to_range(doc, node));
         }
         _ => {}
     }

@@ -239,10 +239,7 @@ impl ScopeManager {
                 return Some(&self.symbols[symbol_id.0]);
             }
 
-            match scope.parent {
-                Some(parent) => scope_id = parent,
-                None => return None,
-            }
+            scope_id = scope.parent?;
         }
     }
 
@@ -312,10 +309,7 @@ impl ScopeManager {
                 return return_type.as_ref();
             }
 
-            match scope.parent {
-                Some(parent) => scope_id = parent,
-                None => return None,
-            }
+            scope_id = scope.parent?;
         }
     }
 
@@ -329,10 +323,7 @@ impl ScopeManager {
                 return Some(name.as_str());
             }
 
-            match scope.parent {
-                Some(parent) => scope_id = parent,
-                None => return None,
-            }
+            scope_id = scope.parent?;
         }
     }
 
@@ -376,10 +367,7 @@ impl ScopeManager {
                 return Some(&self.symbols[symbol_id.0]);
             }
 
-            match scope.parent {
-                Some(parent) => scope_id = parent,
-                None => return None,
-            }
+            scope_id = scope.parent?;
         }
     }
 
