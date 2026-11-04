@@ -344,11 +344,7 @@ impl LanguageServer for Backend {
         let uri = params.text_document.uri;
 
         // Check if format on save is enabled
-        let format_on_save = self
-            .settings
-            .read()
-            .map(|s| s.format_on_save)
-            .unwrap_or(false);
+        let format_on_save = self.settings.read().is_ok_and(|s| s.format_on_save);
 
         if format_on_save {
             if let Some(doc) = self.documents.get(&uri) {

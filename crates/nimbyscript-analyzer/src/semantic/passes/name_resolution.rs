@@ -626,10 +626,8 @@ fn resolve_identifier(node: Node, ctx: &SemanticContext, diagnostics: &mut Vec<D
                 }
             }
             // Skip if this is the "field" part of a field access (not the object)
-            kind::FIELD_ACCESS => {
-                if parent.child_by_field("field").map(|f| f.id()) == Some(node.id()) {
-                    return;
-                }
+            kind::FIELD_ACCESS if parent.child_by_field("field").map(|f| f.id()) == Some(node.id()) => {
+                return;
             }
             _ => {}
         }

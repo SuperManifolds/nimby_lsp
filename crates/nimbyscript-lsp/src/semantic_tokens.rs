@@ -823,7 +823,7 @@ mod tests {
     #[test]
     fn test_semantic_token_legend_types() {
         let legend = semantic_token_legend();
-        assert!(!legend.token_types.is_empty());
+        assert_ne!(legend.token_types, [] as [SemanticTokenType; 0]);
         assert!(legend.token_types.contains(&SemanticTokenType::KEYWORD));
         assert!(legend.token_types.contains(&SemanticTokenType::TYPE));
         assert!(legend.token_types.contains(&SemanticTokenType::FUNCTION));
@@ -841,7 +841,7 @@ pub struct Test extend Signal {
         let tokens = compute_semantic_tokens(&doc, &api);
 
         // Should have tokens for pub, struct name, Signal, field name, i64
-        assert!(!tokens.is_empty());
+        assert_ne!(tokens, [] as [SemanticToken; 0]);
     }
 
     #[test]
@@ -856,7 +856,7 @@ pub struct Test extend Signal {
         let tokens = compute_semantic_tokens(&doc, &api);
 
         // Should tokenize both ID and Train as types
-        assert!(!tokens.is_empty());
+        assert_ne!(tokens, [] as [SemanticToken; 0]);
     }
 
     #[test]
@@ -870,7 +870,7 @@ pub fn test(): SignalCheck {
         let doc = Document::new(content.to_string(), Some(&api));
         let tokens = compute_semantic_tokens(&doc, &api);
 
-        assert!(!tokens.is_empty());
+        assert_ne!(tokens, [] as [SemanticToken; 0]);
     }
 
     #[test]
@@ -885,6 +885,6 @@ pub fn test(): ID<Train> {
         let tokens = compute_semantic_tokens(&doc, &api);
 
         // Should tokenize ID, Train in return type and in path expression
-        assert!(!tokens.is_empty());
+        assert_ne!(tokens, [] as [SemanticToken; 0]);
     }
 }

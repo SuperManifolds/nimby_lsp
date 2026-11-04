@@ -233,7 +233,7 @@ mod tests {
         let ranges = get_folding_ranges(&doc);
 
         // Single-line structs should not fold
-        assert!(ranges.is_empty());
+        assert_eq!(ranges, [] as [FoldingRange; 0]);
     }
 
     #[test]

@@ -429,7 +429,10 @@ mod tests {
 
         let sig = build_signature_info(&func, 0);
         assert_eq!(sig.label, "test()");
-        assert!(sig.parameters.expect("should have parameters").is_empty());
+        assert_eq!(
+            sig.parameters.expect("should have parameters"),
+            [] as [ParameterInformation; 0]
+        );
     }
 
     #[test]
